@@ -8,7 +8,7 @@ specification gates pass.
 | Task | Status | Current evidence / next boundary |
 |---|---|---|
 | T00 | Complete locally | Fresh locked installs, backend/frontend checks/builds, commit hooks, and 4 browser smoke tests pass. Initial push authorized; hosted CI evidence pending (D002). |
-| T01 | Ready to start | Follow HANDOFF.md and approved SQLite decision D004. Verify/update Python's embedded SQLite runtime, then implement real on-disk migration/integration gates; no database daemon or Docker needed. |
+| T01 | Complete locally | SQLite/SQLAlchemy/Alembic foundation with migration 0001, public/private schemas, and on-disk integration gates pass. Hosted CI evidence pending; no push beyond the authorized one. |
 | T02 | Not started | Blocked by its roadmap dependency. |
 | T03 | Not started | Blocked by its roadmap dependency. |
 | T04 | Not started | Blocked by its roadmap dependency. |
@@ -260,3 +260,78 @@ migrations/integration tests, live provider evaluations, real-phone validation,
 and release vulnerability scans are not run because their tasks remain unstarted.
 Hosted CI requires observing a run after the authorized push; no result is claimed
 here. No application deployment, cloud provisioning, or model download is included.
+
+### 2026-09-06 — T01 SQLite foundation (local completion)
+
+T01 implements the D004 persistence foundation with SQLAlchemy 2.0.52 and
+Alembic 1.19.2 (locked with greenlet 3.5.5, Mako 1.4.1, MarkupSafe 3.0.3).
+No second database engine was introduced.
+
+Changed files and requirements:
+
+- `apps/api/src/math_tutor/settings.py`: one absolute file-backed SQLite path
+  from `DATABASE_URL` (default `./data/math_tutor.sqlite3`); non-SQLite schemes
+  and `:memory:` are rejected. Embedded-version floor `MIN_SQLITE_VERSION`.
+- `apps/api/src/math_tutor/adapters/db/`: engine factory applying
+  WAL/foreign-keys/busy-timeout-5000/synchronous-FULL on every connection with
+  read-back verification; UUID-as-text and aware-UTC (naive rejected) column
+  types; declarative base with a stable naming convention; `PracticeSession`
+  and `ProblemInstance` models (FK, status/range checks, per-session position
+  uniqueness). `PracticeSession.learner_id` gains its learner FK in T03.
+- `apps/api/src/math_tutor/api/schemas.py`: public session/problem schemas
+  excluding the hidden expected answer, raw parameters, seed, and ownership
+  identifiers.
+- `apps/api/src/math_tutor/cli.py` + `make db`: prepare/secure the data
+  directory, enforce the SQLite floor, and verify effective PRAGMAs. No daemon,
+  no implicit migration.
+- `apps/api/alembic.ini` + `apps/api/migrations/`: env wired to app settings
+  with batch rendering; migration `0001_practice_tables` with named
+  constraints and a downgrade. `make migrate` stops-note included.
+- `apps/api/tests/unit/test_public_schemas.py`: hidden-answer, parameter,
+  seed, and ownership exclusion tests.
+- `apps/api/tests/integration/test_db_foundation.py`: 16 on-disk tests using
+  temporary files with production settings — empty-file upgrade to head,
+  migration/metadata drift check, per-connection PRAGMA verification,
+  FK/check/unique enforcement, transactional rollback, downgrade/re-upgrade,
+  reopen persistence, UTC naive-rejection/normalization, UUID round
+  trip/rejection, settings resolution/rejection, version floor, CLI `db`
+  success/failure, and hidden-answer retention with public exclusion.
+- `Makefile`: real `db`, `migrate`, and `test-integration` targets; backend
+  `test` now runs `tests/unit` only. `.env.example`: database settings without
+  secrets. `.github/workflows/ci.yml`: `make db` runtime/settings check and
+  `make test-integration` gate, no database service.
+- SQLite runtime decision: the official release history still lists 3.53.4
+  (2026-07-24) as current stable, and Python 3.14.7 (2026-08-05, the latest
+  3.14 patch) loads 3.53.1; no reproducible newer runtime exists. The
+  3.53.2–3.53.4 deltas are follow-up fixes for 3.53.0 regressions, and T01
+  uses only long-stable surface covered by the integration suite. Recorded as
+  a compatibility exception under D001 with floor 3.53.1, recheck on the next
+  tooling update. A standalone SQLite CLI was not substituted.
+
+Actual verification (with `UV_CACHE_DIR`/`UV_PYTHON_INSTALL_DIR` overrides and
+a SHA-256-verified Node 24.20.0 provisioned under `/tmp`):
+
+- `python -m pytest tests/unit tests/integration`: 19 passed (3 unit, 16
+  integration) on Python 3.14.7 / SQLite 3.53.1.
+- `python -m ruff check .`, `ruff format --check .`, `python -m mypy src
+  tests` (strict): all pass. `uv lock --check`: 47 packages. `uv build`:
+  sdist/wheel pass.
+- Frontend (untouched, re-verified): ESLint, Prettier check, root and web
+  `tsc --noEmit`, Vitest (1 passed), Vite build — all pass.
+- `make db` through make against a temp `DATABASE_URL`: prints the absolute
+  path, `sqlite: 3.53.1 (floor 3.53.1)`, and all four effective PRAGMAs.
+  Alembic `upgrade head` from empty file succeeds; `make migrate`'s config
+  path was fixed after it failed to resolve the ini location.
+- Findings fixed, none waived: symbolic-vs-numeric `synchronous` read-back,
+  a dict-vs-set test assertion, and mypy variance on the UUID adapter.
+
+Not run: `make check`/`make smoke` wrappers and hosted CI. This sandbox
+denies executing workspace binaries (`Operation not permitted`), so bare
+console-script Make targets cannot spawn here; every underlying gate was run
+via `python -m`/`node` directly instead. Chrome SIGTRAPs on `socketpair`,
+so no browser process can launch in this session. The smoke-covered paths
+(`GET /health`, static preview) are untouched and the Vite output hashes are
+unchanged. CI runs the real wrappers after push; no hosted result is claimed.
+
+Next bounded task: T02 adult bootstrap/login per HANDOFF.md. No push beyond
+the authorized one; later task pushes need their own authorization.

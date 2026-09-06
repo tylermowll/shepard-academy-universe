@@ -7,15 +7,16 @@ introductory one-variable linear equations.
 
 ## Current status
 
-**T00 passes its local gates. This is a development scaffold, not a usable tutor.**
+**T00 and T01 pass their local gates. This is a development scaffold, not a usable tutor.**
 
 | Area | Implemented today |
 |---|---|
 | Backend | Packaged Python 3.14 / FastAPI application with typed `GET /health` response |
+| Database | SQLite/SQLAlchemy/Alembic foundation with migration 0001, UUID/UTC adapters, and public/private schemas |
 | Frontend | React/TypeScript/Vite preview with Tailwind, an availability notice, and a JavaScript-disabled fallback |
-| Quality checks | Locked dependencies, Python/frontend lint/format/types/tests/builds, desktop/mobile browser smoke tests |
+| Quality checks | Locked dependencies, Python/frontend lint/format/types/tests/builds, on-disk SQLite integration tests, desktop/mobile browser smoke tests |
 | Development workflow | Pre-commit checks and a full-stack GitHub Actions workflow; hosted CI evidence is pending |
-| Database, authentication, tutoring, providers, deployment | Not implemented |
+| Authentication, tutoring, providers, deployment | Not implemented |
 
 The detailed [specification](docs/SPECIFICATION.md) describes planned behavior.
 [Task status and evidence](docs/TASKS.md) record what has actually passed. No live
@@ -47,7 +48,9 @@ Open <http://127.0.0.1:5173> for the frontend preview. In a second terminal, run
 Bootstrap installs locked backend dependencies in `apps/api/.venv` and frontend
 workspace dependencies in `node_modules`; uv can download Python 3.14.7 if missing.
 The first install requires network access to package/runtime sources. There is no
-database, model, API key, or `.env` file to configure at this stage.
+model, API key, or required `.env` file at this stage. The database is a local
+SQLite file: copy `.env.example` to `.env` to override `DATABASE_URL`, then run
+`make db` to validate settings and `make migrate` to apply migrations.
 
 Open <http://127.0.0.1:8000/health>; the expected response is `{"status":"ok"}`.
 API documentation is at <http://127.0.0.1:8000/docs>. Stop the server with
@@ -82,7 +85,10 @@ The [Makefile](Makefile) is the authority for commands that exist today.
 | `make check` | Check both locks, Python/frontend lint, formatting, types, tests, and builds |
 | `make smoke` | Build and run API/frontend browser smoke tests, including JavaScript-disabled fallback |
 | `make pre-commit-check` | Run Python/frontend checks without builds or browser startup |
-| `make test` | Run backend and frontend component tests |
+| `make test` | Run backend unit and frontend component tests |
+| `make test-integration` | Run on-disk SQLite integration tests in isolated temporary files |
+| `make db` | Validate the SQLite path, embedded runtime version, and connection settings |
+| `make migrate` | Apply reviewed Alembic migrations with application writes stopped |
 | `make lint` / `make format-check` | Check Python/frontend lint or formatting without changing files |
 | `make format` | Format Python/frontend files; review and stage the changes yourself |
 | `make typecheck` | Run strict mypy and TypeScript over source, tests, and configuration |
@@ -122,9 +128,9 @@ and dependency vulnerability scanning remain release requirements.
 `make check` and `make smoke` on pushes and pull requests. It has read-only
 repository permissions, uses actions pinned to commit SHAs, and needs no provider
 credentials. The initial push is authorized; hosted CI results remain unverified
-until a run is observed. Passing local T00 evidence permits T01 under
-[D002](docs/DECISIONS.md#d002--local-t00-completion-2026-09-06). Database integration
-gates must be added and passed in T01.
+until a run is observed. T01 added the SQLite runtime check and on-disk
+integration gate to CI; hosted evidence is still pending under
+[D002](docs/DECISIONS.md#d002--local-t00-completion-2026-09-06).
 
 ## Architecture and implementation order
 
@@ -137,16 +143,16 @@ transcription confirmation before grading. Providers cannot change permissions,
 answer keys, or workflow state, and local failures cannot silently send work to a
 cloud service. See the [architecture contract](docs/SPECIFICATION.md#5-application-architecture).
 
-The next task is T01: SQLite/SQLAlchemy/Alembic and public/private schemas. Then follow
-T02–T05 toward one persisted fraction problem with a typed answer and deterministic
+The next task is T02: adult bootstrap and session authentication. Then follow
+T03–T05 toward one persisted fraction problem with a typed answer and deterministic
 feedback. AI integration follows that working slice. [HANDOFF.md](docs/HANDOFF.md)
 contains the Spark 1.3 prompt, per-task gates, and database runtime prerequisites.
 Do not skip unfinished gates or treat the full roadmap as one implementation task.
 
 The approved [SQLite decision](docs/DECISIONS.md#d004--sqlite-for-the-initial-deployment-2026-09-06)
 defines WAL, connection settings, migrations, job claims, and consistent backups.
-Persistence is still planned. T01 must verify the actual SQLite library loaded
-by Python against the current stable baseline. Multiple application hosts and
+T01 implemented the foundation with migration 0001; the embedded SQLite floor is
+3.53.1 with a documented exception (see D001). Multiple application hosts and
 network-mounted database files are outside this design.
 
 ## Contributing and documentation

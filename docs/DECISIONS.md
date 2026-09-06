@@ -32,6 +32,17 @@ Sources: [Node release table](https://nodejs.org/en/about/previous-releases),
 [Vitest package metadata](https://registry.npmjs.org/vitest),
 [GitHub runner availability](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
 
+### Compatibility exception — embedded SQLite 3.53.1 (T01, 2026-09-06)
+
+Python 3.14.7 is the latest 3.14 patch and loads SQLite 3.53.1, while current
+stable SQLite is 3.53.4 (both rechecked against the official release history
+in T01). No reproducible newer Python runtime exists, and the 3.53.2–3.53.4
+deltas are follow-up fixes for 3.53.0 regressions. T01 therefore pins the
+supported floor at 3.53.1 (`MIN_SQLITE_VERSION`, enforced by `make db` and
+covered by on-disk integration tests over exactly the relied-upon surface)
+instead of switching drivers or toolchains to hide the gap. Recheck on the
+next tooling update.
+
 ## D002 — Local T00 completion (2026-09-06)
 
 The maintainer explicitly deferred pushing and hosted CI execution while doing

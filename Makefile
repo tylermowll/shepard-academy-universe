@@ -3,8 +3,9 @@ PNPM ?= pnpm
 API_PROJECT := apps/api
 UV_PROJECT_ARGS := --directory $(API_PROJECT)
 
-.PHONY: bootstrap toolchain-check lock lock-check dev-api dev-web test lint format \
-	format-check typecheck build check hooks-install hooks-check pre-commit-check smoke
+.PHONY: bootstrap toolchain-check lock lock-check db migrate dev-api dev-web test \
+	test-integration lint format format-check typecheck build check hooks-install \
+	hooks-check pre-commit-check smoke
 
 bootstrap: toolchain-check
 	$(UV) sync $(UV_PROJECT_ARGS) --locked
@@ -28,6 +29,13 @@ lock-check:
 	$(UV) lock $(UV_PROJECT_ARGS) --check
 	$(PNPM) install --lockfile-only --frozen-lockfile --ignore-scripts
 
+db:
+	$(UV) run $(UV_PROJECT_ARGS) --locked python -m math_tutor.cli db
+
+migrate:
+	@echo "Stop API/worker writes before migrating."
+	$(UV) run $(UV_PROJECT_ARGS) --locked alembic -c alembic.ini upgrade head
+
 dev-api:
 	$(UV) run $(UV_PROJECT_ARGS) --locked uvicorn math_tutor.api.app:app --reload
 
@@ -35,8 +43,11 @@ dev-web:
 	$(PNPM) dev:web
 
 test:
-	$(UV) run $(UV_PROJECT_ARGS) --locked pytest
+	$(UV) run $(UV_PROJECT_ARGS) --locked pytest tests/unit
 	$(PNPM) test
+
+test-integration:
+	$(UV) run $(UV_PROJECT_ARGS) --locked pytest tests/integration
 
 lint:
 	$(UV) run $(UV_PROJECT_ARGS) --locked ruff check .

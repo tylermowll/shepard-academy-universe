@@ -18,23 +18,29 @@ committed in `apps/api/uv.lock` and installed with `--locked`.
 | mypy | `>=2.3.1,<3` / 2.3.1 | Static type checking |
 | pre-commit | `>=4.6.2,<5` / 4.6.2 | Git hook installation and staged-change isolation |
 | pre-commit-hooks | `>=6.0.0,<7` / 6.0.0 | Repository hygiene and private-key checks |
+| SQLAlchemy | `>=2,<3` / 2.0.52 | SQLite persistence, ORM, and transaction control (T01) |
+| Alembic | `>=1.16,<2` / 1.19.2 | Versioned SQLite migrations (T01) |
+| greenlet | transitive / 3.5.5 | SQLAlchemy optional concurrency support (T01) |
+| Mako | transitive / 1.4.1 | Alembic migration templating (T01) |
+| MarkupSafe | transitive / 3.0.3 | Mako escaping dependency (T01) |
 
-Only dependencies used by the current scaffold are installed. Add database,
-provider, image, and property-testing packages in the task that first uses them.
+Only dependencies used by implemented tasks are installed. Add provider,
+image, and property-testing packages in the task that first uses them.
 
-## Planned persistence baseline
+## Persistence baseline (T01 implemented)
 
 The approved SQLite plan is [D004](DECISIONS.md#d004--sqlite-for-the-initial-deployment-2026-09-06).
 SQLite has no separate LTS edition; its current stable release is **3.53.4**,
-verified against the [official release history](https://sqlite.org/changes.html).
-The current Python 3.14.7 interpreter reports **3.53.1** from
-`sqlite3.sqlite_version`. This is a recorded T01 runtime gap, not a claim that
-3.53.1 is latest or that persistence has been tested.
+verified against the [official release history](https://sqlite.org/changes.html)
+on September 6, 2026. The Python 3.14.7 interpreter (2026-08-05, the latest
+3.14 patch) reports **3.53.1** from `sqlite3.sqlite_version`; no reproducible
+newer runtime exists, so T01 records a compatibility exception under D001 with
+an enforced floor of 3.53.1 instead of claiming 3.53.1 is latest.
 
-T01 selects a reproducible Python runtime linked to current stable SQLite and
-checks the embedded version in setup/CI. It adds supported stable SQLAlchemy 2
-and Alembic releases to the lockfile when implementing persistence. Use the
-standard sqlite3 driver; a standalone SQLite CLI does not determine its version.
+T01 added supported stable SQLAlchemy 2 and Alembic releases to the lockfile,
+checks the embedded version in `make db`/CI, and covers the relied-upon
+surface with on-disk integration tests. The standard sqlite3 driver is used;
+a standalone SQLite CLI does not determine its version.
 
 ## Frontend and browser tooling
 

@@ -38,6 +38,10 @@ jobs:
         run: make hooks-check
       - name: Run local project gates
         run: make check
+      - name: Verify SQLite runtime and database settings
+        run: make db
+      - name: Run on-disk SQLite integration tests
+        run: make test-integration
       - name: Install smoke-test browser
         run: pnpm exec playwright install --with-deps chromium
       - name: Verify built UI and API in a browser
