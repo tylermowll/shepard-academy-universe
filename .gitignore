@@ -1,0 +1,65 @@
+# Python / uv
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.uv-cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+build/
+dist/
+
+# uv.lock and .python-version are intentionally committed.
+
+# Frontend / pnpm
+node_modules/
+.pnpm-store/
+.vite/
+coverage/
+playwright-report/
+test-results/
+blob-report/
+*.log
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+!**/.env.example
+.direnv/
+.envrc
+/config/providers.yaml
+/certs/
+/secrets/
+
+# Runtime data (root-scoped so fixtures remain trackable)
+/data/
+/uploads/
+/backups/
+/logs/
+
+# SQLite runtime files, including journals and WAL sidecars (any directory).
+# Generate synthetic databases in tests; commit their source fixtures instead.
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+
+# Editors and operating systems
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*~
+.DS_Store
+Thumbs.db

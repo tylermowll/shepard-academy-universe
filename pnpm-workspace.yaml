@@ -1,0 +1,8 @@
+packages:
+  - apps/web
+
+engineStrict: true
+strictPeerDependencies: true
+# Require a reviewed decision before a dependency can execute an install script.
+strictDepBuilds: true
+allowBuilds: {}

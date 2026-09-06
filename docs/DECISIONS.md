@@ -1,0 +1,157 @@
+# Implementation decisions
+
+## D001 — Supported toolchain baseline (2026-09-06)
+
+The maintainer requested the latest LTS tooling. Use the newest LTS line where
+the project offers one, otherwise supported stable releases, with exact locks.
+Do not install prereleases or disable checks to accommodate a newer package.
+
+- Node 24.20.0 is the latest LTS; Node 26 is still Current. `.node-version` pins
+  the verified runtime, and `package.json` restricts execution to Node 24.
+- Python has a bugfix/security lifecycle, not a separate LTS edition. Python
+  3.14.7 is the latest stable release. It replaces the original 3.13 baseline in
+  `.python-version`, package constraints, Ruff, mypy, and the specification.
+- pnpm 12.3.4 and the existing uv 0.12.10 are the current stable tools. Frontend
+  package versions were checked against npm metadata; Python versions against
+  PyPI. Dependencies stay locked, with install scripts requiring explicit review.
+- TypeScript stays on 6.0.3 because current `typescript-eslint` 8.69.0 declares
+  support for `>=4.8.4 <6.1.0`. TypeScript 7.0.2 is newer but outside that range.
+- Vitest 5.0.0 was tried: component execution passed, but strict `tsc` reported
+  conflicting `Assertion` declarations with jest-dom, missing `@vitest/expect`,
+  missing `MarkOptions`, and incompatible Vite config declarations. Vitest
+  4.1.11 supports Vite 8 and passes strict type checking without `skipLibCheck`,
+  casts, or suppressed errors. Recheck this exception on the next tooling update.
+- CI retains Ubuntu 24.04 LTS, the latest generally available Ubuntu runner.
+  Ubuntu 26.04 LTS exists, but GitHub still labels that runner Public preview.
+  Move after general availability and a successful hosted run.
+
+Sources: [Node release table](https://nodejs.org/en/about/previous-releases),
+[Python support lifecycle](https://devguide.python.org/versions/),
+[Python downloads](https://www.python.org/downloads/),
+[TypeScript ESLint support](https://typescript-eslint.io/users/dependency-versions/),
+[Vitest package metadata](https://registry.npmjs.org/vitest),
+[GitHub runner availability](https://docs.github.com/en/actions/reference/runners/github-hosted-runners).
+
+## D002 — Local T00 completion (2026-09-06)
+
+The maintainer explicitly deferred pushing and hosted CI execution while doing
+more work locally. T00 can complete when fresh locked installation, backend and
+frontend checks/builds, the browser smoke tests, and commit checks pass locally,
+and the matching CI workflow is configured. A hosted run remains unverified and
+must be recorded later; it does not block T01. This does not waive any application,
+authorization, migration, or release acceptance gate.
+
+The maintainer subsequently authorized the initial commit and push to `main`.
+That supersedes the push deferral for this publication; hosted CI still needs
+an observed result. Later task pushes require their own authorization.
+
+## D003 — T05 before the worker (2026-09-06)
+
+The original roadmap puts the first deterministic practice workflow in T05 and
+durable jobs in T06, while the full API specification assumes a job exists for
+every submission. The bounded staging default is immediate deterministic checking
+in T05; queued processing is introduced in T06. This was proposed during handoff
+preparation and is an explicit implementation assumption, not a maintainer reply.
+
+T05's typed submission endpoint returns `201 Created` with the persisted completed
+result. Persist the attempt, deterministic evaluation, authored help, assistance
+level, and applicable progress change in one transaction. Ownership checks,
+idempotency-key/payload conflict handling, and stale-version rejection already
+apply in T05. Do not defer these to the worker or add a fake job merely to return
+`202`. A repeat request returns its saved result; a different payload under the
+same key returns `409`.
+
+T06 deliberately changes the submission transport to the specified `202` plus
+operation polling and adds durable jobs, leases, retries, and recovery tests.
+Regenerate API types and update frontend consumers/tests together at that point.
+The final version-1 job, privacy, and correctness requirements remain unchanged.
+
+T05 also uses one immutable built-in tutor-profile snapshot. T08 introduces the
+profile editor and customization; a working session must not refer to a mutable
+or nonexistent profile in the meantime.
+
+## D004 — SQLite for the initial deployment (2026-09-06)
+
+The maintainer approved changing the plans to SQLite before T01. This supersedes
+the PostgreSQL-only architecture, PostgreSQL test-runtime prerequisite, and
+Fargate/RDS hosting plan. No persisted application data exists to migrate today.
+T01 will implement persistence; this decision does not claim that it exists.
+
+The initial application serves one household on one host with modest write
+traffic. SQLite removes the database service, credentials, and container runtime
+from native setup. Use the same engine in development, integration tests, and
+deployment. Retain SQLAlchemy 2, Alembic, relational constraints, and separate
+public/private schemas; use Python's standard sqlite3 driver.
+
+### Storage and connection contract
+
+- Run one API process and, from T06, one separate worker on the same host. They
+  share a private local directory containing the database and its WAL/SHM files.
+  Do not use NFS, SMB, EFS, live cloud-sync folders, ephemeral container storage,
+  or separate application hosts for that directory.
+- Configure `journal_mode=WAL`, `foreign_keys=ON` on every connection,
+  `busy_timeout=5000`, and `synchronous=FULL`; verify effective settings in T01.
+  Initialize connection PRAGMAs outside transactions. Use an explicit SQLAlchemy
+  transaction-control strategy, including transactional DDL and rollback tests;
+  do not rely on sqlite3's legacy implicit behavior.
+- Keep write transactions short. Lock contention has a bounded failure/retry
+  path; never retry an external provider call as part of a database transaction.
+- Generate one absolute database path under the private data directory so API,
+  worker, migrations, and commands resolve the same file regardless of cwd.
+  Restrict directory/file permissions and ignore/block database files in Git.
+- Store UUIDs in a consistent text representation and normalize timestamps to
+  UTC through a tested persistence adapter. Naive datetime input is rejected;
+  reads return aware UTC values. Exact math remains bounded integer/rational
+  domain code. Versioned JSON payloads use SQLAlchemy JSON serialized as text,
+  with schema validation; relational ownership and integrity stay constrained.
+
+SQLite has no separate LTS line. The official current stable release is 3.53.4.
+The installed Python 3.14.7 runtime currently loads SQLite 3.53.1; it is **not**
+evidence of the latest SQLite or of database integration passing. T01 must select
+and document a reproducible Python runtime linked to the current stable SQLite,
+check `sqlite3.sqlite_version` in setup/CI, and record any justified compatibility
+exception under D001. Installing a newer sqlite3 CLI alone does not update the
+library Python uses. Do not add an alternative driver merely to hide that gap.
+
+### Migrations, worker, and recovery
+
+T01 adds real Alembic migrations and temporary on-disk integration fixtures.
+Test empty-database upgrade, current schema, foreign-key/check/unique enforcement,
+rollback, persistence after reopening, UTC round trips, and hidden-answer
+serialization. Use Alembic batch operations when SQLite cannot perform a schema
+change directly. Preserve named constraints and existing data; validate foreign
+keys after a rebuild. Stop API/worker writes before controlled migrations.
+
+T06 claims a job inside a short `BEGIN IMMEDIATE` transaction: select an eligible
+row, conditionally update its state/lease, and commit before inference. Claim,
+heartbeat, and completion updates check state and lease tokens. There is no
+`FOR UPDATE SKIP LOCKED`. Keep crash, competing-claim, expired-lease, duplicate
+submission, and deletion-race tests (A08/A09/A17), using independent connections
+or processes even though the supported deployment configures one worker.
+
+T19 supplies consistent backups using SQLite's backup API, or a documented
+quiesced procedure, and a tested restore covering retained objects, settings,
+and deletion tombstones. Never copy just the main file from a live WAL database.
+Restore verification includes integrity and foreign-key checks.
+
+### Hosting and future changes
+
+Native local setup needs Python and the frontend tools; Compose is optional
+packaging for the gateway/API/worker, with a shared local data directory and no
+database service. Phones continue to use the authenticated HTTPS API.
+
+T20's reference hosting plan becomes one EC2 host with persistent encrypted EBS,
+the same gateway/API/worker layout, and instance-role access to permitted AWS
+services. There is no horizontal scaling or automatic failover in this design.
+Move to PostgreSQL through a separate architecture decision and tested data
+migration when multiple application hosts, sustained write contention, or
+availability requirements justify it. Do not maintain two database engines now.
+
+Sources: [SQLite use cases](https://sqlite.org/whentouse.html),
+[WAL and same-host requirements](https://sqlite.org/wal.html),
+[foreign keys](https://sqlite.org/foreignkeys.html),
+[SQLAlchemy SQLite transactions](https://docs.sqlalchemy.org/en/20/dialects/sqlite.html#transactions-with-sqlite-and-the-sqlite3-driver),
+[Alembic batch migrations](https://alembic.sqlalchemy.org/en/latest/batch.html),
+[SQLite backup API](https://sqlite.org/backup.html),
+[SQLite release history](https://sqlite.org/changes.html),
+[EBS volumes](https://docs.aws.amazon.com/ebs/latest/userguide/ebs-volumes.html).

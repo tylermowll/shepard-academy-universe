@@ -1,0 +1,32 @@
+{
+  "name": "math-practice-tutor-workspace",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.3.4",
+  "engines": {
+    "node": ">=24.20.0 <25",
+    "pnpm": "12.3.4"
+  },
+  "scripts": {
+    "dev:web": "pnpm --filter @math-tutor/web dev",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write package.json tsconfig.json eslint.config.js pnpm-workspace.yaml playwright.config.ts scripts/check-toolchain.mjs apps/web tests/smoke",
+    "format:check": "prettier --check package.json tsconfig.json eslint.config.js pnpm-workspace.yaml playwright.config.ts scripts/check-toolchain.mjs apps/web tests/smoke",
+    "typecheck": "tsc --noEmit && pnpm --filter @math-tutor/web typecheck",
+    "test": "pnpm --filter @math-tutor/web test",
+    "build": "pnpm --filter @math-tutor/web build",
+    "smoke": "playwright test"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.63.0",
+    "@types/node": "24.13.3",
+    "eslint": "10.10.0",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.6",
+    "globals": "17.12.0",
+    "prettier": "3.9.6",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.69.0"
+  }
+}
