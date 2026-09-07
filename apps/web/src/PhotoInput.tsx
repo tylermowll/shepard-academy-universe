@@ -6,6 +6,7 @@ type Props = {
   version: number;
   disabled: boolean;
   onPendingChange: (pending: boolean) => void;
+  onDraftChange?: (draft: boolean) => void;
   onSaved: () => Promise<void>;
   act: (a: () => Promise<void>) => Promise<void>;
   companionToken?: string;
@@ -22,6 +23,7 @@ export function PhotoInput({
   version,
   disabled,
   onPendingChange,
+  onDraftChange,
   onSaved,
   act,
   companionToken,
@@ -42,6 +44,10 @@ export function PhotoInput({
       onPendingChange(false);
     };
   }, [onPendingChange]);
+  useEffect(() => {
+    onDraftChange?.(Boolean(blob || pending || working));
+  }, [blob, pending, working, onDraftChange]);
+  useEffect(() => () => onDraftChange?.(false), [onDraftChange]);
   useEffect(
     () => () => {
       if (url) URL.revokeObjectURL(url);
@@ -118,13 +124,13 @@ export function PhotoInput({
   return (
     <details
       open={companionToken ? true : undefined}
-      hidden={disabled && !pending}
+      hidden={disabled && !pending && !blob && !working}
     >
-      <summary>Submit a photograph</summary>
+      <summary>Upload a photo</summary>
       <p>
         {reference
-          ? "Photograph the reference material. The tutor will create a different practice activity, not solve the original assignment."
-          : "Photograph your work. The tutor shows its reading and continues when it is clear, or asks you to rewrite or retake unclear work."}{" "}
+          ? "Photograph the reference material. The tutor will create related practice and will not solve the original assignment."
+          : "Include the whole page, use good lighting, and keep your writing in focus. You will see the photo reading before the feedback."}{" "}
         {companionToken
           ? "If camera access is unavailable, return to your computer to enter an answer."
           : "Typed answers remain available if camera access is denied."}
@@ -231,6 +237,18 @@ export function PhotoInput({
           </>
         )}
       </fieldset>
+      {blob && !pending && (
+        <button
+          type="button"
+          disabled={working}
+          onClick={() => {
+            setBlob(null);
+            setUrl("");
+          }}
+        >
+          Remove photo
+        </button>
+      )}
       {pending && !working && (
         <div role="status" className="notice">
           <p>

@@ -33,6 +33,88 @@ specification gates pass.
 | T23  | Implemented experiment; device measurement pending             | Pinned text-only WebLLM research with consent/hash validation/cancel/delete; no weights downloaded.                                                                                                                            |
 | T24  | Implemented; physical phone/live provider verification pending | Expiring QR upload, computer confirmation, HTTPS launch/runbook; automated migration, authorization, retry and two-browser gates passed.                                                                                       |
 | T25  | Implemented; automated gates passed; live quality unverified   | AI-only multi-subject tutoring, reference-only homework intake, contextual guidance, adjustable initiative and automatic clear photo reading; 125 unit, 33 component, 128 integration and 28 browser tests passed.             |
+| T26  | Implemented; automated gates passed                            | Purposeful tabs, plain wording, in-context Help, parent-as-student profiles and guided phone setup; 125 unit, 51 component, 146 integration and 36 browser tests passed.                                                           |
+
+### T26 — Purposeful pages and guided setup (2026-09-07)
+
+The maintainer rated the crowded workflow 3/10 and authorized a redesign and
+push to `main`. Scope: tab-style page navigation for Practice, History, Learners
+& devices, Settings, and Help; plain wording; useful empty/disabled states;
+contextual help and explicit phone pairing versus camera-upload instructions.
+Browser research belongs under advanced settings, outside the practice path.
+
+The maintainer clarified that the parent may also be the student. Keep adult
+account permissions separate from each person's learner profile. Include an
+explicit Add yourself path under the existing adult sign-in; child profiles
+retain paired browser access without admin controls or separate passwords.
+
+Contracts: existing typed authentication, learner ownership, tutoring, provider,
+photo and pairing APIs; public URL navigation and in-memory draft/retry state.
+No API/schema change or migration is planned. Preserve automatic clear-photo
+reading before feedback, reference-only assignments, server capability checks,
+explicit provider consent and retry identities. Historical screen names in the
+specification are refined by the maintainer's current page request.
+
+Plan: implement the shell/help and bounded practice/admin pages in parallel,
+adapt browser tests to the real navigation, and add regression coverage for
+page separation, back navigation, contextual help, retained drafts, pairing,
+and learner-only navigation. Run targeted checks, `make check`,
+`make test-integration`, `make smoke`, and `make eval-mock`; inspect the public
+diff, commit, push `main`, and observe hosted CI. Record actual results below.
+
+Implemented:
+
+- `App.tsx`, `navigation.ts`, and `styles.css`: semantic page links styled as
+  tabs, role-appropriate navigation, page titles/focus, browser Back, and
+  retained in-memory practice state. Setup/settings no longer share the practice
+  screen. Explicit page changes scroll to the top; Help topics have their own
+  links. Private session IDs remain fragments rather than server requests.
+- `Tutor.tsx`, `PhoneLink.tsx`, and `PhotoInput.tsx`: separate History and focused
+  current activity; plain tutor-style controls; contextual topic/reference/photo
+  help; setup actions beside unavailable tutoring; visible processing labels.
+  Drafts, photo previews and retry keys survive page changes. Hints do not clear
+  unsent text, and session/learner changes protect pending work.
+- `AdultPanel.tsx`: separate learner/device and provider pages, explicit one-photo
+  QR versus full learner pairing guidance, Add yourself for adult students,
+  contextual age/provider explanations, controlled data consent and connection
+  tests. Data export/revocation/deletion and the browser experiment are secondary
+  controls. Delayed learner creation/deletion cannot select a learner after
+  leaving that page; a failed learner list can be retried with Reconnect.
+- `Help.tsx`, README, PHONE_SETUP, HANDOFF and specification: in-app getting
+  started, account/profile model, private setup, phone HTTPS, model configuration,
+  troubleshooting and privacy guidance. Corrected the earlier misleading demo
+  path: public demo mode blocks tutoring/personal photos and links to private
+  setup. No existing privacy/capability restriction was relaxed.
+
+Observed verification with Node 24.20.0/pnpm 12.3.4 selected from the existing
+Node installation and `UV_CACHE_DIR=/tmp/shepard-t26-uv-cache`:
+
+- Final `make check` passed: locked dependencies, lint/format, strict types,
+  125 Python unit tests, 51 component tests, API/PWA builds, generated contract
+  drift, tracked credential scan and IaC lint. The existing Vite main-chunk size
+  warning remains; no threshold was raised.
+- `make test-integration`: 146 passed in 19.94 s. The sandbox could not complete
+  async integration requests or bind unit-test loopback sockets; the affected
+  gates passed outside it using only isolated synthetic data.
+- `make eval-mock` passed all 63 synthetic cases (`passed: true`).
+- Final `make smoke`: all 36 desktop/mobile Chromium cases passed in 2.7 min,
+  including parent-as-student, saved-session Back, retained drafts, full learner
+  pairing/revocation, phone photos, and reference-only assignment coverage.
+- The first expanded browser run passed 35/36 cases; its extra fast sign-ins hit
+  the production ten-per-minute login limit. The shared test helper now validates
+  the 429 response and bounded `Retry-After`, waits that delay and retries once.
+  It does not bypass or raise the application's rate limit.
+- `make hooks-check` passed the public-file and project hooks. After staging new
+  files, `make secret-check` and `git diff --cached --check` passed.
+- Visual inspection of the real synthetic app at 1280px and 390px covered
+  Practice, current activity and phone Help. This is layout evidence only.
+  Independent review found and fixed delayed learner-selection, learner-list
+  retry, session Back/URL, and Help-scroll defects, with regression coverage.
+
+Live provider/model evaluation, model downloads, private operator setup and
+physical phone testing were not run. No backend contract or migration changed.
+The maintainer's authorization covers committing and pushing this public code,
+not inference or deployment. Hosted checks will be observed after pushing.
 
 ### T16/T19 — Beta-readiness retention and worker review (2026-09-07)
 

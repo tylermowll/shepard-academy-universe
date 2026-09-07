@@ -1,4 +1,15 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
+
+export async function navigate(
+  page: Page,
+  name: "Practice" | "History" | "Learners & devices" | "Settings" | "Help",
+) {
+  const link = page
+    .getByRole("navigation", { name: "Main navigation" })
+    .getByRole("link", { name, exact: true });
+  await link.click();
+  await expect(link).toHaveAttribute("aria-current", "page");
+}
 
 export async function login(page: Page) {
   await page.goto("/");
@@ -6,21 +17,44 @@ export async function login(page: Page) {
   await page
     .getByLabel("Password", { exact: true })
     .fill("synthetic-demo-password-only");
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  const signIn = async () => {
+    const response = page.waitForResponse(
+      (result) =>
+        result.url().endsWith("/auth/login") &&
+        result.request().method() === "POST",
+    );
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    return response;
+  };
+  let response = await signIn();
+  // Independent browser contexts share a loopback address. The expanded suite
+  // honors the real ten-per-minute limit instead of disabling it for tests.
+  if (response.status() === 429) {
+    await expect(page.getByRole("alert")).toContainText(
+      "Too many login attempts",
+    );
+    const retryAfter = Number(response.headers()["retry-after"]);
+    expect(Number.isInteger(retryAfter)).toBe(true);
+    expect(retryAfter).toBeGreaterThan(0);
+    expect(retryAfter).toBeLessThanOrEqual(60);
+    const delay = retryAfter * 1000 + 100;
+    test.setTimeout(test.info().timeout + delay);
+    await page.waitForTimeout(delay);
+    response = await signIn();
+  }
+  expect(response.status()).toBe(200);
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
 }
 
 export async function createLearner(page: Page) {
-  await page.getByText("Manage learners and devices", { exact: true }).click();
+  await navigate(page, "Learners & devices");
   const alias = `Synthetic tutor ${Date.now()}`;
-  await page.getByLabel("Alias", { exact: true }).fill(alias);
-  await page
-    .getByRole("button", { name: "Create learner", exact: true })
-    .click();
+  await page.getByLabel("Learner name", { exact: true }).fill(alias);
+  await page.getByRole("button", { name: "Add learner", exact: true }).click();
   await expect(
     page.getByRole("combobox", { name: "Learner", exact: true }),
   ).toHaveValue(/[a-f0-9-]{36}/);
-  await page.getByText("Manage learners and devices", { exact: true }).click();
+  await navigate(page, "Practice");
   return alias;
 }
 
@@ -30,11 +64,12 @@ export async function startTutor(page: Page, topic: string) {
   await page
     .getByRole("textbox", { name: "Topic or learning goal", exact: true })
     .fill(topic);
+  await page.getByText("Tutor options", { exact: true }).click();
   await page
-    .getByRole("combobox", { name: "Tutor initiative", exact: true })
+    .getByRole("combobox", { name: "Tutor style", exact: true })
     .selectOption("balanced");
   await page
-    .getByRole("button", { name: "Start tutoring", exact: true })
+    .getByRole("button", { name: "Start session", exact: true })
     .click();
   await expect(
     page.getByRole("combobox", { name: "Practice source", exact: true }),

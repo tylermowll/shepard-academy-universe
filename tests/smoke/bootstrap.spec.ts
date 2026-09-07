@@ -1,5 +1,11 @@
 import { expect, test } from "@playwright/test";
-import { createActivity, createLearner, login, startTutor } from "./support";
+import {
+  createActivity,
+  createLearner,
+  login,
+  navigate,
+  startTutor,
+} from "./support";
 
 // T25 supersedes template/exact-answer/manual-confirmation UI expectations.
 // Preserve their auth, persistence, offline and request-recovery guarantees in
@@ -20,10 +26,8 @@ test("same-origin entry renders without external requests, templates, or overflo
   });
   expect((await request.get("/health/ready")).status()).toBe(200);
   await page.goto("/");
-  await expect(page).toHaveTitle("Shepard Tutor");
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-    "Make room for understanding.",
-  );
+  await expect(page).toHaveTitle("Sign in · Shepard Tutor");
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Sign in");
   await expect(
     page.getByRole("button", { name: "Sign in", exact: true }),
   ).toBeEnabled();
@@ -82,15 +86,13 @@ test("persisted tutoring survives disconnect and reload, then logout clears priv
   expect(await page.evaluate(() => location.hash)).toBe(hash);
   await page.getByText("Session settings", { exact: true }).click();
   await page
-    .getByRole("button", { name: "Finish tutoring session", exact: true })
+    .getByRole("button", { name: "Finish session", exact: true })
     .click();
   await expect(
     page.getByRole("textbox", { name: "Your work or question", exact: true }),
   ).toHaveCount(0);
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-    "Make room for understanding.",
-  );
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText("Sign in");
   await expect(page.locator(".tutor-feedback")).toHaveCount(0);
   expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([]);
 });
@@ -162,7 +164,7 @@ test("adult pairs a second browser and revocation clears its tutoring access", a
   browser,
 }) => {
   await login(page);
-  await createLearner(page);
+  const alias = await createLearner(page);
   const device = await browser.newContext();
   try {
     const learner = await device.newPage();
@@ -171,27 +173,49 @@ test("adult pairs a second browser and revocation clears its tutoring access", a
     const requestId = await learner
       .getByLabel("Pairing request ID")
       .inputValue();
-    await page
-      .getByText("Manage learners and devices", { exact: true })
-      .click();
+    await navigate(page, "Learners & devices");
     await page.getByLabel("Pairing request ID").fill(requestId);
-    await page.getByRole("button", { name: "Approve this browser" }).click();
+    await page.getByRole("button", { name: "Approve device" }).click();
     await expect(
-      learner.getByRole("button", { name: "Start tutoring", exact: true }),
+      learner.getByRole("button", { name: "Start session", exact: true }),
     ).toBeVisible();
+    const navigation = learner.getByRole("navigation", {
+      name: "Main navigation",
+    });
+    await expect(navigation.getByRole("link")).toHaveText([
+      "Practice",
+      "History",
+      "Help",
+    ]);
     await expect(
-      learner.getByText("Manage learners and devices", { exact: true }),
+      learner.getByRole("button", { name: "Approve device" }),
     ).toHaveCount(0);
+    await learner.goto("http://127.0.0.1:4173/?page=settings");
+    await expect(navigation.getByRole("link")).toHaveText([
+      "Practice",
+      "History",
+      "Help",
+    ]);
+    await expect(
+      learner.getByRole("button", { name: "Test tutor" }),
+    ).toHaveCount(0);
+    await expect(
+      learner.getByRole("button", { name: "Approve device" }),
+    ).toHaveCount(0);
+    await navigate(learner, "Practice");
     await learner
       .getByRole("textbox", { name: "Topic or learning goal", exact: true })
       .fill("Science: testing a prediction");
     await learner
-      .getByRole("button", { name: "Start tutoring", exact: true })
+      .getByRole("button", { name: "Start session", exact: true })
       .click();
     await createActivity(learner);
-    await page.getByRole("button", { name: "Revoke learner devices" }).click();
+    await page.getByText("Saved data & device access", { exact: true }).click();
+    await page
+      .getByRole("button", { name: "Sign out learner devices" })
+      .click();
     await expect(
-      page.getByText("Learner devices revoked.", { exact: true }),
+      page.getByText(`${alias}'s devices are signed out.`, { exact: true }),
     ).toBeVisible();
     await expect(
       learner.getByRole("button", { name: "Pair this device" }),
@@ -222,20 +246,35 @@ test("changing learners clears the previous learner's tutoring and unsent work",
     .getByRole("textbox", { name: "Your work or question", exact: true })
     .fill("Unsent work must not appear for Delta.");
   const previousSession = await page.evaluate(() => location.hash);
-  await page
-    .getByRole("combobox", { name: "Learner", exact: true })
-    .selectOption({ label: "Delta" });
+  const learnerSelector = page.getByRole("combobox", {
+    name: "Learner",
+    exact: true,
+  });
+  const previousLearner = await learnerSelector.inputValue();
+  page.once("dialog", (dialog) => void dialog.dismiss());
+  await learnerSelector.selectOption({ label: "Delta" });
+  await expect(learnerSelector).toHaveValue(previousLearner);
+  await expect(
+    page.getByRole("textbox", { name: "Your work or question", exact: true }),
+  ).toHaveValue("Unsent work must not appear for Delta.");
+  page.once("dialog", (dialog) => void dialog.accept());
+  await learnerSelector.selectOption({ label: "Delta" });
   await expect(page.locator(".tutor-feedback")).toHaveCount(0);
   await expect(page.locator(".tutor-activity")).toHaveCount(0);
+  await navigate(page, "History");
   await expect(
-    page.getByRole("combobox", { name: "Saved tutoring sessions" }),
-  ).toHaveValue("");
+    page.getByRole("heading", {
+      name: "Writing: choosing evidence",
+      exact: true,
+    }),
+  ).toHaveCount(0);
   expect(await page.evaluate(() => location.hash)).toBe("");
+  await navigate(page, "Practice");
   await page
     .getByRole("textbox", { name: "Topic or learning goal", exact: true })
     .fill("Reading: compare two characters");
   await page
-    .getByRole("button", { name: "Start tutoring", exact: true })
+    .getByRole("button", { name: "Start session", exact: true })
     .click();
   expect(await page.evaluate(() => location.hash)).not.toBe(previousSession);
 });
@@ -343,7 +382,7 @@ test("a lost photograph receipt retries the same bytes and purpose without dupli
       });
     else await route.continue();
   });
-  await page.getByText("Submit a photograph", { exact: true }).click();
+  await page.getByText("Upload a photo", { exact: true }).click();
   await page
     .getByLabel("Take or choose a photo")
     .setInputFiles("evals/fixtures/work.png");
@@ -354,8 +393,14 @@ test("a lost photograph receipt retries the same bytes and purpose without dupli
   await expect(
     page.getByRole("button", { name: "Rotate 90°", exact: true }),
   ).toBeDisabled();
+  await navigate(page, "History");
   await expect(
-    page.getByRole("combobox", { name: "Saved tutoring sessions" }),
+    page.getByRole("button", { name: "Continue session", exact: true }),
+  ).toBeDisabled();
+  await navigate(page, "Help");
+  await navigate(page, "Practice");
+  await expect(
+    page.getByRole("button", { name: "Rotate 90°", exact: true }),
   ).toBeDisabled();
   await expect(
     page.getByRole("textbox", { name: "Your work or question", exact: true }),
@@ -427,11 +472,12 @@ test("lost tutoring session and activity receipts retain their original topic, s
   await page
     .getByRole("textbox", { name: "Topic or learning goal", exact: true })
     .fill("Reading: support an interpretation with evidence");
+  await page.getByText("Tutor options", { exact: true }).click();
   await page
-    .getByRole("combobox", { name: "Tutor initiative", exact: true })
+    .getByRole("combobox", { name: "Tutor style", exact: true })
     .selectOption("learner_led");
   await page
-    .getByRole("button", { name: "Start tutoring", exact: true })
+    .getByRole("button", { name: "Start session", exact: true })
     .click();
   await expect(
     page.getByRole("button", { name: "Retry saved request", exact: true }),
@@ -440,7 +486,7 @@ test("lost tutoring session and activity receipts retain their original topic, s
     page.getByRole("textbox", { name: "Topic or learning goal", exact: true }),
   ).not.toBeEditable();
   await expect(
-    page.getByRole("button", { name: "Start tutoring", exact: true }),
+    page.getByRole("button", { name: "Start session", exact: true }),
   ).toBeDisabled();
   await page
     .getByRole("button", { name: "Retry saved request", exact: true })

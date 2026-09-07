@@ -6,14 +6,14 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useState } from "react";
-import { AdultPanel } from "../src/AdultPanel";
 import { App } from "../src/App";
 import { checkOffline } from "../src/offline-math";
 import { Tutor } from "../src/Tutor";
 import { SafeText } from "../src/SafeText";
 
-beforeEach(() =>
+beforeEach(() => {
+  vi.stubGlobal("scrollTo", vi.fn());
+  window.history.replaceState(null, "", "/");
   vi.stubGlobal(
     "fetch",
     vi.fn().mockResolvedValue(
@@ -25,8 +25,8 @@ beforeEach(() =>
         { headers: { "Content-Type": "application/json" } },
       ),
     ),
-  ),
-);
+  );
+});
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -36,7 +36,7 @@ describe("entry and offline practice", () => {
     render(<App />);
     expect(screen.getByRole("main")).toBeVisible();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      "Make room for understanding.",
+      "Sign in",
     );
     await vi.waitFor(() =>
       expect(screen.getByRole("button", { name: "Sign in" })).toBeEnabled(),
@@ -93,6 +93,14 @@ it("keeps a newly created learner when an older list request finishes late", asy
   vi.stubGlobal(
     "fetch",
     vi.fn((url: string, options: RequestInit) => {
+      if (url.endsWith("/auth/session"))
+        return Promise.resolve(
+          response({
+            authenticated: true,
+            role: "adult",
+            csrf_token: "synthetic-csrf",
+          }),
+        );
       if (url.endsWith("/admin/learners")) {
         if (options.method === "POST") return Promise.resolve(response(row));
         if (firstList) {
@@ -101,26 +109,21 @@ it("keeps a newly created learner when an older list request finishes late", asy
         }
         return Promise.resolve(response([row]));
       }
-      if (url.endsWith("/admin/tutor-profiles"))
-        return Promise.resolve(response([]));
-      return Promise.resolve(
-        response({ providers: [], routes: { tutor: "demo", vision: "demo" } }),
-      );
+      if (url.endsWith("/features"))
+        return Promise.resolve(
+          response({ tutoring_available: false, photos_available: false }),
+        );
+      return Promise.resolve(response([]));
     }),
   );
-  const run = async (action: () => Promise<void>) => {
-    await action();
-  };
-  function Workspace() {
-    const [learner, setLearner] = useState("");
-    return <AdultPanel learner={learner} onLearner={setLearner} act={run} />;
-  }
-  render(<Workspace />);
-  fireEvent.click(screen.getByText("Manage learners and devices"));
-  fireEvent.change(screen.getByLabelText("Alias"), {
+  render(<App />);
+  fireEvent.click(
+    await screen.findByRole("link", { name: "Learners & devices" }),
+  );
+  fireEvent.change(screen.getByLabelText("Learner name"), {
     target: { value: "Synthetic" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Create learner" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add learner" }));
   await vi.waitFor(() =>
     expect(screen.getByRole("combobox", { name: "Learner" })).toHaveValue(
       row.id,
@@ -131,6 +134,49 @@ it("keeps a newly created learner when an older list request finishes late", asy
     await oldResponse;
   });
   expect(screen.getByRole("combobox", { name: "Learner" })).toHaveValue(row.id);
+});
+
+it("retries a failed learner list when the adult reconnects", async () => {
+  let lists = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string) => {
+      if (url.endsWith("/auth/session"))
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              authenticated: true,
+              role: "adult",
+              csrf_token: "synthetic-csrf",
+            }),
+          ),
+        );
+      if (url.endsWith("/admin/learners")) {
+        lists += 1;
+        if (lists === 1)
+          return Promise.reject(new TypeError("Synthetic connection loss"));
+        return Promise.resolve(
+          new Response(
+            JSON.stringify([
+              {
+                id: "4a15f6fc-8866-468e-801c-1faedc9ae88b",
+                alias: "Recovered learner",
+                eligibility: "unknown",
+                enabled: true,
+              },
+            ]),
+          ),
+        );
+      }
+      return Promise.resolve(new Response("[]"));
+    }),
+  );
+  render(<App />);
+  await screen.findByRole("alert");
+  fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
+  await screen.findByRole("option", { name: "Recovered learner" });
+  expect(lists).toBe(2);
+  expect(screen.queryByRole("alert")).toBeNull();
 });
 
 it("keeps the selected session when a previous session response arrives late", async () => {
@@ -158,16 +204,7 @@ it("keeps the selected session when a previous session response arrives late", a
     if (url.endsWith(`/sessions/${second}`))
       return Promise.resolve(response(session(second)));
     if (url.endsWith("/sessions"))
-      return Promise.resolve(
-        response(
-          [first, second].map((id) => ({
-            id,
-            learner_id: learner,
-            status: "completed",
-            created_at: "2026-09-06T00:00:00Z",
-          })),
-        ),
-      );
+      return Promise.resolve(response([first, second].map(session)));
     if (url.endsWith("/progress"))
       return Promise.resolve(
         response({
@@ -187,37 +224,26 @@ it("keeps the selected session when a previous session response arrives late", a
   const run = async (action: () => Promise<void>) => {
     await action();
   };
-  render(<Tutor learner={learner} offline={false} act={run} />);
+  render(<Tutor learner={learner} offline={false} act={run} page="history" />);
   await vi.waitFor(() =>
     expect(
-      screen.getByRole("combobox", { name: "Saved tutoring sessions" })
-        .children,
-    ).toHaveLength(3),
+      screen.getAllByRole("button", { name: "Review session" }),
+    ).toHaveLength(2),
   );
-  fireEvent.change(
-    screen.getByRole("combobox", { name: "Saved tutoring sessions" }),
-    {
-      target: { value: first },
-    },
+  fireEvent.click(
+    screen.getAllByRole("button", { name: "Review session" })[0]!,
   );
-  fireEvent.change(
-    screen.getByRole("combobox", { name: "Saved tutoring sessions" }),
-    {
-      target: { value: second },
-    },
+  fireEvent.click(
+    screen.getAllByRole("button", { name: "Review session" })[1]!,
   );
-  await vi.waitFor(() =>
-    expect(
-      screen.getByRole("combobox", { name: "Saved tutoring sessions" }),
-    ).toHaveValue(second),
-  );
+  await vi.waitFor(() => expect(window.location.hash).toBe(`#tutor=${second}`));
   await act(async () => {
     resolveOld(response(session(first)));
     await oldResponse;
   });
   expect(
-    screen.getByRole("combobox", { name: "Saved tutoring sessions" }),
-  ).toHaveValue(second);
+    screen.getAllByRole("heading", { name: "Chosen session", hidden: true }),
+  ).toHaveLength(2);
   expect(window.location.hash).toBe(`#tutor=${second}`);
   window.location.hash = "";
 });
@@ -258,11 +284,11 @@ it("rejects a URL session belonging to a different selected learner", async () =
   await vi.waitFor(() => expect(window.location.hash).toBe(""));
   expect(screen.queryByText(/Previous learner private profile/)).toBeNull();
   expect(
-    screen.queryByRole("heading", { name: "Your learning conversation" }),
+    screen.queryByRole("heading", { name: "Current activity" }),
   ).toBeNull();
   expect(
-    screen.getByRole("combobox", { name: "Saved tutoring sessions" }),
-  ).toHaveValue("");
+    screen.getByRole("heading", { name: "Start a practice session" }),
+  ).toBeVisible();
 });
 
 it("does not restore an old learner's URL when its request completes after switching", async () => {
@@ -383,19 +409,16 @@ it("allows a corrected request after its first attempt is definitively rejected"
     target: { value: "Persuasive writing" },
   });
   await vi.waitFor(() =>
-    expect(
-      screen.getByRole("button", { name: "Start tutoring" }),
-    ).toBeEnabled(),
+    expect(screen.getByRole("button", { name: "Start session" })).toBeEnabled(),
   );
-  fireEvent.click(screen.getByRole("button", { name: "Start tutoring" }));
+  fireEvent.click(screen.getByRole("button", { name: "Start session" }));
   await vi.waitFor(() => expect(errors).toHaveLength(1));
   expect(
     screen.queryByRole("button", { name: "Retry saved request" }),
   ).toBeNull();
-  expect(
-    screen.getByRole("combobox", { name: "Tutor initiative" }),
-  ).toBeEnabled();
-  fireEvent.click(screen.getByRole("button", { name: "Start tutoring" }));
+  fireEvent.click(screen.getByText("Tutor options"));
+  expect(screen.getByRole("combobox", { name: "Tutor style" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Start session" }));
   await vi.waitFor(() =>
     expect(
       screen.getByRole("button", { name: "Create practice activity" }),

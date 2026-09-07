@@ -1,4 +1,11 @@
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   api,
   newKey,
@@ -9,8 +16,27 @@ import {
 import { AdultPanel } from "./AdultPanel";
 import { Tutor } from "./Tutor";
 import { UpdateNotice } from "./UpdateNotice";
+import { ContextHelp, HelpPage } from "./Help";
+import { followPage, pageUrl, type Page, type Navigate } from "./navigation";
 
 const Research = lazy(() => import("./Research"));
+const pageNames: Record<Page, string> = {
+  practice: "Practice",
+  history: "History",
+  learners: "Learners & devices",
+  settings: "Settings",
+  help: "Help",
+};
+function readLocation() {
+  const params = new URLSearchParams(window.location.search);
+  const requested = params.get("page") ?? "practice";
+  return {
+    page: Object.hasOwn(pageNames, requested)
+      ? (requested as Page)
+      : ("practice" as Page),
+    help: params.get("help") ?? "practice",
+  };
+}
 
 export function App() {
   const [identity, setSession] = useState<Schema<"SessionStatus"> | null>(null);
@@ -19,7 +45,67 @@ export function App() {
   const [learner, setLearner] = useState("");
   const [pair, setPair] = useState<Schema<"PairPublic"> | null>(null);
   const [busy, setBusy] = useState(false);
+  const [location, setLocation] = useState(readLocation);
+  const [learners, setLearners] = useState<Schema<"LearnerPublic">[]>([]);
+  const [learnersLoaded, setLearnersLoaded] = useState(false);
+  const [settingsVersion, setSettingsVersion] = useState(0);
+  const [researchOpen, setResearchOpen] = useState(false);
+  const [tutorBusy, setTutorBusy] = useState(false);
+  const [tutorDraft, setTutorDraft] = useState(false);
+  const learnerSequence = useRef(0);
+  const workspace = useRef<HTMLDivElement>(null);
+  const scrollToTop = useRef(false);
+  const navigate: Navigate = useCallback((page, help) => {
+    scrollToTop.current = true;
+    window.history.pushState(null, "", pageUrl(page, help));
+    setLocation(readLocation());
+  }, []);
+  const isAdult = identity?.authenticated === true && identity.role === "adult";
+  const authenticated = identity?.authenticated === true;
+  const page: Page =
+    location.page === "help"
+      ? "help"
+      : !authenticated
+        ? "practice"
+        : !isAdult &&
+            (location.page === "settings" || location.page === "learners")
+          ? "practice"
+          : location.page;
+  const tutorVisible = page === "practice" || page === "history";
+  useEffect(() => {
+    const changed = () => setLocation(readLocation());
+    window.addEventListener("popstate", changed);
+    return () => window.removeEventListener("popstate", changed);
+  }, []);
+  useEffect(() => {
+    document.title = `${authenticated || page === "help" ? pageNames[page] : "Sign in"} · Shepard Tutor`;
+    workspace.current
+      ?.querySelector<HTMLElement>("h1")
+      ?.focus({ preventScroll: true });
+    if (scrollToTop.current) {
+      window.scrollTo({ top: 0, left: 0, behavior: "instant" });
+      scrollToTop.current = false;
+    }
+  }, [page, location, authenticated]);
+  const refreshLearners = useCallback(async () => {
+    const sequence = ++learnerSequence.current;
+    const rows = await api<Schema<"LearnerPublic">[]>("/admin/learners");
+    if (sequence !== learnerSequence.current) return;
+    setLearners(rows);
+    setLearnersLoaded(true);
+    setLearner((current) =>
+      rows.some((row) => row.id === current) ? current : "",
+    );
+  }, []);
   const chooseLearner = (id: string) => {
+    if (id === learner || tutorBusy) return;
+    if (
+      tutorDraft &&
+      !window.confirm(
+        "Switch learners and discard the unsent work in this tab? Submitted work is saved.",
+      )
+    )
+      return;
     if (learner && learner !== id)
       window.history.replaceState(
         null,
@@ -32,14 +118,22 @@ export function App() {
     const session = await api<Schema<"SessionStatus">>("/auth/session");
     setIdentity(session.csrf_token, session.authenticated);
     setSession(session);
-    setLearner(session.learner_id ?? "");
-  }, []);
+    setLearner((current) =>
+      session.role === "adult" ? current : (session.learner_id ?? ""),
+    );
+    if (session.authenticated && session.role === "adult")
+      await refreshLearners();
+  }, [refreshLearners]);
   useEffect(
     () =>
       onAuthenticationLost(() => {
         setSession(null);
         setLearner("");
         setPair(null);
+        learnerSequence.current += 1;
+        setLearners([]);
+        setLearnersLoaded(false);
+        setResearchOpen(false);
         window.history.replaceState(
           null,
           "",
@@ -69,6 +163,22 @@ export function App() {
       setBusy(false);
     }
   }, []);
+  useEffect(() => {
+    if (!isAdult) return;
+    let canceled = false;
+    void refreshLearners().catch((cause: unknown) => {
+      if (!canceled)
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Could not load learners. Reconnect to try again.",
+        );
+    });
+    return () => {
+      canceled = true;
+      learnerSequence.current += 1;
+    };
+  }, [isAdult, refreshLearners]);
   useEffect(() => {
     let canceled = false;
     void api<Schema<"SessionStatus">>("/auth/session")
@@ -120,13 +230,16 @@ export function App() {
   return (
     <main>
       <a className="skip-link" href="#workspace">
-        Skip to tutoring
+        Skip to page content
       </a>
       <header className="masthead">
-        <a href="/" className="wordmark">
+        <a
+          href={pageUrl("practice")}
+          onClick={(event) => followPage(event, navigate, "practice")}
+          className="wordmark"
+        >
           Shepard Tutor
         </a>
-        <span className="pill">One step at a time</span>
         {identity?.authenticated && (
           <button
             onClick={() =>
@@ -141,6 +254,25 @@ export function App() {
           </button>
         )}
       </header>
+      <nav className="page-tabs" aria-label="Main navigation">
+        {(authenticated
+          ? isAdult
+            ? (Object.keys(pageNames) as Page[])
+            : (["practice", "history", "help"] as Page[])
+          : (["practice", "help"] as Page[])
+        ).map((item) => (
+          <a
+            key={item}
+            href={pageUrl(item)}
+            aria-current={page === item ? "page" : undefined}
+            onClick={(event) => followPage(event, navigate, item)}
+          >
+            {!authenticated && item === "practice"
+              ? "Sign in"
+              : pageNames[item]}
+          </a>
+        ))}
+      </nav>
       <UpdateNotice />
       {offline && (
         <p role="status" className="notice">
@@ -153,143 +285,282 @@ export function App() {
           {error} <button onClick={() => void act(refresh)}>Reconnect</button>
         </div>
       )}
-      <div id="workspace" aria-busy={busy}>
-        {!identity?.authenticated ? (
-          <section className="welcome">
-            <p className="eyebrow">Small steps. Clear thinking.</p>
-            <h1>Make room for understanding.</h1>
-            <p className="lede">
-              Explore a subject, photograph your thinking, and work through the
-              next step with your tutor.
-            </p>
-            <div className="grid">
-              <form
-                className="card"
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  const data = new FormData(event.currentTarget);
-                  void act(async () => {
-                    const session = await api<Schema<"SessionStatus">>(
-                      "/auth/login",
-                      "POST",
-                      {
-                        login_name: data.get("login"),
-                        password: data.get("password"),
-                      },
-                    );
-                    setIdentity(session.csrf_token, session.authenticated);
-                    setSession(session);
-                  });
-                }}
-              >
-                <h2>Adult sign in</h2>
-                <label>
-                  Login name
-                  <input
-                    name="login"
-                    autoComplete="username"
-                    required
-                    maxLength={64}
-                  />
-                </label>
-                <label>
-                  Password
-                  <input
-                    name="password"
-                    type="password"
-                    autoComplete="current-password"
-                    required
-                    maxLength={256}
-                  />
-                </label>
-                <button className="primary" disabled={busy || !identity}>
-                  Sign in
-                </button>
-                <p className="fine">
-                  Your administrator creates access on the server. No public
-                  registration.
-                </p>
-              </form>
-              <section className="card">
-                <h2>Learner device</h2>
-                <p>
-                  Ask your adult to approve this browser for your learner alias.
-                </p>
-                {pair ? (
-                  <>
-                    <label>
-                      Pairing request ID
-                      <input readOnly value={pair.id} />
-                    </label>
-                    <p role="status">
-                      Waiting for approval. Expires at{" "}
-                      {new Date(pair.expires_at).toLocaleTimeString()}.
-                    </p>
-                  </>
-                ) : (
-                  <button
-                    disabled={busy || !identity}
-                    onClick={() =>
-                      void act(async () =>
-                        setPair(
-                          await api<Schema<"PairPublic">>(
-                            "/pairing/requests",
-                            "POST",
-                            {},
-                            newKey(),
-                          ),
-                        ),
-                      )
-                    }
-                  >
-                    Pair this device
+      <div id="workspace" ref={workspace} tabIndex={-1} aria-busy={busy}>
+        {page === "help" && (
+          <HelpPage topic={location.help} onNavigate={navigate} />
+        )}
+        {!authenticated && (
+          <div hidden={page === "help"}>
+            <section className="welcome">
+              <h1 tabIndex={-1}>Sign in</h1>
+              <p>Sign in as an adult, or connect this browser to a learner.</p>
+              <div className="grid">
+                <form
+                  className="card"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    const data = new FormData(event.currentTarget);
+                    void act(async () => {
+                      const session = await api<Schema<"SessionStatus">>(
+                        "/auth/login",
+                        "POST",
+                        {
+                          login_name: data.get("login"),
+                          password: data.get("password"),
+                        },
+                      );
+                      setIdentity(session.csrf_token, session.authenticated);
+                      setSession(session);
+                      setLearner(session.learner_id ?? "");
+                    });
+                  }}
+                >
+                  <h2>Adult sign in</h2>
+                  <p>For parents and adults who want to study.</p>
+                  <label>
+                    Login name
+                    <input
+                      name="login"
+                      autoComplete="username"
+                      required
+                      maxLength={64}
+                    />
+                  </label>
+                  <label>
+                    Password
+                    <input
+                      name="password"
+                      type="password"
+                      autoComplete="current-password"
+                      required
+                      maxLength={256}
+                    />
+                  </label>
+                  <button className="primary" disabled={busy || !identity}>
+                    Sign in
                   </button>
-                )}
-              </section>
-            </div>
-          </section>
-        ) : (
+                  <p className="fine">
+                    Use the account created when this app was set up.
+                  </p>
+                  <ContextHelp topic="Can I manage the app and study too?">
+                    <p>
+                      Yes. Add yourself as a learner, then select your profile
+                      in Practice. Use the same adult sign-in for both.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => navigate("help", "accounts")}
+                    >
+                      Accounts and learners
+                    </button>
+                  </ContextHelp>
+                  <ContextHelp topic="Need an account or a password reset?">
+                    <p>
+                      The person running the app creates adult accounts in the
+                      terminal with <code>make admin</code>.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => navigate("help", "setup")}
+                    >
+                      Setup instructions
+                    </button>
+                  </ContextHelp>
+                </form>
+                <section className="card">
+                  <h2>Connect a learner</h2>
+                  <p>
+                    Request access here, then ask an adult to approve it on
+                    their signed-in computer.
+                  </p>
+                  {pair ? (
+                    <>
+                      <label>
+                        Pairing request ID
+                        <input readOnly value={pair.id} />
+                      </label>
+                      <p role="status">
+                        Waiting for approval. Expires at{" "}
+                        {new Date(pair.expires_at).toLocaleTimeString()}.
+                      </p>
+                      <p>
+                        On the adult’s computer: open{" "}
+                        <strong>Learners & devices</strong>, select your
+                        learner, paste this ID, and choose{" "}
+                        <strong>Approve device</strong>.
+                      </p>
+                    </>
+                  ) : (
+                    <button
+                      disabled={busy || !identity}
+                      onClick={() =>
+                        void act(async () =>
+                          setPair(
+                            await api<Schema<"PairPublic">>(
+                              "/pairing/requests",
+                              "POST",
+                              {},
+                              newKey(),
+                            ),
+                          ),
+                        )
+                      }
+                    >
+                      Pair this device
+                    </button>
+                  )}
+                  <ContextHelp topic="Only using your phone to take a photo?">
+                    <p>
+                      Use Take photo with phone inside a practice activity on
+                      the computer. Scan that QR code; you do not need to pair
+                      or sign in for a photo.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => navigate("help", "phone")}
+                    >
+                      Phone setup
+                    </button>
+                  </ContextHelp>
+                </section>
+              </div>
+            </section>
+          </div>
+        )}
+        {authenticated && (
           <>
-            {identity.role === "adult" && (
+            {page !== "help" && (
+              <div className="page-heading">
+                <div>
+                  <h1 tabIndex={-1}>{pageNames[page]}</h1>
+                  <p>
+                    {page === "practice"
+                      ? "Choose a topic and work through an activity."
+                      : page === "history"
+                        ? "Review or continue a saved session."
+                        : page === "learners"
+                          ? "Add learners and connect their browsers."
+                          : "Choose the AI models that process your work."}
+                  </p>
+                </div>
+                {isAdult && (tutorVisible || page === "learners") && (
+                  <label className="learner-selector">
+                    Learner
+                    <select
+                      value={learner}
+                      disabled={tutorBusy}
+                      onChange={(event) => chooseLearner(event.target.value)}
+                    >
+                      <option value="">
+                        {learnersLoaded
+                          ? "Select a learner"
+                          : "Loading learners…"}
+                      </option>
+                      {learners.map((row) => (
+                        <option key={row.id} value={row.id}>
+                          {row.alias}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+              </div>
+            )}
+            {isAdult && (page === "learners" || page === "settings") && (
               <AdultPanel
+                key={page}
                 learner={learner}
                 onLearner={chooseLearner}
+                learners={learners}
+                onRefresh={refreshLearners}
+                page={page}
+                onNavigate={navigate}
+                onProvidersChanged={() =>
+                  setSettingsVersion((version) => version + 1)
+                }
                 act={act}
               />
             )}
-            {learner ? (
-              <Tutor
-                key={learner}
-                learner={learner}
-                act={act}
-                offline={offline}
-              />
-            ) : (
-              <section className="card">
-                <h2>Ready when you are</h2>
-                <p>Create or select a learner to begin.</p>
+            {learner && (
+              <div hidden={!tutorVisible}>
+                <Tutor
+                  key={learner}
+                  learner={learner}
+                  act={act}
+                  offline={offline}
+                  page={page === "history" ? "history" : "practice"}
+                  active={tutorVisible}
+                  isAdult={isAdult}
+                  onNavigate={navigate}
+                  settingsVersion={settingsVersion}
+                  onBusyChange={setTutorBusy}
+                  onDraftChange={setTutorDraft}
+                />
+              </div>
+            )}
+            {!learner && tutorVisible && (
+              <section className="card empty-state">
+                <h2>
+                  {learners.length
+                    ? "Who is practicing?"
+                    : "Add your first learner"}
+                </h2>
+                <p>
+                  {learners.length
+                    ? "Select a learner above to see their practice and saved sessions."
+                    : "Create a profile for yourself or your child. Each person gets their own practice history; a nickname is enough."}
+                </p>
+                {isAdult && (
+                  <button
+                    className="primary"
+                    onClick={() => navigate("learners")}
+                  >
+                    {learners.length ? "Manage learners" : "Add a learner"}
+                  </button>
+                )}
+                <ContextHelp topic="What happens next?">
+                  <p>
+                    Choose a topic, get an activity, and submit your response.
+                    You can type or send a photo. For actual feedback, an adult
+                    must connect a model in Settings.
+                  </p>
+                  <button onClick={() => navigate("help", "practice")}>
+                    Practice guide
+                  </button>
+                </ContextHelp>
               </section>
             )}
-            <p className="fine">
-              The adult who manages this deployment can review your saved
-              learning sessions. Photos are deleted after processing, so later
-              review uses saved text. Failed or unprocessed photos expire within
-              24 hours; history defaults to 30 days.
-            </p>
+            {isAdult && (
+              <div hidden={page !== "settings"}>
+                <details
+                  onToggle={(event) => {
+                    if (event.currentTarget.open) setResearchOpen(true);
+                  }}
+                >
+                  <summary>Advanced: browser model experiment</summary>
+                  <p>
+                    A separate text-only experiment. It is not needed for
+                    tutoring or phone photos.
+                  </p>
+                  {researchOpen && (
+                    <Suspense fallback={<p>Loading experiment…</p>}>
+                      <Research />
+                    </Suspense>
+                  )}
+                </details>
+              </div>
+            )}
           </>
         )}
       </div>
-      {identity?.role === "adult" && (
-        <details>
-          <summary>Optional browser model research</summary>
-          <Suspense fallback={<p>Loading research controls…</p>}>
-            <Research />
-          </Suspense>
-        </details>
-      )}
       <footer>
-        Understanding takes practice. Room to revise.{" "}
-        <span>Private hosting. Your choice of AI provider.</span>
+        <span>Shepard Tutor</span>
+        <a
+          href={pageUrl("help", "privacy")}
+          onClick={(event) => followPage(event, navigate, "help", "privacy")}
+        >
+          Saved work & privacy
+        </a>
       </footer>
     </main>
   );

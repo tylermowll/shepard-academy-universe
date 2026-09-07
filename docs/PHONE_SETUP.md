@@ -146,19 +146,23 @@ It requires an HTTPS `APP_PUBLIC_ORIGIN` and the separately configured gateway.
 Ctrl+C stops the app/worker and preserves your data; it does not stop Tailscale
 Serve or Caddy. `make dev` remains the computer-only HTTP development command.
 
-Open your HTTPS address on the computer and sign in. In the adult workspace:
+Open your HTTPS address on the computer and sign in:
 
-1. Create/select your learner. For Spark, set eligibility to **adult**.
-2. Open the provider settings and authorize the synthetic **vision** probe for
+1. Open **Learners & devices** and add/select your learner. For Spark, choose
+   **18 or older** as the age group.
+2. Open **Settings → Connection tests & provider details** and choose
+   **Test photo reader** for
    `spark` or `local_vllm`. It must correctly transcribe the synthetic `1/2` image.
    This is a real model call, potentially billed for an API provider.
-3. Select that provider as the vision route and acknowledge where the photo is
-   processed. Also probe and select a real **tutor** route; a mock cannot teach.
+3. Select that provider as **Photo reader** and acknowledge where the photo is
+   processed. Also test and select a real **Tutor**, then **Save AI settings**;
+   a mock cannot teach.
    The same image-capable model may serve both routes. A cloud tutor receives
    extracted text even if vision
    runs locally. Selection is persisted; a prior selection overrides YAML routes.
-4. Enter a topic and choose how much the tutor should lead. Start the session and
-   receive an AI-generated activity. No grade level or skill catalog is required.
+4. Open **Practice**, select the learner, and enter a topic. **Tutor options**
+   controls how much the tutor leads. Choose **Start session**, then
+   **Create practice activity**. No grade level or skill catalog is required.
    To study from homework, paste it or use the reference-photo option; the tutor
    creates different practice instead of answering the original.
 
@@ -170,6 +174,16 @@ configuration changes, model evaluation and safe error handling.
 On the computer, choose **Take photo with phone**. Scan the QR with the iPhone's
 Camera app, tap the link, and choose **Take or choose a photo**. Preview, crop or
 rotate as needed, then tap **Send to computer**. The phone needs no tutor login.
+
+For the entire tutor on the phone, open the same HTTPS address in its browser and
+tap **Pair this device** on the sign-in page. Copy its request ID to
+**Learners & devices → Pairing request ID** on the signed-in adult's computer.
+Select the learner and choose **Approve device** within five minutes. Keep the
+phone browser open; it signs in automatically. This learner pairing is separate
+from sending a photo through the QR link.
+
+The in-app **Help → Phone setup** page contains these two workflows and the HTTPS
+setup steps. The adjacent phone help disclosures link directly to it.
 
 Return to the computer. Within the normal polling interval, the photo's processing
 status appears in session history. The app displays the full reading and any

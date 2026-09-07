@@ -1,8 +1,12 @@
 # Current handoff
 
-The current task is **T25: restore the primary multi-subject AI tutoring loop**,
-not more fixed math exercises. See [D009](DECISIONS.md#d009--ai-tutoring-is-the-primary-product-2026-09-07)
-and the T25 entry in [TASKS](TASKS.md). The maintainer explicitly wants no fixed
+The current task is **T26: simplify navigation and guide setup**, building on
+the T25 multi-subject AI tutoring loop. The maintainer authorized separate
+Practice, History, Learners & devices, Settings, and Help pages, plain wording,
+contextual help, and pushing the reviewed changes to `main`. See the T26 entry
+in [TASKS](TASKS.md) for evidence. The product remains governed by
+[D009](DECISIONS.md#d009--ai-tutoring-is-the-primary-product-2026-09-07).
+The maintainer explicitly wants no fixed
 templates and no photo approval step. Clear readings continue automatically;
 unclear work receives concrete handwriting/organization advice. Uploaded/pasted
 homework is reference-only for distinct analogous practice, never direct solving.

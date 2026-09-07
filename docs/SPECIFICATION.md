@@ -125,6 +125,23 @@ The research phase must select one exact runtime/model/device combination, begin
 
 Keep learner navigation separate from administrator controls. The learner cannot edit endpoints, credentials, retention, age eligibility, or system safety rules.
 
+T26 refines these screens into purpose-specific pages reached by tab-style
+navigation: **Practice**, **History**, **Learners & devices**, **Settings**, and
+**Help**. Adults see all five; paired learners see Practice, History, and Help.
+Keep provider controls and browser experiments out of the practice page. Use
+literal labels and contextual help for topic/reference input, tutor style,
+photos, pairing, age categories, and data processing. Help must distinguish
+one-photo QR uploads from learner browser pairing, explain private HTTPS, and
+give an actionable path out of demo/unconfigured states. Ordinary page changes
+preserve unsent work and pending request identities in memory; browser history
+navigation must not bypass ownership or restore another learner's content.
+
+Account permissions and learner profiles are distinct. One adult account can
+manage the household and practice through its own learner profile; it does not
+need a second sign-in to study. Each child has a separate profile and paired
+browser access limited to that learner. The Add yourself action preselects adult
+eligibility explicitly and still requires submitting the learner form.
+
 ### Tutor profile fields
 
 The primary tutor accepts a free-text topic and an adjustable initiative setting:

@@ -137,7 +137,8 @@ test("the tutor continues from a phone photo through guidance, revision, discuss
   const nextActivity = (await (await next).json()) as Schema<"ProblemPublic">;
   expect(nextActivity.id).toMatch(/^[a-f0-9-]{36}$/);
   expect(nextActivity.id).not.toBe(firstActivity.id);
-  await expect(page.locator(".tutor-history")).toHaveCount(2);
+  await expect(page.locator(".tutor-activity")).toHaveCount(1);
+  await expect(page.locator(".tutor-history")).toHaveCount(1);
   await expect(page.locator(".tutor-feedback")).toHaveCount(3);
   expect(errors).toEqual([]);
 });
@@ -180,10 +181,13 @@ test("reading and history reference material produces analogous practice instead
   await expect(page.locator(".verdict")).toHaveCount(0);
   await page.getByText("Session settings", { exact: true }).click();
   await page
-    .getByRole("combobox", { name: "Initiative for this session", exact: true })
+    .getByRole("combobox", {
+      name: "Tutor style for this session",
+      exact: true,
+    })
     .selectOption("learner_led");
   await page
-    .getByRole("button", { name: "Save tutor initiative", exact: true })
+    .getByRole("button", { name: "Save tutor style", exact: true })
     .click();
   await page.reload();
   await page
@@ -192,7 +196,7 @@ test("reading and history reference material produces analogous practice instead
   await page.getByText("Session settings", { exact: true }).click();
   await expect(
     page.getByRole("combobox", {
-      name: "Initiative for this session",
+      name: "Tutor style for this session",
       exact: true,
     }),
   ).toHaveValue("learner_led");
@@ -208,7 +212,7 @@ test("an uncertain photographed response requests clearer organized work and nev
     if (request.url().includes("/accept-reading"))
       acceptedReadings.push(request.url());
   });
-  await page.getByText("Submit a photograph", { exact: true }).click();
+  await page.getByText("Upload a photo", { exact: true }).click();
   // Original generated blur fixture; not a downloaded worksheet or learner photo.
   await page
     .getByLabel("Take or choose a photo")
@@ -244,7 +248,7 @@ test("a source photograph is read only to create distinct practice, not reviewed
   await expect(page.locator(".tutor-activity")).toContainText(
     "Reference material",
   );
-  await page.getByText("Submit a photograph", { exact: true }).click();
+  await page.getByText("Upload a photo", { exact: true }).click();
   await page
     .getByLabel("Take or choose a photo")
     .setInputFiles("evals/fixtures/work.png");

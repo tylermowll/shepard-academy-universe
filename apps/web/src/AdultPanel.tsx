@@ -1,267 +1,529 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, newKey, type Schema } from "./client";
+import { ContextHelp } from "./Help";
+import { followPage, pageUrl, type Navigate } from "./navigation";
 
 type Props = {
   learner: string;
+  learners: Schema<"LearnerPublic">[];
   onLearner: (id: string) => void;
+  onRefresh: () => Promise<void>;
+  page: "learners" | "settings";
+  onNavigate: Navigate;
+  onProvidersChanged?: () => void;
   act: (action: () => Promise<void>) => Promise<void>;
 };
-export function AdultPanel({ learner, onLearner, act }: Props) {
-  const [learners, setLearners] = useState<Schema<"LearnerPublic">[]>([]);
+
+function processingLocation(provider?: Schema<"ProviderPublic">) {
+  if (!provider) return "Not available";
+  if (provider.boundary === "synthetic") return "Synthetic demo";
+  if (provider.boundary === "local_network") return "Your local network";
+  if (provider.boundary === "cloud") return "Cloud provider";
+  return provider.boundary;
+}
+
+export function AdultPanel({
+  learner,
+  learners,
+  onLearner,
+  onRefresh,
+  page,
+  onNavigate,
+  onProvidersChanged,
+  act,
+}: Props) {
   const [providers, setProviders] = useState<Schema<"ProvidersPublic"> | null>(
     null,
   );
+  const [routes, setRoutes] = useState({ tutor: "", vision: "" });
+  const [acknowledged, setAcknowledged] = useState(false);
   const [message, setMessage] = useState("");
+  const [loadFailed, setLoadFailed] = useState(false);
+  const learnerName = useRef<HTMLInputElement>(null);
+  const learnerAge = useRef<HTMLSelectElement>(null);
+  const pageVersion = useRef(0);
   const refreshSequence = useRef(0);
-  const refresh = useCallback(async () => {
+  useEffect(() => {
+    return () => {
+      pageVersion.current += 1;
+    };
+  }, [page]);
+  const refreshProviders = useCallback(async () => {
     const sequence = ++refreshSequence.current;
-    const [l, c] = await Promise.all([
-      api<Schema<"LearnerPublic">[]>("/admin/learners"),
-      api<Schema<"ProvidersPublic">>("/admin/providers"),
-    ]);
+    setLoadFailed(false);
+    let result: Schema<"ProvidersPublic">;
+    try {
+      result = await api<Schema<"ProvidersPublic">>("/admin/providers");
+    } catch (cause) {
+      if (sequence === refreshSequence.current) setLoadFailed(true);
+      throw cause;
+    }
     if (sequence !== refreshSequence.current) return;
-    setLearners(l);
-    setProviders(c);
+    setProviders(result);
+    setRoutes(result.routes);
+    setAcknowledged(false);
   }, []);
   useEffect(() => {
-    void act(refresh);
-  }, [act, refresh]);
+    if (page === "settings") void act(refreshProviders);
+    return () => {
+      refreshSequence.current += 1;
+    };
+  }, [act, page, refreshProviders]);
   const chosen = learners.find((row) => row.id === learner);
+  const loopback = ["127.0.0.1", "localhost", "[::1]"].includes(
+    window.location.hostname,
+  );
+  const selectedProviders = {
+    tutor: providers?.providers.find((p) => p.id === routes.tutor),
+    vision: providers?.providers.find((p) => p.id === routes.vision),
+  };
+
   return (
     <section className="admin">
-      <div className="section-heading">
-        <div>
-          <p className="eyebrow">Adult workspace</p>
-          <h1>Set up a good practice session.</h1>
-        </div>
-        <label>
-          Learner
-          <select value={learner} onChange={(e) => onLearner(e.target.value)}>
-            <option value="">Select a learner</option>
-            {learners.map((l) => (
-              <option key={l.id} value={l.id}>
-                {l.alias}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <details>
-        <summary>Manage learners and devices</summary>
-        <div className="grid">
-          <form
-            className="card"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const form = e.currentTarget;
-              const data = new FormData(form);
-              void act(async () => {
-                const row = await api<Schema<"LearnerPublic">>(
-                  "/admin/learners",
-                  "POST",
-                  {
-                    alias: data.get("alias"),
-                    eligibility: data.get("eligibility"),
-                  },
-                  newKey(),
-                );
-                await refresh();
-                onLearner(row.id);
-                form.reset();
-              });
-            }}
-          >
-            <h2>Create a learner</h2>
-            <label>
-              Alias
-              <input name="alias" required maxLength={64} />
-            </label>
-            <label>
-              Eligibility
-              <select name="eligibility">
-                <option value="unknown">Unknown (restricted routes)</option>
-                <option value="minor">Under 18</option>
-                <option value="adult">Adult</option>
-              </select>
-            </label>
-            <button>Create learner</button>
-          </form>
-          <form
-            className="card"
-            onSubmit={(e) => {
-              e.preventDefault();
-              const data = new FormData(e.currentTarget);
-              void act(async () => {
-                await api(
-                  `/admin/pairing/${data.get("pair") as string}/approve`,
-                  "POST",
-                  { learner_id: learner },
-                );
-                setMessage(
-                  "Approved. The requesting browser will finish pairing.",
-                );
-              });
-            }}
-          >
-            <h2>Approve a device</h2>
-            <p>Selected learner: {chosen?.alias ?? "select a learner first"}</p>
-            <label>
-              Pairing request ID
-              <input name="pair" required pattern="[a-fA-F0-9-]{36}" />
-            </label>
-            <button disabled={!learner}>Approve this browser</button>
-          </form>
-        </div>
-        {chosen && (
-          <div className="actions">
-            <button
-              onClick={() =>
-                void act(async () => {
-                  await api(`/admin/learners/${learner}/revoke`, "POST");
-                  setMessage("Learner devices revoked.");
-                })
-              }
-            >
-              Revoke learner devices
-            </button>
-            <button
-              onClick={() =>
-                void act(async () => {
-                  const data = await api<Schema<"LearnerExport">>(
-                    `/admin/learners/${learner}/export`,
-                    "POST",
-                  );
-                  const url = URL.createObjectURL(
-                    new Blob([JSON.stringify(data, null, 2)], {
-                      type: "application/json",
-                    }),
-                  );
-                  const link = document.createElement("a");
-                  link.href = url;
-                  link.download = "learner-export.json";
-                  link.click();
-                  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-                })
-              }
-            >
-              Export saved practice
-            </button>
-            <button
-              className="danger"
-              onClick={() => {
-                if (
-                  window.confirm(
-                    `Delete ${chosen.alias}'s saved practice and revoke all their devices? This cannot be undone.`,
-                  )
-                )
-                  void act(async () => {
-                    await api(`/admin/learners/${learner}`, "DELETE");
-                    onLearner("");
-                    await refresh();
-                  });
-              }}
-            >
-              Delete learner
-            </button>
-          </div>
-        )}
-      </details>
-      <details>
-        <summary>Provider routes and health</summary>
-        <p>
-          Server configuration defines endpoints and credentials. Probes send
-          synthetic data only. Choosing cloud routes can transfer learner
-          content; no automatic fallback occurs.
-        </p>
-        {providers && (
-          <>
-            <div className="provider-list">
-              {providers.providers.map((p) => (
-                <article className="card" key={p.id}>
-                  <h3>{p.id}</h3>
-                  <p>
-                    {p.adapter} · {p.model}
-                  </p>
-                  <p>
-                    {p.boundary} · {p.audience} ·{" "}
-                    {p.enabled ? "enabled" : "disabled"}
-                  </p>
-                  <p>
-                    Text probe: {p.tutor_probed ? "recorded" : "pending"}.
-                    Vision probe: {p.vision_probed ? "recorded" : "pending"}.
-                  </p>
-                  <div className="actions">
-                    {(["tutor", "vision"] as const).map((stage) => (
-                      <button
-                        key={stage}
-                        disabled={
-                          !p.enabled || (stage === "vision" && !p.image_input)
-                        }
-                        onClick={() => {
-                          if (
-                            p.adapter === "mock" ||
-                            window.confirm(
-                              "Authorize one synthetic provider request? Live providers may charge for this call.",
-                            )
-                          )
-                            void act(async () => {
-                              await api(
-                                `/admin/providers/${p.id}/probe`,
-                                "POST",
-                                { stage, authorize_synthetic_call: true },
-                              );
-                              await refresh();
-                              setMessage("Synthetic capability probe passed.");
-                            });
-                        }}
-                      >
-                        Probe {stage}
-                      </button>
-                    ))}
-                  </div>
-                </article>
-              ))}
-            </div>
+      {page === "learners" ? (
+        <>
+          <p>
+            Your adult sign-in manages this app. Learner profiles keep each
+            person&apos;s practice separate, including your own. You can
+            practice here without another login.
+          </p>
+          {chosen && (
+            <section className="card" aria-label="Selected learner">
+              <h2>{chosen.alias}</h2>
+              <p>
+                Age group:{" "}
+                {chosen.eligibility === "adult"
+                  ? "18 or older"
+                  : chosen.eligibility === "minor"
+                    ? "Under 18"
+                    : "Not specified"}
+              </p>
+              <button
+                className="primary"
+                onClick={() => onNavigate("practice")}
+              >
+                Start practice
+              </button>
+              <details>
+                <summary>Saved data &amp; device access</summary>
+                <p>
+                  Download {chosen.alias}&apos;s saved practice, sign out their
+                  devices, or delete this learner and their saved work.
+                </p>
+                <div className="actions">
+                  <button
+                    onClick={() =>
+                      void act(async () => {
+                        const data = await api<Schema<"LearnerExport">>(
+                          `/admin/learners/${learner}/export`,
+                          "POST",
+                        );
+                        const url = URL.createObjectURL(
+                          new Blob([JSON.stringify(data, null, 2)], {
+                            type: "application/json",
+                          }),
+                        );
+                        const link = document.createElement("a");
+                        link.href = url;
+                        link.download = "learner-export.json";
+                        link.click();
+                        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+                      })
+                    }
+                  >
+                    Download saved practice
+                  </button>
+                  <button
+                    onClick={() =>
+                      void act(async () => {
+                        await api(`/admin/learners/${learner}/revoke`, "POST");
+                        setMessage(`${chosen.alias}'s devices are signed out.`);
+                      })
+                    }
+                  >
+                    Sign out learner devices
+                  </button>
+                  <button
+                    className="danger"
+                    onClick={() => {
+                      const version = pageVersion.current;
+                      if (
+                        window.confirm(
+                          `Delete ${chosen.alias}'s saved practice and revoke all their devices? This cannot be undone.`,
+                        )
+                      )
+                        void act(async () => {
+                          await api(`/admin/learners/${learner}`, "DELETE");
+                          await onRefresh();
+                          if (version !== pageVersion.current) return;
+                          onLearner("");
+                          setMessage("Learner deleted.");
+                        });
+                    }}
+                  >
+                    Delete learner
+                  </button>
+                </div>
+              </details>
+            </section>
+          )}
+          <div className="grid">
             <form
+              className="card"
               onSubmit={(e) => {
                 e.preventDefault();
-                const data = new FormData(e.currentTarget);
+                const form = e.currentTarget;
+                const data = new FormData(form);
+                const version = pageVersion.current;
                 void act(async () => {
-                  await api("/admin/providers/routes", "POST", {
-                    tutor: data.get("tutor"),
-                    vision: data.get("vision"),
-                    acknowledge_data_boundary: true,
-                  });
-                  await refresh();
-                  setMessage(
-                    "Routes changed. Existing operations will not be replayed to the new configuration.",
+                  const row = await api<Schema<"LearnerPublic">>(
+                    "/admin/learners",
+                    "POST",
+                    {
+                      alias: data.get("alias"),
+                      eligibility: data.get("eligibility"),
+                    },
+                    newKey(),
                   );
+                  await onRefresh();
+                  // A completed request must not switch away from practice
+                  // started after this panel was left.
+                  if (version !== pageVersion.current) return;
+                  onLearner(row.id);
+                  form.reset();
+                  setMessage(`${row.alias} added. You can start practice now.`);
                 });
               }}
             >
-              <div className="grid">
-                {(["tutor", "vision"] as const).map((stage) => (
-                  <label key={stage}>
-                    {stage} route
-                    <select name={stage} defaultValue={providers.routes[stage]}>
-                      {providers.providers
-                        .filter((p) => p.enabled)
-                        .map((p) => (
-                          <option key={p.id}>{p.id}</option>
-                        ))}
-                    </select>
-                  </label>
-                ))}
-              </div>
-              <label className="check">
-                <input type="checkbox" required />I reviewed and authorize these
-                data boundaries.
+              <h2>Add a learner</h2>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!learnerName.current || !learnerAge.current) return;
+                  learnerName.current.value = "Me";
+                  learnerAge.current.value = "adult";
+                  learnerName.current.focus();
+                  learnerName.current.select();
+                }}
+              >
+                Add yourself (adult)
+              </button>
+              <label>
+                Learner name
+                <input
+                  ref={learnerName}
+                  name="alias"
+                  required
+                  maxLength={64}
+                  aria-describedby="learner-name-help"
+                />
               </label>
-              <button>Save routes</button>
+              <p className="fine" id="learner-name-help">
+                A nickname is enough. Each learner has separate saved work.
+              </p>
+              <label>
+                Age group
+                <select name="eligibility" ref={learnerAge}>
+                  <option value="unknown">Not specified</option>
+                  <option value="minor">Under 18</option>
+                  <option value="adult">18 or older</option>
+                </select>
+              </label>
+              <ContextHelp topic="Why ask for an age group?">
+                <p>
+                  Some AI providers are restricted to adults. This setting
+                  controls which configured providers a learner can use. Leave
+                  it unspecified if you are unsure; adult-only providers will
+                  stay unavailable.
+                </p>
+              </ContextHelp>
+              <button>Add learner</button>
             </form>
-          </>
-        )}
-      </details>
+            <section className="card" aria-labelledby="pair-device-heading">
+              <h2 id="pair-device-heading">Pair a learner device</h2>
+              <p>
+                Pair a phone, tablet, or second browser to practice as{" "}
+                {chosen?.alias ?? "a learner"} without an adult password.
+              </p>
+              {loopback && (
+                <p className="notice">
+                  This address works only on this computer. For a phone, first
+                  follow{" "}
+                  <a
+                    href={pageUrl("help", "phone")}
+                    onClick={(e) => followPage(e, onNavigate, "help", "phone")}
+                  >
+                    phone connection setup
+                  </a>{" "}
+                  and open the same private HTTPS address on both devices.
+                </p>
+              )}
+              <ol>
+                <li>
+                  On the learner&apos;s device, open this app and choose{" "}
+                  <strong>Pair this device</strong> on the sign-in page.
+                </li>
+                <li>
+                  Copy the request ID shown on that device into the box below.
+                </li>
+                <li>
+                  Select the learner at the top of this page, then approve. Keep
+                  the other page open; it signs in automatically.
+                </li>
+              </ol>
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!chosen) return;
+                  const form = e.currentTarget;
+                  const data = new FormData(form);
+                  void act(async () => {
+                    await api(
+                      `/admin/pairing/${data.get("pair") as string}/approve`,
+                      "POST",
+                      { learner_id: learner },
+                    );
+                    form.reset();
+                    setMessage(
+                      `Device approved for ${chosen.alias}. The other browser will sign in automatically.`,
+                    );
+                  });
+                }}
+              >
+                <label>
+                  Pairing request ID
+                  <input
+                    name="pair"
+                    required
+                    pattern="[a-fA-F0-9-]{36}"
+                    aria-describedby="pair-request-help"
+                  />
+                </label>
+                <p className="fine" id="pair-request-help">
+                  Requests expire after five minutes. If it expires, request a
+                  new ID on the learner&apos;s device.
+                </p>
+                {!chosen && <p>Select or add a learner before approving.</p>}
+                <button disabled={!chosen}>Approve device</button>
+              </form>
+              <ContextHelp topic="Only need the phone camera?">
+                <p>
+                  Start an activity on the Practice page and choose{" "}
+                  <strong>Take photo with phone</strong>. Scan its QR code with
+                  your phone camera to send one photo. No pairing or phone
+                  sign-in is needed.
+                </p>
+                <button onClick={() => onNavigate("help", "phone")}>
+                  How phone photos work
+                </button>
+              </ContextHelp>
+            </section>
+          </div>
+        </>
+      ) : (
+        <>
+          {!providers ? (
+            loadFailed ? (
+              <button onClick={() => void act(refreshProviders)}>
+                Retry AI settings
+              </button>
+            ) : (
+              <p role="status">Loading AI settings…</p>
+            )
+          ) : (
+            <>
+              {!providers.providers.some(
+                (p) => p.enabled && p.adapter !== "mock",
+              ) && (
+                <p className="notice">
+                  {providers.providers.some((p) => p.enabled)
+                    ? "Only synthetic demo responses are available."
+                    : "No AI providers are enabled."}{" "}
+                  To use real tutoring or read handwriting, add a provider in
+                  the server configuration.{" "}
+                  <button onClick={() => onNavigate("help", "providers")}>
+                    Set up real AI
+                  </button>
+                </p>
+              )}
+              <form
+                className="card"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!acknowledged || !routes.tutor || !routes.vision) return;
+                  void act(async () => {
+                    await api("/admin/providers/routes", "POST", {
+                      ...routes,
+                      acknowledge_data_boundary: true,
+                    });
+                    await refreshProviders();
+                    onProvidersChanged?.();
+                    setMessage(
+                      "AI settings saved. New requests use these providers.",
+                    );
+                  });
+                }}
+              >
+                <h2>Choose providers</h2>
+                <div className="grid">
+                  {(["tutor", "vision"] as const).map((stage) => (
+                    <div key={stage}>
+                      <label>
+                        {stage === "tutor" ? "Tutor" : "Photo reader"}
+                        <select
+                          name={stage}
+                          value={routes[stage]}
+                          onChange={(e) => {
+                            setRoutes({ ...routes, [stage]: e.target.value });
+                            setAcknowledged(false);
+                          }}
+                          aria-describedby={`${stage}-provider-help`}
+                        >
+                          {!providers.providers.some(
+                            (p) =>
+                              p.id === routes[stage] &&
+                              p.enabled &&
+                              (stage === "tutor" || p.image_input),
+                          ) && (
+                            <option value={routes[stage]} disabled>
+                              {routes[stage]
+                                ? `${routes[stage]} (unavailable)`
+                                : "No provider available"}
+                            </option>
+                          )}
+                          {providers.providers
+                            .filter(
+                              (p) =>
+                                p.enabled &&
+                                (stage === "tutor" || p.image_input),
+                            )
+                            .map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.id}
+                                {p.adapter === "mock"
+                                  ? " (synthetic demo)"
+                                  : ""}
+                              </option>
+                            ))}
+                        </select>
+                      </label>
+                      <p className="fine" id={`${stage}-provider-help`}>
+                        {stage === "tutor"
+                          ? "Creates activities and gives feedback on text, including text read from photos."
+                          : "Reads submitted photos before the tutor gives feedback."}{" "}
+                        Processing:{" "}
+                        {processingLocation(selectedProviders[stage])}.
+                      </p>
+                    </div>
+                  ))}
+                </div>
+                {(selectedProviders.tutor?.adapter === "mock" ||
+                  selectedProviders.vision?.adapter === "mock") && (
+                  <p className="fine">
+                    A synthetic demo provider returns sample responses. It
+                    cannot teach or interpret your work.
+                  </p>
+                )}
+                <label className="check">
+                  <input
+                    type="checkbox"
+                    required
+                    checked={acknowledged}
+                    onChange={(e) => setAcknowledged(e.target.checked)}
+                  />
+                  I authorize sending text and photos to the providers selected
+                  above.
+                </label>
+                <button
+                  className="primary"
+                  disabled={!acknowledged || !routes.tutor || !routes.vision}
+                >
+                  Save AI settings
+                </button>
+                <ContextHelp topic="Where does learner work go?">
+                  <p>
+                    A cloud provider receives the content for its selected role.
+                    A cloud tutor also receives text read by a local photo
+                    reader. Changing settings does not resend earlier requests.
+                    The app never switches providers automatically when one
+                    fails.
+                  </p>
+                </ContextHelp>
+              </form>
+              <details>
+                <summary>Connection tests &amp; provider details</summary>
+                <p>
+                  Test a provider after configuring it on the server. Tests send
+                  sample text or an image; live providers may charge for them.
+                </p>
+                <div className="provider-list">
+                  {providers.providers.map((p) => (
+                    <article className="card" key={p.id}>
+                      <h3>
+                        {p.id}
+                        {!p.enabled && " (disabled)"}
+                      </h3>
+                      <p className="fine">
+                        {p.adapter} · {p.model}
+                        <br />
+                        {processingLocation(p)} ·{" "}
+                        {p.audience === "adult_only"
+                          ? "Adults only"
+                          : p.audience === "mixed"
+                            ? "Mixed ages"
+                            : p.audience}
+                      </p>
+                      <p>
+                        Tutor: {p.tutor_probed ? "test recorded" : "not tested"}
+                        . Photo reader:{" "}
+                        {!p.image_input
+                          ? "not supported"
+                          : p.vision_probed
+                            ? "test recorded"
+                            : "not tested"}
+                        .
+                      </p>
+                      <div className="actions">
+                        {(["tutor", "vision"] as const).map((stage) => (
+                          <button
+                            key={stage}
+                            disabled={
+                              !p.enabled ||
+                              (stage === "vision" && !p.image_input)
+                            }
+                            onClick={() => {
+                              if (
+                                p.adapter === "mock" ||
+                                window.confirm(
+                                  `Send one sample ${stage === "tutor" ? "text" : "photo"} request to ${p.id}? This provider may charge for the call.`,
+                                )
+                              )
+                                void act(async () => {
+                                  await api(
+                                    `/admin/providers/${p.id}/probe`,
+                                    "POST",
+                                    { stage, authorize_synthetic_call: true },
+                                  );
+                                  await refreshProviders();
+                                  onProvidersChanged?.();
+                                  setMessage(
+                                    `${p.id}: ${stage === "tutor" ? "tutor" : "photo reader"} test passed.`,
+                                  );
+                                });
+                            }}
+                          >
+                            Test {stage === "tutor" ? "tutor" : "photo reader"}
+                          </button>
+                        ))}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </details>
+            </>
+          )}
+        </>
+      )}
       {message && (
         <p role="status" className="notice">
           {message}

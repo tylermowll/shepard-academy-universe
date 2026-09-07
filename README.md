@@ -54,11 +54,43 @@ accepts the password through a hidden interactive prompt. Password reset revokes
 that administrator's sessions.
 
 `make dev` builds and serves the UI, API, and worker at the configured loopback
-origin (default <http://127.0.0.1:8000>). Select/create a learner in the adult
-workspace. On a second browser, choose **Pair this device**, copy its request ID
-to the adult workspace, and approve the selected learner. Pairing expires after
-five minutes and is bound to the requesting browser. Learners can access only
-their own practice; adults can review managed learners' history.
+origin (default <http://127.0.0.1:8000>). Sign in and open **Learners & devices**
+to add a learner. Select them, choose **Start practice**, enter a topic, and
+choose **Start session**, then **Create practice activity**.
+
+The page tabs separate the workflow:
+
+- **Practice**: the current activity, response, photo, and feedback. Tutor style,
+  reference material, and hints are available when needed.
+- **History**: reopen or review a saved session.
+- **Learners & devices** (adult): add learners, pair browsers, export saved work,
+  revoke access, and delete learners.
+- **Settings** (adult): select/test the tutor and photo reader. The browser model
+  experiment is under **Advanced** and is not required for practice.
+- **Help**: setup, phone connection, model configuration, troubleshooting, and
+  privacy. Contextual disclosures explain controls without leaving the page.
+
+Switching page tabs preserves unsent text, photo previews, and pending retry
+requests in memory. Closing/reloading the tab or switching learners can lose
+unsent work; submitted work is stored on the server. Learners see only Practice,
+History, and Help.
+
+An adult account can manage the app and be a student. In **Learners & devices**,
+choose **Add yourself (adult)**, edit the name, and **Add learner** to create your
+own practice profile under the same sign-in. Give each child a separate profile
+and pair their browser for learner-only access. There is no separate child
+password to manage. **Help → Accounts & learners** explains this distinction.
+
+For a learner browser, choose **Pair this device** on its sign-in page, copy the
+request ID to **Learners & devices** on the adult's computer, select the learner,
+and choose **Approve device** within five minutes. A physical phone needs the
+shared private HTTPS address in the phone guide. Sending one photo through
+**Take photo with phone** needs no learner login or pairing.
+
+`make demo` starts a disposable preview at <http://127.0.0.1:8000>, with public
+synthetic credentials `demo` / `synthetic-demo-password-only`. It blocks tutoring
+and personal uploads; use the private setup above to practice. The UI links from
+unavailable tutoring to setup help and Settings.
 
 The default mock routes return explicitly synthetic fixtures and do not provide
 real tutoring or read handwriting. Configure actual **tutor and vision** routes using

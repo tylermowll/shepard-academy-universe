@@ -108,7 +108,7 @@ describe("phone camera permission", () => {
       screen.getByRole("button", { name: "Take photo with phone" }),
     );
     expect(
-      await screen.findByText("Scan with your iPhone camera"),
+      await screen.findByText("Scan with your phone camera"),
     ).toBeVisible();
     expect(
       screen.getByRole("link", { name: "Open photo page" }),

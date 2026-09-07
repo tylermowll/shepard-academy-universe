@@ -92,12 +92,12 @@ function installSession(value: ReturnType<typeof session>) {
 }
 
 beforeEach(() => {
-  window.location.hash = "";
+  window.history.replaceState(null, "", "/");
 });
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
-  window.location.hash = "";
+  window.history.replaceState(null, "", "/");
 });
 
 describe("AI learning conversation", () => {
@@ -115,15 +115,16 @@ describe("AI learning conversation", () => {
     fireEvent.change(screen.getByLabelText("Topic or learning goal"), {
       target: { value: "Persuasive writing" },
     });
-    fireEvent.change(screen.getByLabelText("Tutor initiative"), {
+    fireEvent.click(screen.getByText("Tutor options"));
+    fireEvent.change(screen.getByLabelText("Tutor style"), {
       target: { value: "learner_led" },
     });
     await vi.waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Start tutoring" }),
+        screen.getByRole("button", { name: "Start session" }),
       ).toBeEnabled(),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Start tutoring" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start session" }));
     expect(
       await screen.findByRole("button", { name: "Create practice activity" }),
     ).toBeEnabled();
@@ -146,12 +147,12 @@ describe("AI learning conversation", () => {
     fireEvent.change(await screen.findByLabelText("Practice source"), {
       target: { value: "reference_text" },
     });
-    expect(
-      screen.getByText(/A supplied assignment is reference material/),
-    ).toHaveTextContent("distinct practice activity");
-    expect(
-      screen.getByText(/A supplied assignment is reference material/),
-    ).toHaveTextContent("cannot retrieve or pretend to have read your book");
+    expect(screen.getByText(/The tutor uses your material/)).toHaveTextContent(
+      "create different practice",
+    );
+    expect(screen.getByText(/The tutor uses your material/)).toHaveTextContent(
+      "cannot access a book from its title",
+    );
     fireEvent.change(screen.getByLabelText("Reference material"), {
       target: {
         value: "Homework: argue whether a historical decision was justified.",
@@ -181,7 +182,7 @@ describe("AI learning conversation", () => {
     expect(
       await screen.findByRole("button", { name: "Take photo with phone" }),
     ).toBeEnabled();
-    fireEvent.click(screen.getByText("Submit a photograph"));
+    fireEvent.click(screen.getByText("Upload a photo"));
     expect(
       screen.getByText(/Photograph the reference material/),
     ).toHaveTextContent("not solve the original assignment");
@@ -292,12 +293,10 @@ describe("AI learning conversation", () => {
     const fetcher = installSession(session([activity()]));
     render(<Tutor learner={learner} offline={false} act={run} />);
     fireEvent.click(await screen.findByText("Session settings"));
-    fireEvent.change(screen.getByLabelText("Initiative for this session"), {
+    fireEvent.change(screen.getByLabelText("Tutor style for this session"), {
       target: { value: "tutor_led" },
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Save tutor initiative" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Save tutor style" }));
     await vi.waitFor(() =>
       expect(
         fetcher.mock.calls.some(([url]) => url.endsWith("/settings")),
@@ -308,7 +307,7 @@ describe("AI learning conversation", () => {
       initiative: "tutor_led",
     });
     expect(
-      screen.getByText(/It never enables answers to supplied homework/),
+      screen.getByText(/Supplied homework is used for related practice only/),
     ).toBeVisible();
     expect(screen.queryByRole("button", { name: /Full solution/ })).toBeNull();
   });
@@ -379,10 +378,10 @@ describe("AI learning conversation", () => {
     });
     await vi.waitFor(() =>
       expect(
-        screen.getByRole("button", { name: "Start tutoring" }),
+        screen.getByRole("button", { name: "Start session" }),
       ).toBeEnabled(),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Start tutoring" }));
+    fireEvent.click(screen.getByRole("button", { name: "Start session" }));
     const retry = await screen.findByRole("button", {
       name: "Retry saved request",
     });
@@ -428,6 +427,300 @@ describe("AI learning conversation", () => {
         /Built-in math|offline practice pack|Tutor profiles|Full solution/,
       ),
     ).toBeNull();
-    expect(screen.getByText("Shepard Tutor")).toBeVisible();
+    expect(screen.getByRole("link", { name: "Shepard Tutor" })).toBeVisible();
+  });
+
+  it("shows one current activity and keeps the response draft across page changes", async () => {
+    installSession(session([activity([operation()])]));
+    const draftChanged = vi.fn();
+    const props = {
+      learner,
+      offline: false,
+      act: run,
+      onDraftChange: draftChanged,
+    };
+    const view = render(<Tutor {...props} />);
+    const input = await screen.findByLabelText("Your work or question");
+    expect(screen.getAllByText(activity().problem_text)).toHaveLength(1);
+    expect(screen.queryByLabelText("Topic or learning goal")).toBeNull();
+    fireEvent.change(input, {
+      target: { value: "An unsent observation about birds." },
+    });
+    expect(screen.getByRole("button", { name: "New session" })).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Next activity" }),
+    ).toBeDisabled();
+    expect(draftChanged).toHaveBeenLastCalledWith(true);
+    view.rerender(<Tutor {...props} page="history" />);
+    expect(
+      screen.getByRole("heading", { name: "Saved sessions" }),
+    ).toBeVisible();
+    expect(input).not.toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Continue session" }),
+    ).toBeEnabled();
+    view.rerender(<Tutor {...props} active={false} />);
+    view.rerender(<Tutor {...props} active />);
+    expect(screen.getByLabelText("Your work or question")).toBe(input);
+    expect(input).toHaveValue("An unsent observation about birds.");
+    fireEvent.change(input, { target: { value: "" } });
+    expect(draftChanged).toHaveBeenLastCalledWith(false);
+    fireEvent.click(screen.getByRole("button", { name: "New session" }));
+    expect(screen.getByLabelText("Topic or learning goal")).toBeVisible();
+    expect(input).not.toBeVisible();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Back to current session" }),
+    );
+    expect(input).toBeVisible();
+  });
+
+  it("opens an owned history session and preserves page query parameters", async () => {
+    const navigate = vi.fn();
+    const own = session([activity()]);
+    const other = {
+      ...own,
+      id: "another-session",
+      learner_id: "another-learner",
+      topic: "Private other learner work",
+    };
+    window.history.replaceState(null, "", "/?page=history");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.endsWith("/features")) return response(capabilities);
+        if (url.endsWith(`/tutor/sessions/${sessionId}`)) return response(own);
+        if (url.endsWith("/tutor/sessions")) return response([own, other]);
+        throw new Error(url);
+      }),
+    );
+    render(
+      <Tutor
+        learner={learner}
+        offline={false}
+        act={run}
+        page="history"
+        onNavigate={navigate}
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Continue session" }),
+    );
+    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith("practice"));
+    expect(window.location.search).toBe("?page=history");
+    expect(window.location.hash).toBe(`#tutor=${sessionId}`);
+    expect(screen.queryByText(other.topic)).toBeNull();
+  });
+
+  it("keeps an unsent response when asking for a hint", async () => {
+    const fetcher = installSession(session([activity()]));
+    render(<Tutor learner={learner} offline={false} act={run} />);
+    const input = await screen.findByLabelText("Your work or question");
+    fireEvent.change(input, { target: { value: "An unfinished argument." } });
+    fireEvent.click(screen.getByText("Get help with this activity"));
+    fireEvent.click(screen.getByRole("button", { name: "Give me a hint" }));
+    await vi.waitFor(() =>
+      expect(
+        fetcher.mock.calls.some(([url]) => url.endsWith("/submissions")),
+      ).toBe(true),
+    );
+    await vi.waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Give me a hint" }),
+      ).toBeEnabled(),
+    );
+    expect(input).toHaveValue("An unfinished argument.");
+    const request = fetcher.mock.calls.find(([url]) =>
+      url.endsWith("/submissions"),
+    )!;
+    expect(JSON.parse(request[1].body as string)).toMatchObject({
+      kind: "hint",
+      text: "",
+      help_level: 1,
+    });
+  });
+
+  it("restores the session in the URL when the browser goes back", async () => {
+    const secondId = "911c9abc-4e8e-424d-a914-4338187ba00e";
+    const first = session([activity()]);
+    const second = { ...first, id: secondId, topic: "Photosynthesis" };
+    window.history.pushState(null, "", `/?page=practice#tutor=${sessionId}`);
+    window.history.pushState(null, "", `/?page=practice#tutor=${secondId}`);
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.endsWith("/features")) return response(capabilities);
+        if (url.endsWith(`/tutor/sessions/${sessionId}`))
+          return response(first);
+        if (url.endsWith(`/tutor/sessions/${secondId}`))
+          return response(second);
+        if (url.endsWith("/tutor/sessions")) return response([first, second]);
+        throw new Error(url);
+      }),
+    );
+    render(<Tutor learner={learner} offline={false} act={run} />);
+    expect(
+      await screen.findByRole("heading", { name: "Photosynthesis" }),
+    ).toBeVisible();
+    window.history.back();
+    expect(
+      await screen.findByRole("heading", { name: "Persuasive writing" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("heading", { name: "Photosynthesis" }),
+    ).toBeNull();
+    expect(window.location.hash).toBe(`#tutor=${sessionId}`);
+    expect(window.location.search).toBe("?page=practice");
+  });
+
+  it("preserves the current session and draft when browser Back targets another session", async () => {
+    const secondId = "911c9abc-4e8e-424d-a914-4338187ba00e";
+    const first = session([activity()]);
+    const second = { ...first, id: secondId, topic: "Photosynthesis" };
+    window.history.pushState(null, "", `/?page=practice#tutor=${sessionId}`);
+    window.history.pushState(null, "", `/?page=history#tutor=${secondId}`);
+    const fetcher = vi.fn((url: string) => {
+      if (url.endsWith("/features")) return response(capabilities);
+      if (url.endsWith(`/tutor/sessions/${secondId}`)) return response(second);
+      if (url.endsWith("/tutor/sessions")) return response([first, second]);
+      throw new Error(url);
+    });
+    vi.stubGlobal("fetch", fetcher);
+    render(<Tutor learner={learner} offline={false} act={run} />);
+    const input = await screen.findByLabelText("Your work or question");
+    fireEvent.change(input, {
+      target: { value: "Keep my unfinished response." },
+    });
+    window.history.back();
+    expect(
+      await screen.findByText(
+        "Send or clear your draft in Practice before switching sessions.",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("heading", { name: "Photosynthesis" }),
+    ).toBeVisible();
+    expect(input).toHaveValue("Keep my unfinished response.");
+    expect(window.location.hash).toBe(`#tutor=${secondId}`);
+    expect(window.location.search).toBe("?page=practice");
+    expect(
+      fetcher.mock.calls.some(([url]) =>
+        url.endsWith(`/tutor/sessions/${sessionId}`),
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps an uncertain submission and its retry identity while History is open", async () => {
+    const value = session([activity()]);
+    let attempts = 0;
+    const busyChanged = vi.fn();
+    const fetcher = vi.fn((url: string, options: RequestInit) => {
+      if (url.endsWith("/features")) return response(capabilities);
+      if (url.endsWith(`/tutor/sessions/${sessionId}`)) return response(value);
+      if (url.endsWith("/tutor/sessions")) return response([value]);
+      if (url.endsWith("/submissions") && options.method === "POST") {
+        attempts += 1;
+        if (attempts === 1)
+          return Promise.reject(new TypeError("Lost receipt"));
+        return response({});
+      }
+      throw new Error(url);
+    });
+    window.location.hash = `tutor=${sessionId}`;
+    vi.stubGlobal("fetch", fetcher);
+    const caught: unknown[] = [];
+    const props = {
+      learner,
+      offline: false,
+      onBusyChange: busyChanged,
+      act: async (action: () => Promise<void>) => {
+        try {
+          await action();
+        } catch (error) {
+          caught.push(error);
+        }
+      },
+    };
+    const view = render(<Tutor {...props} />);
+    fireEvent.change(await screen.findByLabelText("Your work or question"), {
+      target: { value: "Keep this draft." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Share my work" }));
+    await screen.findByRole("button", { name: "Retry saved request" });
+    expect(busyChanged).toHaveBeenLastCalledWith(true);
+    view.rerender(<Tutor {...props} page="history" />);
+    expect(
+      screen.getByRole("button", { name: "Continue session" }),
+    ).toBeDisabled();
+    view.rerender(<Tutor {...props} />);
+    expect(screen.getByLabelText("Your work or question")).toHaveValue(
+      "Keep this draft.",
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Retry saved request" }),
+    );
+    await vi.waitFor(() => expect(busyChanged).toHaveBeenLastCalledWith(false));
+    const sent = fetcher.mock.calls.filter(([url]) =>
+      url.endsWith("/submissions"),
+    );
+    expect(sent).toHaveLength(2);
+    expect(sent[1]![1].body).toBe(sent[0]![1].body);
+    expect(
+      (sent[1]![1].headers as Record<string, string>)["Idempotency-Key"],
+    ).toBe((sent[0]![1].headers as Record<string, string>)["Idempotency-Key"]);
+    expect(caught).toHaveLength(1);
+    expect(screen.getByLabelText("Your work or question")).toHaveValue("");
+  });
+
+  it("explains unavailable tutoring and refreshes capabilities after setup", async () => {
+    let available = false;
+    const navigate = vi.fn();
+    const fetcher = vi.fn((url: string) => {
+      if (url.endsWith("/features"))
+        return response({
+          ...capabilities,
+          tutoring_available: available,
+          tutor_status: available
+            ? "Local tutor ready."
+            : "This demo does not accept personal work.",
+        });
+      if (url.endsWith("/tutor/sessions")) return response([]);
+      throw new Error(url);
+    });
+    vi.stubGlobal("fetch", fetcher);
+    const props = {
+      learner,
+      offline: false,
+      act: run,
+      isAdult: true,
+      onNavigate: navigate,
+    };
+    const view = render(<Tutor {...props} />);
+    expect(
+      await screen.findByText("Tutoring is not available yet"),
+    ).toBeVisible();
+    fireEvent.change(screen.getByLabelText("Topic or learning goal"), {
+      target: { value: "Photosynthesis" },
+    });
+    expect(
+      screen.getByRole("button", { name: "Start session" }),
+    ).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Open Settings" }));
+    expect(navigate).toHaveBeenLastCalledWith("settings");
+    fireEvent.click(screen.getByRole("button", { name: "Setup help" }));
+    expect(navigate).toHaveBeenLastCalledWith("help", "setup");
+    view.rerender(<Tutor {...props} active={false} />);
+    available = true;
+    view.rerender(<Tutor {...props} active settingsVersion={1} />);
+    await vi.waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Start session" }),
+      ).toBeEnabled(),
+    );
+    expect(screen.getByLabelText("Topic or learning goal")).toHaveValue(
+      "Photosynthesis",
+    );
+    expect(
+      fetcher.mock.calls.filter(([url]) => url.endsWith("/features")),
+    ).toHaveLength(2);
   });
 });
