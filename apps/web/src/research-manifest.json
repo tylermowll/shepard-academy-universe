@@ -1,0 +1,95 @@
+{
+  "model_id": "SmolLM2-135M-Instruct-q0f16-MLC",
+  "model_revision": "06fc409f2212adff29d93cbc742c1d6957302df5",
+  "model_base": "https://huggingface.co/mlc-ai/SmolLM2-135M-Instruct-q0f16-MLC/resolve/06fc409f2212adff29d93cbc742c1d6957302df5/",
+  "model_lib": "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/025bcaf3780fa8254f5e5efd3bfea0a5397248f4/web-llm-models/v0_2_84/base/SmolLM2-135M-Instruct-q0f16_cs1k-webgpu.wasm",
+  "files": {
+    "https://huggingface.co/mlc-ai/SmolLM2-135M-Instruct-q0f16-MLC/resolve/06fc409f2212adff29d93cbc742c1d6957302df5/README.md": {
+      "algorithm": "git-SHA-1",
+      "hash": "d298144c1c459b2e334930ab36264540d9390db7",
+      "size": 1497
+    },
+    "https://huggingface.co/mlc-ai/SmolLM2-135M-Instruct-q0f16-MLC/resolve/06fc409f2212adff29d93cbc742c1d6957302df5/merges.txt": {
+      "algorithm": "git-SHA-1",
+      "hash": "69503b13f727ba3812b6803e97442a6de05ef5eb",
+      "size": 466391
+    },
+    "https://huggingface.co/mlc-ai/SmolLM2-135M-Instruct-q0f16-MLC/resolve/06fc409f2212adff29d93cbc742c1d6957302df5/mlc-chat-config.json": {
+      "algorithm": "git-SHA-1",
+      "hash": "ca3c380ab0b6d6fb2a98fd5814d3fc20f9a9eb42",
+      "size": 2018
+    },
+    "https://huggingface.co/mlc-ai/SmolLM2-135M-Instruct-q0f16-MLC/resolve/06fc409f2212adff29d93cbc742c1d6957302df5/ndarray-cache.json": {
+      "algorithm": "git-SHA-1",
+      "hash": "2cd396e180140b8f15938a3dcf797cdb6512fa3a",
+      "size": 70279
+    },
+    "https://huggingface.co/mlc-ai/SmolLM2-135M-Instruct-q0f16-MLC/resolve/06fc409f2212adff29d93cbc742c1d6957302df5/params_shard_0.bin": {
+      "algorithm": "SHA-256",
+      "hash": "dbe321b43856cffd6920fc39ce1e9750556c3698aae47ca561652548d23dc2cd",
+      "size": 56623104
+    },
+    "https://huggingface.co/mlc-ai/SmolLM2-135M-Instruct-q0f16-MLC/resolve/06fc409f2212adff29d93cbc742c1d6957302df5/params_shard_1.bin": {
+      "algorithm": "SHA-256",
+      "hash": "90eb8da289949ce6ea2fceec85228966fcc6b8cd962504ce0a58e21a0e308f51",
+      "size": 30091392
+    },
+    "https://huggingface.co/mlc-ai/SmolLM2-135M-Instruct-q0f16-MLC/resolve/06fc409f2212adff29d93cbc742c1d6957302df5/params_shard_2.bin": {
+      "algorithm": "SHA-256",
+      "hash": "ffb047fe03c824f7f32fb7abad18c6265ec31400b2b98e32d442deda8b030ce8",
+      "size": 32966784
+    },
+    "https://huggingface.co/mlc-ai/SmolLM2-135M-Instruct-q0f16-MLC/resolve/06fc409f2212adff29d93cbc742c1d6957302df5/params_shard_3.bin": {
+      "algorithm": "SHA-256",
+      "hash": "8feb2e304125627dc231c30d4457fe9c5df5709b9e2858046ac3463175401ef7",
+      "size": 30754944
+    },
+    "https://huggingface.co/mlc-ai/SmolLM2-135M-Instruct-q0f16-MLC/resolve/06fc409f2212adff29d93cbc742c1d6957302df5/params_shard_4.bin": {
+      "algorithm": "SHA-256",
+      "hash": "1cda5ecde438a850307b9490514e58235c64d640399fa68a4c0c28fcff84a1e4",
+      "size": 32966784
+    },
+    "https://huggingface.co/mlc-ai/SmolLM2-135M-Instruct-q0f16-MLC/resolve/06fc409f2212adff29d93cbc742c1d6957302df5/params_shard_5.bin": {
+      "algorithm": "SHA-256",
+      "hash": "6df9612bec9d030861635bd33f3cbeef82eba604fed050b168252f965916de35",
+      "size": 30754944
+    },
+    "https://huggingface.co/mlc-ai/SmolLM2-135M-Instruct-q0f16-MLC/resolve/06fc409f2212adff29d93cbc742c1d6957302df5/params_shard_6.bin": {
+      "algorithm": "SHA-256",
+      "hash": "3cdabc62da6bf632d0000920cf0785f93a7b38140a2ab1096f8e029dc2382ebb",
+      "size": 32966784
+    },
+    "https://huggingface.co/mlc-ai/SmolLM2-135M-Instruct-q0f16-MLC/resolve/06fc409f2212adff29d93cbc742c1d6957302df5/params_shard_7.bin": {
+      "algorithm": "SHA-256",
+      "hash": "ef917ee0421e0fa69bcde5bfc7ba50a96028756bb30181004d34b3babceb88fc",
+      "size": 21905280
+    },
+    "https://huggingface.co/mlc-ai/SmolLM2-135M-Instruct-q0f16-MLC/resolve/06fc409f2212adff29d93cbc742c1d6957302df5/tensor-cache.json": {
+      "algorithm": "git-SHA-1",
+      "hash": "2cd396e180140b8f15938a3dcf797cdb6512fa3a",
+      "size": 70279
+    },
+    "https://huggingface.co/mlc-ai/SmolLM2-135M-Instruct-q0f16-MLC/resolve/06fc409f2212adff29d93cbc742c1d6957302df5/tokenizer.json": {
+      "algorithm": "git-SHA-1",
+      "hash": "f922b1797f0c88e71addc8393787831f2477a4bd",
+      "size": 2104556
+    },
+    "https://huggingface.co/mlc-ai/SmolLM2-135M-Instruct-q0f16-MLC/resolve/06fc409f2212adff29d93cbc742c1d6957302df5/tokenizer_config.json": {
+      "algorithm": "git-SHA-1",
+      "hash": "76b6b266c3d0a53828e0fdd281dd9bb76d0bed78",
+      "size": 3764
+    },
+    "https://huggingface.co/mlc-ai/SmolLM2-135M-Instruct-q0f16-MLC/resolve/06fc409f2212adff29d93cbc742c1d6957302df5/vocab.json": {
+      "algorithm": "git-SHA-1",
+      "hash": "0ad5ecc2035b7031b88afb544ee95e2d49baa484",
+      "size": 800662
+    },
+    "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/025bcaf3780fa8254f5e5efd3bfea0a5397248f4/web-llm-models/v0_2_84/base/SmolLM2-135M-Instruct-q0f16_cs1k-webgpu.wasm": {
+      "algorithm": "git-SHA-1",
+      "hash": "4be8ca6bf5744f46f7a3b0e566dcdf7488c5eb44",
+      "size": 5420101
+    }
+  },
+  "status": "Prepared; device measurements and download pending",
+  "source": "Public repository metadata only; no weights downloaded by the coding agent"
+}

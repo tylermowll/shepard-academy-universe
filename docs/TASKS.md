@@ -10,27 +10,27 @@ specification gates pass.
 | T00 | Complete | Local gates and original hosted CI verified; review validation below. |
 | T01 | Reviewed; complete | Explicit transactional SQLite, stable/private storage, real rollback/migration/drift gates. Review commit ae3f135 passes local and hosted CI. |
 | T02 | Reviewed; complete | Startup/setup, strict origins, expiring CSRF, reset/rotation/revocation, bounded login limits, and session constraints in migration 0002. D005 removes the review's development-schema upgrade bridge; cutover evidence below. |
-| T03 | Ready to start | T02 dependency satisfied by the reviewed foundation; implement pairing and two-learner isolation next. |
-| T04 | Not started | Blocked by its roadmap dependency. |
-| T05 | Not started | Blocked by its roadmap dependencies. |
-| T06 | Not started | Blocked by its roadmap dependency. |
-| T07 | Not started | Blocked by its roadmap dependency. |
-| T08 | Not started | Blocked by its roadmap dependency. |
-| T09 | Not started | Blocked by its roadmap dependency. |
-| T10 | Not started | Blocked by its roadmap dependency. |
-| T11 | Not started | Blocked by its roadmap dependency. |
-| T12 | Not started | Blocked by its roadmap dependency. |
-| T13 | Not started | Blocked by its roadmap dependency. |
-| T14 | Not started | Blocked by its roadmap dependency. |
-| T15 | Not started | Blocked by its roadmap dependencies. |
-| T16 | Not started | Blocked by its roadmap dependencies. |
-| T17 | Not started | Blocked by its roadmap dependencies. |
-| T18 | Not started | Blocked by its roadmap dependencies. |
-| T19 | Not started | Blocked by its roadmap dependency. |
-| T20 | Not started | Blocked by its roadmap dependency. |
-| T21 | Not started | Blocked by its roadmap dependency. |
-| T22 | Not started | Blocked by its roadmap dependency. |
-| T23 | Not started | Blocked by its roadmap dependency. |
+| T03 | Implemented; automated gates passed | Browser-bound pairing, expiry/revoke and two-learner ownership. |
+| T04 | Implemented; automated gates passed | Exact parser/generators; Fraction/property and hostile-input tests. |
+| T05 | Implemented; automated gates passed | Persisted practice, answers/steps/help/history and browser completion. |
+| T06 | Implemented; automated gates passed | Durable leases, six-call budget, idempotency, crash/deletion recovery. |
+| T07 | Implemented; contract-tested | Mock and strict provider policy/errors; no cloud fallback. |
+| T08 | Implemented; automated gates passed | Versioned profiles, questions, authored assistance and preview. |
+| T09 | Implemented; live verification pending | Meta wire-contract/adult-policy tests; exact account contract must be verified. |
+| T10 | Implemented; automated gates passed | Private normalized photos, immutable confirmation and stale-write tests. |
+| T11 | Implemented; physical phone evidence pending | HEIF/metadata/bounds tests and browser preview/crop/rotation flow. |
+| T12 | Implemented; live unverified | Ollama native text/image contracts; operator setup documented. |
+| T13 | Implemented; live unverified | vLLM/compatible bounded wire/capability contracts; runtime/model pending. |
+| T14 | Implemented; live unverified | Bedrock Converse SDK Stubber tests; region/model/IAM pending. |
+| T15 | Implemented; automated gates passed | Linear equation generator, independent arithmetic properties and exact parser. |
+| T16 | Implemented; automated gates passed | Review/progress, authenticated export, deletion and restore tombstones. |
+| T17 | Implemented; physical accessibility/phone evidence pending | Public-only PWA caches, manual update, offline/reconnect browser tests. |
+| T18 | Implemented; live quality evaluation pending | 33 original rational and 30 rendered vision fixtures, four external fixtures; mock report and A01–A24 mapping. |
+| T19 | Implemented; final release acceptance pending | Hardened packaging/backup/restore/docs; local/hosted evidence below; maintainer gates remain. |
+| T20 | Implemented; IaC validation passed | Single-host EC2/EBS, private backup S3, IAM/budget runbook; no provisioning. |
+| T21 | Implemented; automated gates passed | Public offline pack, exact local answers, no sync or grading authority. |
+| T22 | Implemented; automated gates passed | Opt-in external-photo question confirmation; four fixtures remain unverifiable. |
+| T23 | Implemented experiment; device measurement pending | Pinned text-only WebLLM research with consent/hash validation/cancel/delete; no weights downloaded. |
 
 ## Evidence
 
@@ -578,3 +578,73 @@ The assessment of Spark's original code remains **5/10 for T01/T02**. The remove
 compatibility migration was added during this review, not by Spark. T03 remains
 ready to start. No private database/configuration was opened or reset, and no
 provider, deployment, or model-download work was performed.
+
+
+### 2026-09-06 — Authorized completion of remaining implementation
+
+The maintainer approved MIT, the remaining repository scope, end-batched checks,
+hard cutovers and push to main. They deferred the items requiring physical devices
+or provider accounts. D006 records the sequencing/schema decisions. The table
+above distinguishes implementation from external acceptance; T19/T23 are not
+claimed fully accepted without that evidence.
+
+Affected contracts/files:
+
+- `apps/api/migrations/versions/0001*` through `0008*`, ORM/domain/API/worker code:
+  real learner ownership, pairing, exact skills, immutable profile/interpretation
+  versions, durable work and call budgets, provider routes/probes, retention/audit.
+- Provider transports/config and typed DTOs; generated `contracts/openapi.json`
+  and `apps/web/src/generated/api.d.ts`, including separate work/final-answer fields.
+- React practice/adult/photo/research components, safe math rendering, offline pack,
+  service worker/update behavior and mobile/desktop workflows.
+- Backup/restore and private S3 archive CLI, Docker/Compose/Caddy/CloudFormation,
+  Make/CI checks, original eval fixtures and reports, MIT and operational docs.
+
+Validation observed during implementation:
+
+- `make check`: passed locks, Ruff lint/format, strict mypy (46 files), strict
+  TypeScript, 60 backend unit tests, 3 frontend component tests, package/Vite
+  builds, contract drift, tracked secret scan, and CloudFormation lint. Subsequent
+  small capability/concurrency changes receive the final run recorded below.
+- `make test-integration`: 80 passed, including four external-problem cases,
+  migrations/rollback/ownership, provider recovery and encrypted restore.
+- `pnpm smoke`: 12 passed on desktop/mobile Chromium before adding final pairing
+  and disconnect coverage. Final full browser outcome is recorded below.
+- `make eval-mock`: 33 exact rational cases and 30 mock-vision cases passed. This
+  measures software orchestration, not model accuracy or handwriting quality.
+- `make audit`: Python and pnpm reported no known vulnerabilities after updating
+  cryptography from vulnerable 49.0.0 to fixed 50.0.1 (PYSEC-2026-3552).
+- `make infra-check`: CloudFormation lint passed; no AWS resources were created.
+
+Defects found and corrected by these checks included SQLite's unsupported direct
+foreign-key alteration (changed to Alembic batch mode), a stale ORM test fixture,
+restored WAL changes not reaching the copied database (explicit close/checkpoint),
+a Vite worker module-format mismatch, a browser selector mismatch, and the
+cryptography advisory. An initial browser invocation omitted this environment's
+installed Chrome override; rerunning with the documented executable passed.
+Checks were not weakened and no legacy compatibility bridge was added.
+
+Not run: live Meta/Ollama/vLLM/compatible/Bedrock inference, account IAM validation,
+model downloads, actual phone Safari/Chrome camera/install/background checks,
+WebGPU model/device measurements, cloud provisioning or public deployment. The
+maintainer checklist is in ACCEPTANCE. The original Spark T01/T02 assessment remains
+5/10 for that observed work; these later implementations do not change its score.
+
+Final local source validation: `make check` passed with **61 unit tests**, **3
+component tests**, strict mypy/TypeScript, both builds and all contract/secret/IaC
+checks. `make test-integration` passed **81 tests**, including simultaneous worker
+claims. Both dependency audits passed and the 63-case synthetic evaluation passed.
+`pnpm smoke` passed **14 desktop/mobile browser tests**, including disconnect after
+submission, second-browser pairing/revocation, photo confirmation, offline cache,
+and user-controlled updates. The disconnect test checks the actual server-failure
+banner because browser online hints can remain true while requests are blocked.
+`make hooks-check` and `git diff --check` passed on the reviewed staged files.
+Visual review found an assistance-history display inconsistency; the final answer
+turn now snapshots prior assistance, matching progress. Its focused workflow test
+and captured browser scenario passed after the fix. The screenshot in
+`docs/screenshots/synthetic-practice.png` contains only a generated synthetic alias
+and exercise. It is presentation evidence, not a correctness test.
+
+Docker is not installed in this workspace; the release container build, runtime
+smoke and image scan are executed by hosted CI after the authorized push. A clean
+checkout rehearsal and observed hosted result will be recorded separately.

@@ -1,14 +1,378 @@
 @import "tailwindcss";
-
 :root {
   font-family: ui-sans-serif, system-ui, sans-serif;
   color: #173d34;
-  background: #f5f4ed;
+  background: #f7f6ef;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
+  line-height: 1.6;
 }
-
+* {
+  box-sizing: border-box;
+}
 body {
   margin: 0;
   min-width: 320px;
+}
+main {
+  max-width: 1120px;
+  margin: auto;
+  padding: 24px clamp(16px, 4vw, 48px);
+}
+a {
+  color: inherit;
+}
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+button {
+  cursor: pointer;
+  border: 1px solid #668779;
+  background: #fffef8;
+  color: #173d34;
+  border-radius: 10px;
+  padding: 10px 16px;
+  min-height: 44px;
+  font-weight: 600;
+}
+button:hover {
+  background: #e6eee2;
+}
+button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+.primary {
+  background: #173d34;
+  color: white;
+}
+.primary:hover {
+  background: #285748;
+}
+.danger {
+  color: #872d22;
+  border-color: #ae4c3d;
+}
+input,
+textarea,
+select {
+  display: block;
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #789184;
+  border-radius: 8px;
+  background: #fff;
+  color: #173d34;
+  min-height: 44px;
+}
+textarea {
+  resize: vertical;
+}
+label {
+  display: block;
+  font-weight: 600;
+  margin: 12px 0;
+}
+label input,
+label select,
+label textarea {
+  margin-top: 5px;
+}
+fieldset {
+  border: 1px solid #c4cdc1;
+  border-radius: 8px;
+  padding: 12px;
+  margin-top: 16px;
+}
+legend {
+  padding: 0 6px;
+}
+.check {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-weight: 400;
+}
+.check input {
+  width: 20px;
+  min-height: 20px;
+  margin: 0;
+}
+h1,
+h2,
+h3,
+h4 {
+  line-height: 1.2;
+  text-wrap: balance;
+}
+h1 {
+  font-size: clamp(2rem, 5vw, 3.8rem);
+  letter-spacing: -0.045em;
+  margin: 16px 0 24px;
+}
+h2 {
+  font-size: 1.65rem;
+  margin: 12px 0 20px;
+}
+h3 {
+  font-size: 1.25rem;
+}
+h4 {
+  font-size: 1.15rem;
+}
+.masthead {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid #c8d0c5;
+  padding-bottom: 20px;
+}
+.wordmark {
+  font-weight: 750;
+  text-decoration: none;
+  font-size: 1.1rem;
+  margin-right: auto;
+}
+.pill {
+  display: inline-block;
+  border-radius: 24px;
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  background: #e5eadf;
+}
+.welcome {
+  padding: 64px 0 36px;
+}
+.welcome h1 {
+  max-width: 680px;
+}
+.eyebrow {
+  font-size: 0.78rem;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: #37674f;
+}
+.lede {
+  font-size: 1.25rem;
+  max-width: 600px;
+  color: #4f6355;
+  margin-bottom: 36px;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+  gap: 20px;
+}
+.card {
+  border: 1px solid #d6dbce;
+  background: #fffef9;
+  border-radius: 20px;
+  padding: clamp(16px, 3vw, 28px);
+  margin: 20px 0;
+  box-shadow: 0 3px 15px #173d3405;
+}
+.grid .card {
+  margin: 0;
+}
+.fine {
+  font-size: 0.86rem;
+  color: #4e6156;
+}
+.section-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 32px;
+}
+.section-heading h1 {
+  font-size: 2.1rem;
+}
+.section-heading h2 {
+  max-width: 650px;
+}
+.section-heading label {
+  min-width: 220px;
+}
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+  margin: 16px 0;
+}
+.start-session {
+  display: flex;
+  align-items: end;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 20px 0;
+}
+.start-session label {
+  flex: 1;
+  min-width: 220px;
+  margin: 0;
+}
+.math-problem {
+  font-size: clamp(2rem, 6vw, 3.5rem);
+  text-align: center;
+  padding: 28px 0;
+  letter-spacing: -0.02em;
+}
+.notice {
+  border-left: 4px solid #547646;
+  padding: 14px 18px;
+  background: #eaf0df;
+  border-radius: 4px;
+  margin: 16px 0;
+}
+.error {
+  background: #fff0e8;
+  border-left: 4px solid #a84627;
+  color: #752e1a;
+  padding: 14px 18px;
+  margin: 16px 0;
+}
+.verdict {
+  padding: 12px;
+  background: #edf0e5;
+}
+.correct {
+  border-left: 4px solid #467539;
+}
+.incorrect {
+  border-left: 4px solid #ad6339;
+}
+.operation {
+  border-top: 1px solid #d9dece;
+  padding: 16px 0;
+}
+.explanation {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.user-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+.stats strong {
+  display: block;
+  font-size: 2rem;
+}
+.stats span {
+  font-size: 0.88rem;
+}
+details {
+  border: 1px solid #cbd4c6;
+  border-radius: 12px;
+  padding: 16px;
+  margin: 16px 0;
+}
+summary {
+  cursor: pointer;
+  font-weight: 650;
+  min-height: 28px;
+}
+summary::marker {
+  color: #37674f;
+}
+.offline-pack {
+  margin-top: 48px;
+}
+.photo-preview {
+  max-width: 420px;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: #e5e8dd;
+  border-radius: 12px;
+  margin: 20px 0;
+}
+.photo-preview img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+.provider-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 16px;
+}
+.provider-list p {
+  overflow-wrap: anywhere;
+}
+footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+  margin-top: 48px;
+  border-top: 1px solid #c8d0c5;
+  padding: 24px 0;
+  color: #536456;
+  font-size: 0.85rem;
+}
+.skip-link {
+  position: absolute;
+  top: -100px;
+  background: white;
+  padding: 12px;
+  z-index: 10;
+}
+.skip-link:focus {
+  top: 4px;
+}
+:focus-visible {
+  outline: 3px solid #b1701d;
+  outline-offset: 3px;
+}
+code {
+  overflow-wrap: anywhere;
+}
+img {
+  max-width: 100%;
+}
+@media (max-width: 500px) {
+  .masthead .pill {
+    display: none;
+  }
+  .stats {
+    grid-template-columns: 1fr;
+  }
+  .section-heading label {
+    width: 100%;
+  }
+  .actions button {
+    flex: 1;
+  }
+  h1 {
+    font-size: 2.6rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+.practice.compact .operation {
+  padding-block: 8px;
+  line-height: 1.4;
 }

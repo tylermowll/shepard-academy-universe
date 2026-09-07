@@ -185,3 +185,45 @@ Real migrations, named constraints, explicit transactions, rollback tests,
 current-data persistence, and private-data protections still apply. Revisit
 compatibility and migration guarantees before a production release or a promise
 to retain user data.
+
+## D006 — Finish the roadmap implementation, defer external evidence (2026-09-06)
+
+The maintainer explicitly authorized implementing the remaining repository in one
+pass, batching testing toward the end, using hard cutovers, and pushing main.
+They selected MIT and deferred the checks needing their accounts or physical
+devices. This overrides the normal one-task-at-a-time workflow for this execution;
+it does not waive functional/security tests or permit invented live results.
+T11/T17 phone evidence, T19 release acceptance, and T23 actual-device measurements
+remain open until the final maintainer checklist is completed. No application
+inference, model download, cloud provisioning or public deployment was performed.
+
+The implemented API uses one typed submission command with `kind` for answers,
+questions and hints; photos use a separately bounded raw-body endpoint. This
+replaces the blueprint's separate hints/multipart route examples without retaining
+unused compatibility endpoints. The generated OpenAPI is authoritative for wire
+names. Every path retains ownership, CSRF, idempotency and confirmation semantics.
+Exports are immediate authenticated no-store downloads rather than persistent
+signed links: authority lasts only for the current request. Downloaded adult
+copies cannot be revoked remotely and are documented separately.
+
+The checked-in provider example now matches the strict implemented schema. Fixed
+server budgets replace the blueprint's configurable `limits` sample: six calls,
+90-second timeout, at most one image, and zero automatic schema repairs (within
+the specified maximum of one). Region is an explicit field, capabilities are
+explicit, and unsupported legacy sample fields are rejected. `make bootstrap`
+installs tools; `make setup` remains the explicit private-settings creation step
+so CI and clean installs never create or inspect operator secrets implicitly.
+
+OpenAPI generation uses its own tiny tooling workspace with TypeScript 5.9.3 to
+satisfy openapi-typescript 7.13.0's declared peer contract. Application code remains
+on TypeScript 6.0.3 with strict checking. No relaxed peers or skipLibCheck are used.
+WebLLM 0.2.84's distributed declarations reference missing prerelease packages and
+browser-worker globals; the optional experiment loads its self-contained ESM
+through a narrow runtime-checked adapter. This avoids importing broken declarations
+or silently claiming compatibility. Real WebGPU device validation is still pending.
+
+Backups use SQLite's backup API plus authenticated encrypted archives, with
+separately managed configuration/secrets and a required current deletion ledger.
+A restore regression exposed uncheckpointed post-restore WAL changes; restore
+now closes/checkpoints before copying the validated restored file. The regression
+proves deleted learners and revoked sessions do not return from old backups.

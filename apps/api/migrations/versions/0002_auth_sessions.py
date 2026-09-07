@@ -32,7 +32,12 @@ def upgrade() -> None:
         sa.Column("token_hash", sa.String(64), nullable=False),
         sa.Column("role", sa.String(16), nullable=False, server_default="adult"),
         sa.Column("administrator_id", sa.String(36), nullable=True),
-        sa.Column("learner_id", sa.String(36), nullable=True),
+        sa.Column(
+            "learner_id",
+            sa.String(36),
+            sa.ForeignKey("learner.id", ondelete="CASCADE", name="fk_device_session_learner"),
+            nullable=True,
+        ),
         sa.Column("csrf_token", sa.String(64), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("expires_at", sa.DateTime(timezone=True), nullable=False),

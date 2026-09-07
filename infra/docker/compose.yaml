@@ -1,0 +1,35 @@
+services:
+  api:
+    image: math-practice-tutor:local
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile
+    env_file: ../../.env
+    environment:
+      DATABASE_URL: sqlite+pysqlite:////app/data/math_tutor.sqlite3
+      MATH_TUTOR_DATA_DIR: /app/data
+    volumes:
+      - ../../data:/app/data
+    ports:
+      - 127.0.0.1:8000:8000
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+  worker:
+    image: math-practice-tutor:local
+    command: [python, -m, math_tutor.worker]
+    env_file: ../../.env
+    environment:
+      DATABASE_URL: sqlite+pysqlite:////app/data/math_tutor.sqlite3
+      MATH_TUTOR_DATA_DIR: /app/data
+    volumes:
+      - ../../data:/app/data
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped

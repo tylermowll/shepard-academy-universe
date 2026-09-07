@@ -1,0 +1,67 @@
+# Copy to private config/providers.yaml; never commit operator settings or keys.
+# Choose exact installed/approved model IDs, fill eligibility_record, then enable.
+schema_version: 1
+routes:
+  tutor: demo
+  vision: demo
+providers:
+  demo:
+    adapter: mock
+    model: fixture-v1
+    enabled: true
+    data_boundary: synthetic
+    audience: mixed
+    capabilities:
+      image_input: true
+  spark:
+    adapter: meta
+    base_url: https://api.meta.ai/v1
+    model: REPLACE_WITH_APPROVED_EXACT_MODEL_ID
+    api_key_env: META_API_KEY
+    enabled: false
+    data_boundary: cloud
+    audience: adult_only
+    eligibility_record: ''
+    capabilities:
+      image_input: false
+  local_ollama:
+    adapter: ollama
+    base_url: http://127.0.0.1:11434
+    model: REPLACE_WITH_INSTALLED_EXACT_MODEL_ID
+    enabled: false
+    data_boundary: local_network
+    audience: mixed
+    eligibility_record: ''
+    capabilities:
+      image_input: false
+  local_vllm:
+    adapter: vllm
+    base_url: http://127.0.0.1:8081/v1
+    model: REPLACE_WITH_SERVED_EXACT_MODEL_ID
+    enabled: false
+    data_boundary: local_network
+    audience: mixed
+    eligibility_record: ''
+    capabilities:
+      image_input: false
+  compatible:
+    adapter: compatible
+    base_url: http://127.0.0.1:8082/v1
+    model: REPLACE_WITH_SERVED_EXACT_MODEL_ID
+    enabled: false
+    data_boundary: local_network
+    audience: mixed
+    eligibility_record: ''
+    capabilities:
+      image_input: false
+      structured_output_mode: json_prompt
+  aws:
+    adapter: bedrock
+    region: us-east-1
+    model: REPLACE_WITH_APPROVED_MODEL_OR_INFERENCE_PROFILE_ID
+    enabled: false
+    data_boundary: cloud
+    audience: adult_only
+    eligibility_record: ''
+    capabilities:
+      image_input: false

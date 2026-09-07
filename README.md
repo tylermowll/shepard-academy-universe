@@ -1,56 +1,36 @@
 # Math Practice Tutor
 
-A self-hosted math practice app in development. The planned workflow is to assign a
-problem, accept typed or photographed work, verify supported mathematics with exact
-arithmetic, and help the learner revise. The initial topics are fractions and
-introductory one-variable linear equations.
+A self-hosted math practice PWA for one household. Practice fractions and linear
+equations, enter an answer and optional steps, ask questions, or submit a photo.
+Exact rational arithmetic checks supported answers. Photos require confirmation;
+model responses cannot change grades, permissions, or progress.
 
-## Current status
+The repository now includes the T03–T23 implementations. Automated evidence and
+remaining release gates are recorded in [TASKS](docs/TASKS.md) and
+[ACCEPTANCE](docs/ACCEPTANCE.md). Live model quality, real phone camera/install
+checks, and browser model device measurements remain unverified. They require the
+maintainer's devices/accounts and were explicitly deferred. This is not a claim
+of production readiness or educational effectiveness.
 
-**T00–T02 pass their local gates. This is a development scaffold, not a usable tutor.**
+## Try the synthetic demo
 
-| Area | Implemented today |
-|---|---|
-| Backend | Packaged Python 3.14 / FastAPI application with typed `GET /health` response and adult session endpoints (`GET /api/v1/auth/session`, `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`) |
-| Database | SQLite/SQLAlchemy/Alembic foundation with migrations 0001–0002, explicit transactions, private storage, UUID/UTC adapters, constrained practice/authentication tables, and public/private schemas |
-| Frontend | React/TypeScript/Vite preview with Tailwind, an availability notice, and a JavaScript-disabled fallback |
-| Quality checks | Locked dependencies, Python/frontend lint/format/types/tests/builds, on-disk SQLite integration tests, desktop/mobile browser smoke tests |
-| Development workflow | Pre-commit checks and a full-stack GitHub Actions workflow; T00–T02 hosted runs verified, with review evidence in the task log |
-| Authentication | Adult bootstrap via `make admin`, Argon2id password hashes, opaque sessions with CSRF/expiry/revocation; learner pairing arrives in T03 |
-| Tutoring, providers, deployment | Not implemented |
-
-The detailed [specification](docs/SPECIFICATION.md) describes planned behavior.
-[Task status and evidence](docs/TASKS.md) record what has actually passed. No live
-provider has been tested, and the scaffold is not ready for real learner data or
-public deployment.
-
-## Quick start
-
-Run commands from the repository root. Prerequisites:
-
-- Git and GNU Make in a POSIX shell (Linux, macOS, or WSL).
-- [uv](https://docs.astral.sh/uv/getting-started/installation/) `>=0.12.10,<0.13`.
-- [Node.js](https://nodejs.org/en/download) 24.20.0 (latest LTS), pinned in `.node-version`.
-- pnpm 12.3.4: with Node installed, run `npm install --global pnpm@12.3.4`.
-
-Verified versions and compatibility exceptions are recorded in
-[DEPENDENCIES.md](docs/DEPENDENCIES.md) and [DECISIONS.md](docs/DECISIONS.md).
+Prerequisites: Git, GNU Make, Node **24.20.0**, pnpm **12.3.4**, and uv
+**0.12.10**. Python **3.14.7** is installed by uv if needed. See
+[dependency decisions](docs/DEPENDENCIES.md).
 
 ```bash
 make bootstrap
-make hooks-install
-make check
-make dev-web
+make demo
 ```
 
-Open <http://127.0.0.1:5173> for the frontend preview. In a second terminal, run
-`make dev-api` for the API. Both development servers use loopback only.
+Open <http://127.0.0.1:8000>. Sign in as `demo` with
+`synthetic-demo-password-only`. This public credential belongs only to the
+isolated, temporary demo database. Select Orbit or Delta, start a session, and
+assign a problem. Ctrl+C stops both services and deletes the disposable database.
+Demo mode accepts numeric answers and authored help, blocks free-text work,
+photos, and live providers, and never reads private operator configuration.
 
-Bootstrap installs locked backend dependencies in `apps/api/.venv` and frontend
-workspace dependencies in `node_modules`; uv can download Python 3.14.7 if missing.
-The first install requires network access to package/runtime sources. There is no
-model or API key at this stage. Before starting the API, run the following from
-the repository root:
+## Set up private practice
 
 ```bash
 make setup
@@ -60,155 +40,105 @@ set +a
 make db
 make migrate
 make admin
-make dev-api
+make dev
 ```
 
-`make setup` generates a mode-0600 `.env` with an absolute SQLite path and a random
-session secret. It refuses to read or overwrite an existing file; if one already
-exists, configure it locally using `.env.example` and skip setup. The application
-reads exported environment variables, so repeat the export lines in each new
-shell. Never share the file or its contents with a coding agent.
+`make setup` creates a private `.env` with an absolute SQLite path and a random
+session secret; it refuses to read or overwrite an existing file. Export its
+values in each new shell. Never share that file with coding agents. `make admin`
+accepts the password through a hidden interactive prompt. Password reset revokes
+that administrator's sessions.
 
-Without an override, storage resolves to the checkout's ignored `data/` directory
-regardless of working directory. Relative SQLite URLs resolve within that data
-directory. An installed package outside a checkout needs an absolute
-`DATABASE_URL` or `MATH_TUTOR_DATA_DIR`. All database entrypoints enforce private
-directory/file permissions. `make migrate` requires application writes stopped.
-`make admin` creates or resets the named administrator interactively; reset revokes
-that administrator's existing sessions. Passwords must contain 12–256 characters.
+`make dev` builds and serves the UI, API, and worker at the configured loopback
+origin (default <http://127.0.0.1:8000>). Select/create a learner in the adult
+workspace. On a second browser, choose **Pair this device**, copy its request ID
+to the adult workspace, and approve the selected learner. Pairing expires after
+five minutes and is bound to the requesting browser. Learners can access only
+their own practice; adults can review managed learners' history.
 
-The project is pre-production and uses hard cutovers ([D005](docs/DECISIONS.md#d005--pre-production-hard-cutovers-2026-09-06)).
-Recreate any disposable database made before this review, then run `make migrate`
-and `make admin`. Earlier development schemas have no upgrade path.
+The default mock vision route does not read handwriting: it exercises confirmation
+by asking you to type the transcription and final answer. Built-in hints and
+exact checking work without any model. Configure live routes using
+[providers.example.yaml](config/providers.example.yaml) and follow
+[PROVIDER_STATUS](docs/PROVIDER_STATUS.md) before using them.
 
-Startup rejects missing/placeholder session secrets and invalid public origins.
-The development origin is `http://127.0.0.1:8000`; use that exact address for the
-API. Non-loopback origins require HTTPS. Requests must use the configured Host
-and, when supplied, the exact Origin. Native development disables proxy headers;
-a future gateway deployment must explicitly scope its trusted proxies.
+This is a pre-production hard cutover: recreate disposable databases from earlier
+revisions. Do not apply these corrected initial migrations to data you intend to
+retain. [RUNBOOK](docs/RUNBOOK.md) covers private HTTPS, containers, EC2/EBS,
+retention, encrypted backups, and restore rehearsals.
 
-Open <http://127.0.0.1:8000/health>; the expected response is `{"status":"ok"}`.
-API documentation is at <http://127.0.0.1:8000/docs>. Stop the server with
-`Ctrl+C`. The health endpoint checks only that the API process responds; it does
-not assert database, worker, or provider readiness. The development server binds
-to loopback by default.
+![Synthetic practice with a corrected answer and recorded assistance](docs/screenshots/synthetic-practice.png)
 
-For browser smoke tests, install Chromium once with `pnpm exec playwright install
-chromium`, then run `make smoke`. This builds the app, starts fresh API and frontend
-servers on loopback ports 18000 and 4173, and stops them afterward. It refuses to
-reuse an existing server. On Linux, Playwright may also need its documented system
-dependencies (`pnpm exec playwright install --with-deps chromium`). To use an
-already installed Chrome, set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to its binary.
-Mobile checks use browser emulation; they do not certify real-phone behavior.
+## Behavior and boundaries
 
-If uv reports a read-only cache in a restricted environment, set `UV_CACHE_DIR`
-to a writable directory when running Make. A restricted pnpm store can be set with
-`make bootstrap PNPM='pnpm --store-dir /path/to/writable/store'`. If port 8000 is
-occupied, stop the other process or run `uv run --directory apps/api --locked uvicorn
-math_tutor.api.app:app --reload --port 8001`.
+- Seven supported skills: fraction addition, subtraction, multiplication,
+  division, simplification, equivalence, and `a*x+b=c` equations.
+- Separate answer, format, and reasoning status. Reasoning is explicitly **not
+  checked**; correct final answers do not certify intermediate work.
+- Versioned profiles, progressively requested help, session history, bounded
+  progress counts, authenticated exports, and deletion with recovery tombstones.
+- Durable jobs survive API reloads and worker crashes. Duplicate requests produce
+  one visible result. A crash after a provider response may require a second
+  billed request; total calls remain bounded.
+- Photos are normalized privately, metadata removed, and deleted within 24 hours.
+  History defaults to 30 days. Retention runs in the worker.
+- Public offline exercises check exact values locally and never sync or count as
+  saved server progress. Service-worker caches contain public assets only.
+- Optional external-problem photos always remain **unverifiable**. Optional
+  browser model research requires explicit download consent, uses synthetic text
+  only, and has no access to tutoring grades or saved work.
 
-## Development commands
+```mermaid
+flowchart LR
+  Browser[React PWA] --> API[FastAPI: auth, ownership, exact checking]
+  API --> DB[(Private local SQLite)]
+  Worker[Separate worker] --> DB
+  Worker --> Routes[Policy-checked provider adapters]
+  API --> Photos[Private normalized photos]
+  Worker --> Photos
+```
 
-The [Makefile](Makefile) is the authority for commands that exist today.
+Run one API process and one worker on the same host and local disk. No network
+filesystem, horizontal scaling, autonomous model tools, or silent cloud fallback.
+Provider keys and answer keys stay on the backend.
 
-| Command | Behavior |
+## Commands and verification
+
+The [Makefile](Makefile) is authoritative.
+
+| Command | Purpose |
 |---|---|
-| `make bootstrap` | Verify Node/pnpm and install both locked development environments |
-| `make setup` | Generate a private local settings file without reading or overwriting one |
-| `make toolchain-check` | Reject unsupported Node or mismatched pnpm versions with setup guidance |
-| `make hooks-install` | Install the local Git pre-commit hook; repeat for each clone |
-| `make hooks-check` | Run hook checks against all tracked files |
-| `make check` | Check both locks, Python/frontend lint, formatting, types, tests, and builds |
-| `make smoke` | Build and run API/frontend browser smoke tests, including JavaScript-disabled fallback |
-| `make pre-commit-check` | Run Python/frontend checks without builds or browser startup |
-| `make test` | Run backend unit and frontend component tests |
-| `make test-integration` | Run on-disk SQLite integration tests in isolated temporary files |
-| `make db` | Validate the SQLite path, embedded runtime version, and connection settings |
-| `make migrate` | Apply reviewed Alembic migrations with application writes stopped |
-| `make admin` | Interactively create or reset the adult administrator (password via prompt, never argv) |
-| `make lint` / `make format-check` | Check Python/frontend lint or formatting without changing files |
-| `make format` | Format Python/frontend files; review and stage the changes yourself |
-| `make typecheck` | Run strict mypy and TypeScript over source, tests, and configuration |
-| `make build` | Build Python packages in `apps/api/dist/` and the frontend in `apps/web/dist/` |
-| `make lock` / `make lock-check` | Reconcile both lockfiles / check freshness without rewriting them |
-| `make dev-api` | Run the API with reload on loopback port 8000 |
-| `make dev-web` | Run the frontend with reload on loopback port 5173 |
+| `make bootstrap`, `make hooks-install` | Locked install and local commit checks |
+| `make check` | Locks, lint, format, strict types, unit/component tests, builds, generated contracts, secret scan, IaC lint |
+| `make test-integration` | On-disk migration, authorization, recovery, provider-policy and retention checks |
+| `make smoke` / `make test-e2e` | Isolated API/worker and desktop/mobile Chromium workflows |
+| `make eval-mock` | Original deterministic fixtures and mock vision contracts; no quality claim |
+| `make audit`, `make hooks-check` | Locked dependency vulnerability audit and tracked-file checks |
+| `make contracts` / `make contracts-check` | Regenerate OpenAPI/TypeScript or reject drift |
+| `make format`, `make lint`, `make typecheck` | Focused developer checks |
+| `make demo`, `make seed-demo` | Disposable supervisor, or explicit empty demo database seed |
+| `make dev`, `make worker` | Native foreground services, or worker alone |
+| `make down` | Stop Compose services while retaining data; native services use Ctrl+C |
+| `make backup OUTPUT=...`, `make restore INPUT=... OUTPUT=... LEDGER=...` | Interactive encrypted backup/restore with writes stopped |
+| `make eval-live PROVIDER=...` | Explicit opt-in, at most three synthetic tutor calls; requires configured route |
 
-For a reviewed dependency upgrade, use `uv lock --directory apps/api
---upgrade-package <name>`, inspect `uv.lock`, update
-[DEPENDENCIES.md](docs/DEPENDENCIES.md), and run the checks. Commit the lockfile
-with its dependency metadata. Only add dependencies when an implemented task
-needs them.
+Install the test browser with `pnpm exec playwright install --with-deps chromium`,
+or set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to an installed Chrome. Mobile
+emulation does not certify actual Safari/Chrome phone behavior. Restricted tools
+can use `UV_CACHE_DIR=/tmp/...` and `PNPM='pnpm --store-dir /tmp/...'`.
 
-For frontend dependencies, update the relevant workspace's exact package version
-and regenerate `pnpm-lock.yaml` with `make lock`. Review compatibility and both
-lockfiles, update the dependency record, then run `make check` and `make smoke`.
+CI also builds and smoke-tests the non-root container, scans HIGH/CRITICAL image
+vulnerabilities, and generates an SBOM. It does not provision, publish a service,
+or invoke live inference. The task log distinguishes observed runs from configured
+checks. Review public staged files; never blanket-add local configuration or data.
 
-### Commit checks and CI
+## Contributing and license
 
-The [pre-commit configuration](.pre-commit-config.yaml) uses tools from the same
-uv lockfile as development. It blocks private configuration/runtime paths,
-SQLite databases and their sidecars, private key material, merge markers,
-oversized files, invalid YAML/TOML, and whitespace
-errors, then runs both backend and frontend checks. Formatting checks do not stage
-changes.
-The [pre-commit framework](https://pre-commit.com/#pre-commit) temporarily sets
-aside unstaged changes to check the staged revision and restores them afterward.
+Read [AGENTS](AGENTS.md), the [specification](docs/SPECIFICATION.md), and the
+[current handoff](docs/HANDOFF.md). Use original synthetic fixtures and record
+actual outcomes. See [THREAT_MODEL](docs/THREAT_MODEL.md) for boundaries and
+[evals/MANIFEST](evals/MANIFEST.md) for provenance. Implementation was AI-assisted;
+software tests and human review provide the evidence, not model self-assessment.
 
-`make hooks-check` uses Git's tracked-file list. Stage only reviewed public source
-files so new files are included; do not use a blanket add of local data.
-Hooks can be bypassed, and private-key detection is not a general
-API-token or learner-data scanner. Review staged content yourself; broader secret
-and dependency vulnerability scanning remain release requirements.
-
-[Project CI](.github/workflows/ci.yml) runs locked setup, the same hooks, and
-`make check` and `make smoke` on pushes and pull requests. It has read-only
-repository permissions, uses actions pinned to commit SHAs, and needs no provider
-credentials. The original T00, T01, and T02 hosted runs have been observed passing.
-T01 added the SQLite runtime check and on-disk integration gate to CI; T02's auth
-tests run inside the existing unit and integration gates. The task log separates
-those historical runs from the review changes and their validation.
-
-## Architecture and implementation order
-
-The planned stack is a React/TypeScript/Vite PWA, a FastAPI modular monolith,
-SQLite on local disk, and a separate worker from the same backend codebase.
-The initial deployment serves one household on one host; API and worker share
-one private data directory. Native setup needs no database daemon or Docker.
-Domain code owns exact arithmetic and verdicts; adapters isolate model providers. Photos require
-transcription confirmation before grading. Providers cannot change permissions,
-answer keys, or workflow state, and local failures cannot silently send work to a
-cloud service. See the [architecture contract](docs/SPECIFICATION.md#5-application-architecture).
-
-The next task is T03: managed learner aliases, device pairing, and ownership
-checks. Then follow T04–T05 toward one persisted fraction problem with a typed
-answer and deterministic feedback. AI integration follows that working slice.
-[HANDOFF.md](docs/HANDOFF.md) contains the Spark 1.3 prompt, per-task gates, and
-database runtime prerequisites. Do not skip unfinished gates or treat the full
-roadmap as one implementation task.
-
-The approved [SQLite decision](docs/DECISIONS.md#d004--sqlite-for-the-initial-deployment-2026-09-06)
-defines WAL, connection settings, migrations, job claims, and consistent backups.
-T01 implemented the foundation with migration 0001 and T02 added the
-administrator/device-session tables in migration 0002, including session
-identity/lifetime constraints. The embedded SQLite floor
-is 3.53.1 with a documented exception (see D001). Multiple application hosts and
-network-mounted database files are outside this design.
-
-## Contributing and documentation
-
-Read [AGENTS.md](AGENTS.md), [TASKS.md](docs/TASKS.md), and the relevant
-[specification sections](docs/SPECIFICATION.md) before editing. Keep each change
-bounded, name affected contracts/tests, preserve unrelated edits, and record actual
-commands and outcomes in the task log. Run `make hooks-check` and `make check`
-before requesting review, plus `make smoke` for UI/workflow changes. The repository
-uses AI-assisted development; acceptance claims still require test evidence and
-maintainer review.
-
-Use synthetic fixtures only. Never commit credentials, private provider settings,
-learner data, uploads, or private logs. Paid inference, model downloads, cloud
-provisioning, deployment, and Git pushes require maintainer authorization.
-
-MIT is proposed, but **no license has been selected or added yet**. The maintainer
-must confirm and add the complete license before public release; dependencies,
-model weights, and third-party content retain their own licenses.
+[MIT licensed](LICENSE), as approved by the maintainer. Dependencies, model
+weights, and third-party runtime artifacts retain their own licenses.

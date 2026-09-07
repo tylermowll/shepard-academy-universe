@@ -19,9 +19,26 @@ depends_on = None
 
 def upgrade() -> None:
     op.create_table(
+        "learner",
+        sa.Column("id", sa.String(36), primary_key=True),
+        sa.Column("alias", sa.String(64), nullable=False),
+        sa.Column("eligibility", sa.String(16), nullable=False),
+        sa.Column("enabled", sa.Boolean(), nullable=False),
+        sa.Column("deleted_at", sa.DateTime(timezone=True)),
+        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
+        sa.CheckConstraint(
+            "eligibility IN ('adult', 'minor', 'unknown')", name="ck_learner_eligibility"
+        ),
+    )
+    op.create_table(
         "practice_session",
         sa.Column("id", sa.String(36), nullable=False),
-        sa.Column("learner_id", sa.String(36), nullable=False),
+        sa.Column(
+            "learner_id",
+            sa.String(36),
+            sa.ForeignKey("learner.id", ondelete="CASCADE", name="fk_practice_session_learner"),
+            nullable=False,
+        ),
         sa.Column("status", sa.String(16), nullable=False, server_default="open"),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False),
@@ -67,3 +84,4 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.drop_table("problem_instance")
     op.drop_table("practice_session")
+    op.drop_table("learner")

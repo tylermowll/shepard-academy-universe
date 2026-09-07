@@ -28,8 +28,8 @@ committed in `apps/api/uv.lock` and installed with `--locked`.
 | Mako | transitive / 1.4.1 | Alembic migration templating (T01) |
 | MarkupSafe | transitive / 3.0.3 | Mako escaping dependency (T01) |
 
-Only dependencies used by implemented tasks are installed. Add provider,
-image, and property-testing packages in the task that first uses them.
+Only dependencies used by implemented tasks are installed. The completed roadmap
+adds the provider, image, backup and evaluation dependencies recorded below.
 
 ## Persistence baseline (T01 implemented)
 
@@ -100,7 +100,7 @@ Node via `.node-version`; pnpm/action-setup reads the exact root `packageManager
 
 Pins were checked against the official repositories' release refs on September 6,
 2026. Ubuntu 24.04 is the latest generally available Ubuntu LTS runner; 26.04 is
-still a GitHub Public preview (see D001). No hosted CI run is claimed.
+still a GitHub Public preview (see D001). See TASKS for observed hosted CI runs.
 
 Sources: [Node releases](https://nodejs.org/en/about/previous-releases),
 [Python downloads](https://www.python.org/downloads/),
@@ -110,3 +110,37 @@ Sources: [Node releases](https://nodejs.org/en/about/previous-releases),
 [pnpm settings](https://pnpm.io/settings), [Vite](https://vite.dev/guide/),
 [Tailwind's Vite integration](https://tailwindcss.com/docs/installation/using-vite),
 [Playwright web servers](https://playwright.dev/docs/test-webserver).
+
+## T03–T23 additions
+
+| Package | Locked resolution | Purpose |
+|---|---|---|
+| boto3 / botocore / matching stubs | 1.43.89 | Bedrock Converse and explicit S3 archive transport; stubs are development only |
+| Pillow | 12.3.0 | Bounded raster normalization and original synthetic fixtures |
+| pillow-heif | 1.7.0 | HEIC/HEIF decoder |
+| cryptography | 50.0.1 | Authenticated encrypted backup format |
+| PyYAML / types-PyYAML | uv.lock | Strict operator configuration and development typing |
+| Hypothesis | 6.167.1 | Exact arithmetic properties |
+| pip-audit | 2.10.1 | Audit all locked Python dependencies |
+| cfn-lint | 1.56.0 | Local CloudFormation validation; transitive SymPy is development-only IaC tooling, never a learner-text evaluator |
+| KaTeX / @types/katex | 0.18.6 / 0.16.8 | Restricted trusted-false math rendering |
+| @mlc-ai/web-llm | 0.2.84 | Optional isolated browser research; no weights bundled |
+| openapi-typescript | 7.13.0 | Generated frontend API schemas |
+| tools/contracts TypeScript | 5.9.3 | Isolated generator peer compatibility; application remains 6.0.3 |
+
+The Python lock resolves 97 packages including development tools. The first audit
+identified PYSEC-2026-3552 in cryptography 49.0.0; upgrading to 50.0.1 cleared the
+Python audit. The pnpm audit also passed. There is no vulnerability suppression.
+Run audits again for release; an earlier pass is not a permanent security claim.
+
+Container bases are digest-pinned in `infra/docker/Dockerfile`; public registry
+metadata was verified before pinning. The runtime uses uv-managed Python to retain
+the tested embedded SQLite version. CI scans HIGH/CRITICAL findings including
+unfixed ones with Trivy action v0.36.0 pinned to
+`ed142fd0673e97e23eac54620cfb913e5ce36c25`, and generates a CycloneDX SBOM.
+A failed image scan must be fixed or receive a separately documented reviewed
+exception; it is never silently ignored. See TASKS for the actual image scan result.
+
+Browser-model files are pinned by exact public repository revision and individual
+hashes in `research-manifest.json`. These are metadata, not downloaded weights.
+Actual runtime/model/device interoperability remains a maintainer gate (T23).

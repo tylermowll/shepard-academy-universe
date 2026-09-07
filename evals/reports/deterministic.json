@@ -1,0 +1,457 @@
+{
+  "suite": "original-rational-v1-and-vision-v1",
+  "mock_vision": [
+    {
+      "id": "vision-01",
+      "category": "clear",
+      "passed": true
+    },
+    {
+      "id": "vision-02",
+      "category": "messy",
+      "passed": true
+    },
+    {
+      "id": "vision-03",
+      "category": "rotated",
+      "passed": true
+    },
+    {
+      "id": "vision-04",
+      "category": "ambiguous",
+      "passed": true
+    },
+    {
+      "id": "vision-05",
+      "category": "adversarial",
+      "passed": true
+    },
+    {
+      "id": "vision-06",
+      "category": "clear",
+      "passed": true
+    },
+    {
+      "id": "vision-07",
+      "category": "messy",
+      "passed": true
+    },
+    {
+      "id": "vision-08",
+      "category": "rotated",
+      "passed": true
+    },
+    {
+      "id": "vision-09",
+      "category": "ambiguous",
+      "passed": true
+    },
+    {
+      "id": "vision-10",
+      "category": "adversarial",
+      "passed": true
+    },
+    {
+      "id": "vision-11",
+      "category": "clear",
+      "passed": true
+    },
+    {
+      "id": "vision-12",
+      "category": "messy",
+      "passed": true
+    },
+    {
+      "id": "vision-13",
+      "category": "rotated",
+      "passed": true
+    },
+    {
+      "id": "vision-14",
+      "category": "ambiguous",
+      "passed": true
+    },
+    {
+      "id": "vision-15",
+      "category": "adversarial",
+      "passed": true
+    },
+    {
+      "id": "vision-16",
+      "category": "clear",
+      "passed": true
+    },
+    {
+      "id": "vision-17",
+      "category": "messy",
+      "passed": true
+    },
+    {
+      "id": "vision-18",
+      "category": "rotated",
+      "passed": true
+    },
+    {
+      "id": "vision-19",
+      "category": "ambiguous",
+      "passed": true
+    },
+    {
+      "id": "vision-20",
+      "category": "adversarial",
+      "passed": true
+    },
+    {
+      "id": "vision-21",
+      "category": "clear",
+      "passed": true
+    },
+    {
+      "id": "vision-22",
+      "category": "messy",
+      "passed": true
+    },
+    {
+      "id": "vision-23",
+      "category": "rotated",
+      "passed": true
+    },
+    {
+      "id": "vision-24",
+      "category": "ambiguous",
+      "passed": true
+    },
+    {
+      "id": "vision-25",
+      "category": "adversarial",
+      "passed": true
+    },
+    {
+      "id": "vision-26",
+      "category": "clear",
+      "passed": true
+    },
+    {
+      "id": "vision-27",
+      "category": "messy",
+      "passed": true
+    },
+    {
+      "id": "vision-28",
+      "category": "rotated",
+      "passed": true
+    },
+    {
+      "id": "vision-29",
+      "category": "ambiguous",
+      "passed": true
+    },
+    {
+      "id": "vision-30",
+      "category": "adversarial",
+      "passed": true
+    }
+  ],
+  "model_quality": "Not measured; mock deliberately requests human transcription.",
+  "provider": "none; deterministic verification",
+  "cases": [
+    {
+      "id": "R01",
+      "passed": true,
+      "observed": {
+        "answer_status": "correct",
+        "format_status": "satisfied",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R02",
+      "passed": true,
+      "observed": {
+        "answer_status": "correct",
+        "format_status": "satisfied",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R03",
+      "passed": true,
+      "observed": {
+        "answer_status": "correct",
+        "format_status": "satisfied",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R04",
+      "passed": true,
+      "observed": {
+        "answer_status": "correct",
+        "format_status": "satisfied",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R05",
+      "passed": true,
+      "observed": {
+        "answer_status": "correct",
+        "format_status": "satisfied",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R06",
+      "passed": true,
+      "observed": {
+        "answer_status": "correct",
+        "format_status": "satisfied",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R07",
+      "passed": true,
+      "observed": {
+        "answer_status": "correct",
+        "format_status": "satisfied",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R08",
+      "passed": true,
+      "observed": {
+        "answer_status": "correct",
+        "format_status": "satisfied",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R09",
+      "passed": true,
+      "observed": {
+        "answer_status": "correct",
+        "format_status": "satisfied",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R10",
+      "passed": true,
+      "observed": {
+        "answer_status": "correct",
+        "format_status": "satisfied",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R11",
+      "passed": true,
+      "observed": {
+        "answer_status": "correct",
+        "format_status": "satisfied",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R12",
+      "passed": true,
+      "observed": {
+        "answer_status": "correct",
+        "format_status": "satisfied",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R13",
+      "passed": true,
+      "observed": {
+        "answer_status": "incorrect",
+        "format_status": "satisfied",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R14",
+      "passed": true,
+      "observed": {
+        "answer_status": "incorrect",
+        "format_status": "satisfied",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R15",
+      "passed": true,
+      "observed": {
+        "answer_status": "incorrect",
+        "format_status": "satisfied",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R16",
+      "passed": true,
+      "observed": {
+        "answer_status": "incorrect",
+        "format_status": "satisfied",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R17",
+      "passed": true,
+      "observed": {
+        "answer_status": "incorrect",
+        "format_status": "needs_simplification",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R18",
+      "passed": true,
+      "observed": {
+        "answer_status": "correct",
+        "format_status": "needs_simplification",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R19",
+      "passed": true,
+      "observed": {
+        "answer_status": "correct",
+        "format_status": "needs_simplification",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R20",
+      "passed": true,
+      "observed": {
+        "answer_status": "correct",
+        "format_status": "needs_simplification",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R21",
+      "passed": true,
+      "observed": {
+        "answer_status": "correct",
+        "format_status": "needs_simplification",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R22",
+      "passed": true,
+      "observed": {
+        "answer_status": "unverifiable",
+        "format_status": "unverifiable",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R23",
+      "passed": true,
+      "observed": {
+        "answer_status": "unverifiable",
+        "format_status": "unverifiable",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R24",
+      "passed": true,
+      "observed": {
+        "answer_status": "unverifiable",
+        "format_status": "unverifiable",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R25",
+      "passed": true,
+      "observed": {
+        "answer_status": "unverifiable",
+        "format_status": "unverifiable",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R26",
+      "passed": true,
+      "observed": {
+        "answer_status": "unverifiable",
+        "format_status": "unverifiable",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R27",
+      "passed": true,
+      "observed": {
+        "answer_status": "unverifiable",
+        "format_status": "unverifiable",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R28",
+      "passed": true,
+      "observed": {
+        "answer_status": "unverifiable",
+        "format_status": "unverifiable",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R29",
+      "passed": true,
+      "observed": {
+        "answer_status": "unverifiable",
+        "format_status": "unverifiable",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R30",
+      "passed": true,
+      "observed": {
+        "answer_status": "unverifiable",
+        "format_status": "unverifiable",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R31",
+      "passed": true,
+      "observed": {
+        "answer_status": "unverifiable",
+        "format_status": "unverifiable",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R32",
+      "passed": true,
+      "observed": {
+        "answer_status": "unverifiable",
+        "format_status": "unverifiable",
+        "reasoning_status": "not_checked"
+      }
+    },
+    {
+      "id": "R33",
+      "passed": true,
+      "observed": {
+        "answer_status": "no_answer",
+        "format_status": "not_applicable",
+        "reasoning_status": "not_checked"
+      }
+    }
+  ],
+  "passed": true
+}

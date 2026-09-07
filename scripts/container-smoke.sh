@@ -1,0 +1,34 @@
+#!/bin/sh
+set -eu
+image=${1:-math-practice-tutor:ci}
+volume="math-tutor-ci-$$"
+api_name="math-tutor-api-$$"
+worker_name="math-tutor-worker-$$"
+cleanup() {
+  docker rm -f "$api_name" "$worker_name" >/dev/null 2>&1 || :
+  docker volume rm "$volume" >/dev/null 2>&1 || :
+}
+trap cleanup EXIT HUP INT TERM
+docker volume create "$volume" >/dev/null
+docker run --rm --user 0:0 --mount "type=volume,src=$volume,dst=/app/data" "$image" python -c 'import os; os.chown("/app/data",10001,10001); os.chmod("/app/data",0o700)'
+secret=$(python3 -c 'import secrets; print(secrets.token_urlsafe(48))')
+export SESSION_SECRET="$secret"
+export APP_PUBLIC_ORIGIN=http://127.0.0.1:18080
+docker run --rm --mount "type=volume,src=$volume,dst=/app/data" --env SESSION_SECRET --env APP_PUBLIC_ORIGIN "$image" alembic -c alembic.ini upgrade head
+docker run --rm --mount "type=volume,src=$volume,dst=/app/data" "$image" python -m math_tutor.cli db
+docker run --rm --mount "type=volume,src=$volume,dst=/app/data" "$image" python -c 'from math_tutor.demo import seed; from math_tutor.adapters.db.engine import create_default_engine; e=create_default_engine(); seed(e); e.dispose()'
+docker run -d --name "$api_name" --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges --mount "type=volume,src=$volume,dst=/app/data" --env SESSION_SECRET --env APP_PUBLIC_ORIGIN -p 127.0.0.1:18080:8000 "$image" >/dev/null
+docker run -d --name "$worker_name" --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges --mount "type=volume,src=$volume,dst=/app/data" --env SESSION_SECRET --env APP_PUBLIC_ORIGIN "$image" python -m math_tutor.worker >/dev/null
+python3 - <<'PY'
+import json,time,urllib.request
+for attempt in range(30):
+ try:
+  with urllib.request.urlopen('http://127.0.0.1:18080/health/ready',timeout=2) as response:
+   assert json.load(response)=={'status':'ready'}
+  with urllib.request.urlopen('http://127.0.0.1:18080/') as response:assert b'Math Practice Tutor' in response.read()
+  break
+ except OSError:
+  time.sleep(1)
+else:raise SystemExit('Container startup failed.')
+print('Non-root container, SQLite migration, worker readiness, and built UI passed.')
+PY

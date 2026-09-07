@@ -231,7 +231,7 @@ _login_attempts: dict[str, tuple[float, int]] = {}
 _login_attempts_lock = Lock()
 
 
-def register_login_attempt(key: str) -> float | None:
+def register_login_attempt(key: str, limit: int | None = None) -> float | None:
     """Record a login attempt; return retry-after seconds when over budget.
 
     At most :data:`LOGIN_RATE_LIMIT` attempts per
@@ -248,7 +248,7 @@ def register_login_attempt(key: str) -> float | None:
         if key not in _login_attempts and len(_login_attempts) >= MAX_LOGIN_RATE_KEYS:
             return min(end for end, _ in _login_attempts.values()) - now
         end, count = _login_attempts.get(key, (now + LOGIN_RATE_WINDOW_SECONDS, 0))
-        if count >= LOGIN_RATE_LIMIT:
+        if count >= (LOGIN_RATE_LIMIT if limit is None else limit):
             return end - now
         _login_attempts[key] = (end, count + 1)
         return None

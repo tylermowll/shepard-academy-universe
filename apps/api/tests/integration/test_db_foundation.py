@@ -31,10 +31,10 @@ from math_tutor.adapters.db.engine import (
     create_engine_for_url,
     verify_connection_settings,
 )
-from math_tutor.adapters.db.models import PracticeSession, ProblemInstance
+from math_tutor.adapters.db.models import Learner, PracticeSession, ProblemInstance
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
-HEAD_REVISION = "0002_auth_sessions"
+HEAD_REVISION = "0008_deletion_audit"
 
 
 @pytest.fixture
@@ -71,9 +71,11 @@ def upgrade(db_url: str, revision: str = "head") -> None:
 
 
 def make_session(learner_id: uuid.UUID | None = None) -> PracticeSession:
+    learner = Learner(id=learner_id or uuid.uuid4(), alias="Synthetic", eligibility="unknown")
     return PracticeSession(
         id=uuid.uuid4(),
-        learner_id=learner_id or uuid.uuid4(),
+        learner_id=learner.id,
+        learner=learner,
         status="open",
         created_at=datetime.now(UTC),
         updated_at=datetime.now(UTC),
@@ -117,6 +119,21 @@ def test_empty_file_migration_reaches_head(engine: Engine, db_url: str) -> None:
         "administrator",
         "device_session",
         "alembic_version",
+        "learner",
+        "pairing_request",
+        "submission",
+        "evaluation",
+        "tutor_turn",
+        "progress_event",
+        "job",
+        "worker_heartbeat",
+        "tutor_profile_version",
+        "provider_probe",
+        "route_selection",
+        "model_call",
+        "interpretation",
+        "deletion_tombstone",
+        "audit_event",
     }
     assert columns["practice_session"] >= {"id", "learner_id", "status", "created_at"}
     assert columns["problem_instance"] >= {
@@ -403,7 +420,7 @@ def test_uuid_adapter_round_trips_and_rejects_garbage(engine: Engine, db_url: st
         active.rollback()
 
     with Session(engine) as active:
-        broken = make_session()
+        broken = PracticeSession()
         broken.learner_id = "not-a-uuid"  # type: ignore[assignment]
         active.add(broken)
         with pytest.raises(StatementError) as exc_info:

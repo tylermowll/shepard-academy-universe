@@ -1,0 +1,17 @@
+{
+  "id": "/",
+  "name": "Math Practice Tutor",
+  "short_name": "Math Practice",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f7f6ef",
+  "theme_color": "#173d34",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

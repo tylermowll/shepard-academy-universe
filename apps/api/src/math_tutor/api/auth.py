@@ -21,6 +21,7 @@ import math
 import secrets
 from typing import Literal, cast
 from urllib.parse import urlsplit
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -65,6 +66,7 @@ class SessionStatus(BaseModel):
     authenticated: bool
     role: Literal["adult", "learner"] | None = None
     login_name: str | None = None
+    learner_id: UUID | None = None
     csrf_token: str
 
 
@@ -199,6 +201,7 @@ def get_session(request: Request, response: Response) -> SessionStatus:
                     authenticated=True,
                     role=cast(Literal["adult", "learner"], row.role),
                     login_name=login_name,
+                    learner_id=row.learner_id,
                     csrf_token=row.csrf_token,
                 )
         response.delete_cookie(SESSION_COOKIE, path="/")

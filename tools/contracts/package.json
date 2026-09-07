@@ -1,0 +1,7 @@
+{
+  "name": "@math-tutor/contracts",
+  "private": true,
+  "type": "module",
+  "devDependencies": {"openapi-typescript": "7.13.0", "typescript": "5.9.3"},
+  "scripts": {"generate": "openapi-typescript ../../contracts/openapi.json -o ../../apps/web/src/generated/api.d.ts"}
+}

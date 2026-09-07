@@ -351,25 +351,10 @@ Keep secrets outside Git. Supply `.env.example` and `config/providers.example.ya
 
 ### Environment
 
-```dotenv
-APP_ENV=development
-APP_MODE=private
-APP_AUDIENCE=mixed
-APP_PUBLIC_ORIGIN=http://localhost:8080
-APP_BIND_HOST=127.0.0.1
-DATABASE_URL=sqlite+pysqlite:////app/data/math_tutor.sqlite3
-SESSION_SECRET=GENERATE_AT_SETUP
-PROVIDER_CONFIG=/app/config/providers.yaml
-ALLOW_CLOUD_INFERENCE=false
-ALLOW_PROVIDER_FALLBACK=false
-PHOTO_RETENTION_HOURS=24
-HISTORY_RETENTION_DAYS=30
-UPLOAD_MAX_BYTES=8388608
-UPLOAD_MAX_PIXELS=24000000
-META_API_KEY=
-AWS_REGION=
-AWS_PROFILE=
-```
+The supported variables are documented in [`.env.example`](../.env.example).
+`make setup` generates private settings; bootstrap only installs dependencies
+(D006). Fixed image and inference budgets are enforced by the backend.
+
 
 `APP_AUDIENCE` is `adult_only`, `mixed`, or `unknown`; unknown receives the stricter routing policy. The adult assigns a coarse eligibility category where needed—do not collect dates of birth. `APP_MODE=demo` prohibits real uploads, custom free-text learner data, and external model calls; it uses supplied synthetic interactions and photos only.
 
@@ -379,50 +364,9 @@ The URL above uses the container's absolute data path. Native setup generates an
 
 This is the project's intended YAML schema, not a vendor SDK configuration file:
 
-```yaml
-schema_version: 1
-routes:
-  tutor: demo
-  vision: demo
-providers:
-  demo:
-    adapter: mock
-    model: fixture-v1
-    data_boundary: synthetic
-    enabled: true
-  spark:
-    adapter: meta
-    base_url: https://api.meta.ai/v1
-    model: muse-spark-1.3
-    api_key_env: META_API_KEY
-    data_boundary: cloud
-    audience: adult_only
-    data_tier: standard
-    enabled: false
-  local_ollama:
-    adapter: ollama
-    base_url: http://host.docker.internal:11434
-    model: REPLACE_WITH_INSTALLED_VISION_MODEL
-    data_boundary: local_network
-    enabled: false
-  local_vllm:
-    adapter: vllm
-    base_url: http://host.docker.internal:8000/v1
-    model: REPLACE_WITH_SERVED_MODEL_NAME
-    data_boundary: local_network
-    enabled: false
-  aws:
-    adapter: bedrock
-    region_env: AWS_REGION
-    model: REPLACE_WITH_APPROVED_MODEL_OR_INFERENCE_PROFILE_ID
-    data_boundary: cloud
-    enabled: false
-limits:
-  max_output_tokens: 1200
-  provider_timeout_seconds: 90
-  max_provider_calls_per_operation: 6
-  max_schema_repairs_per_stage: 1
-```
+Use the strict current [provider example](../config/providers.example.yaml).
+See D006 for the explicit cutover from the original illustrative schema.
+
 
 Disabled examples may contain placeholders; enabled routes may not. `host.docker.internal` requires appropriate host-gateway mapping on Linux. Inside a container, `localhost` is that container, not the host. When the model server is another Compose service, use its service name instead. Never expose Ollama/vLLM directly to the public Internet as a shortcut.
 
@@ -466,14 +410,13 @@ Essential invariants:
 
 ## 10. API and job lifecycle
 
-The current scaffold exposes only `GET /health` as a liveness check; it does not
-check database or worker readiness. The routes below are planned. Prefix future
-application routes with `/api/v1`. Generate `contracts/openapi.json` from FastAPI and the TypeScript client/types from that file. Treat generated files as read-only and make CI reject drift.
+The API exposes `/health` and `/health/live` for liveness and `/health/ready`
+for database/worker readiness. Application routes use `/api/v1`. Generate `contracts/openapi.json` from FastAPI and the TypeScript client/types from that file. Treat generated files as read-only and make CI reject drift.
 
-The table below describes the target API. During T05, typed submissions are
-checked synchronously and return `201` with a persisted result; T06 introduces
-the `202` job/polling transport. [D003](DECISIONS.md#d003--t05-before-the-worker-2026-09-06)
-records this explicit staging decision and the invariants that apply from T05.
+The table describes implemented behavior. T06 supersedes the historical T05
+synchronous staging decision (D003); submissions now return `202` and durable
+operation state. D006 records the single command for typed work/questions/hints
+and the separate raw-image endpoint. Generated OpenAPI defines exact schemas.
 
 | Route | Role | Behavior |
 |---|---|---|
@@ -486,9 +429,9 @@ records this explicit staging decision and the invariants that apply from T05.
 | `GET/POST /admin/tutor-profiles` | Adult | Read/create profiles and versions |
 | `POST /sessions` | Authorized learner/adult | Start session with allowed profile version |
 | `POST /sessions/{id}/problems` | Session owner | Create next deterministic problem |
-| `POST /problems/{id}/submissions` | Problem owner | Text/question or bounded multipart image; persist then return 202 |
+| `POST /problems/{id}/submissions` | Problem owner | Typed answer/question/hint; persist then return 202 |
 | `POST /submissions/{id}/confirm-interpretation` | Submission owner | Confirm/edit a specific version; queue checking/tutoring |
-| `POST /problems/{id}/hints` | Problem owner | Request permitted help level without an incorrect attempt |
+| `POST /problems/{id}/photos` | Problem owner | Bounded raw image; interpretation requires confirmation |
 | `POST /problems/{id}/skip` | Problem owner | Explicit skip; record no incorrect answer |
 | `GET /operations/{id}` | Operation owner/adult | Current stage, safe error, result reference |
 | `POST /operations/{id}/retry` | Operation owner/adult | Bounded retry; no duplicate progress |
@@ -633,9 +576,9 @@ Functional/security acceptance scenarios must all pass. For model rollout, the a
 
 ### Current implementation
 
-See the [README](../README.md#current-status) for working features and commands,
-and [TASKS.md](TASKS.md) for evidence and remaining gates. The tree below is a
-future target; it is not a list of implemented components.
+See the [README](../README.md) for working features and commands,
+and [TASKS.md](TASKS.md) for evidence and remaining gates. The tree below is the original architectural outline;
+implemented paths and verification limits are recorded in TASKS and OpenAPI.
 
 ### Intended repository layout
 
@@ -798,7 +741,7 @@ command exists. Do not add a placeholder target that reports success.
 
 | Command | Required behavior |
 |---|---|
-| `make bootstrap` | Verify prerequisites; install locked dependencies; create missing local config/secrets; replace documented placeholders only; preserve configured values |
+| `make bootstrap` | Verify prerequisites and install locked dependencies; `make setup` explicitly creates missing local settings without reading or overwriting them (D006) |
 | `make db` | Prepare/validate the configured private SQLite path, runtime, connectivity, and connection settings; no daemon or implicit schema migration |
 | `make dev` | Start local application services against the configured database; report actual URLs |
 | `make migrate` | Apply reviewed Alembic migrations with application writes stopped; preserve existing data |
@@ -892,7 +835,7 @@ The following defaults allow implementation to start without another planning ro
 | Hosting | Native local setup; optional single-host Compose and EC2/EBS phase | No shared/network-mounted SQLite; infrastructure provisioning requires authorization |
 | Data retention | Photos up to 24 hours; history 30 days | Adult-controlled, documented, tested changes |
 | Offline behavior | Honest unavailable state; later public practice packs | Full offline AI stays research until measured |
-| License | Proposed MIT | Maintainer confirms/adds complete license before code release |
+| License | MIT, approved and added (D006) | Model weights and third-party dependencies retain their own licenses |
 
 A fully customizable tutor does not require letting users modify every safety-critical parameter. Version 1 customization is deliberately about pedagogy, topics, and presentation, while operators own infrastructure and data policy.
 

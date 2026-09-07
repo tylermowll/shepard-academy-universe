@@ -3,18 +3,33 @@
 import sqlite3
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
+from datetime import timedelta
+from pathlib import Path
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
+from sqlalchemy.orm import Session
 
 from math_tutor import settings
 from math_tutor.adapters.db.engine import create_default_engine
+from math_tutor.adapters.db.models import WorkerHeartbeat
+from math_tutor.adapters.db.types import utcnow
+from math_tutor.adapters.providers.contracts import ProviderError
 from math_tutor.api.auth import origin_allowed
 from math_tutor.api.auth import router as auth_router
+from math_tutor.api.learners import router as learner_router
+from math_tutor.api.limits import BoundedBodies
+from math_tutor.api.photos import router as photo_router
+from math_tutor.api.practice import router as practice_router
+from math_tutor.api.profiles import router as profile_router
+from math_tutor.api.providers import router as provider_router
+from math_tutor.api.review import router as review_router
 
 
 class HealthResponse(BaseModel):
@@ -37,6 +52,11 @@ def create_app(engine: Engine | None = None) -> FastAPI:
     async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         settings.session_secret()
         settings.app_public_origin()
+        from math_tutor.adapters.providers.config import load_configuration
+        from math_tutor.retention import limits
+
+        load_configuration()
+        limits()
         try:
             yield
         finally:
@@ -44,8 +64,15 @@ def create_app(engine: Engine | None = None) -> FastAPI:
                 application.state.engine.dispose()
 
     application = FastAPI(title="Math Practice Tutor API", version="0.1.0", lifespan=lifespan)
+    application.add_middleware(BoundedBodies)
     application.state.engine = engine if engine is not None else create_default_engine()
     application.include_router(auth_router)
+    application.include_router(learner_router)
+    application.include_router(practice_router)
+    application.include_router(profile_router)
+    application.include_router(photo_router)
+    application.include_router(provider_router)
+    application.include_router(review_router)
 
     @application.middleware("http")
     async def authentication_boundary(
@@ -65,7 +92,17 @@ def create_app(engine: Engine | None = None) -> FastAPI:
             )
         if request.url.path.startswith("/api/"):
             response.headers["Cache-Control"] = "no-store"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Permissions-Policy"] = "camera=(self), microphone=(), geolocation=()"
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' https://huggingface.co https://*.huggingface.co https://*.hf.co https://raw.githubusercontent.com; worker-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+        )
         return response
+
+    @application.exception_handler(ProviderError)
+    async def provider_error(_request: Request, error: ProviderError) -> Response:
+        return JSONResponse({"detail": error.safe_message, "code": error.code}, status_code=422)
 
     @application.exception_handler(RequestValidationError)
     async def invalid_request(_request: Request, _error: RequestValidationError) -> Response:
@@ -86,6 +123,50 @@ def create_app(engine: Engine | None = None) -> FastAPI:
     @application.get("/health", response_model=HealthResponse, tags=["system"])
     async def health() -> HealthResponse:
         return HealthResponse(status="ok")
+
+    @application.get("/health/live", response_model=HealthResponse)
+    def live() -> HealthResponse:
+        return HealthResponse(status="ok")
+
+    @application.get("/health/ready", response_model=HealthResponse)
+    def ready() -> HealthResponse:
+        with Session(application.state.engine) as db:
+            db.execute(text("SELECT 1"))
+            heartbeat = db.get(WorkerHeartbeat, "worker")
+            if heartbeat is None or heartbeat.seen_at < utcnow() - timedelta(seconds=150):
+                from fastapi import HTTPException
+
+                raise HTTPException(503, "Worker unavailable.")
+        return HealthResponse(status="ready")
+
+    try:
+        web_dist = settings.repository_root() / "apps/web/dist"
+    except ValueError:
+        web_dist = Path("/app/web")
+    if web_dist.is_dir():
+        application.mount("/assets", StaticFiles(directory=web_dist / "assets"), name="assets")
+
+        @application.get("/", include_in_schema=False)
+        def index() -> FileResponse:
+            return FileResponse(web_dist / "index.html", headers={"Cache-Control": "no-cache"})
+
+        @application.get("/sw.js", include_in_schema=False)
+        def service_worker() -> FileResponse:
+            return FileResponse(
+                web_dist / "sw.js",
+                media_type="text/javascript",
+                headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"},
+            )
+
+        @application.get("/manifest.webmanifest", include_in_schema=False)
+        def manifest() -> FileResponse:
+            return FileResponse(
+                web_dist / "manifest.webmanifest", media_type="application/manifest+json"
+            )
+
+        @application.get("/icon.svg", include_in_schema=False)
+        def icon() -> FileResponse:
+            return FileResponse(web_dist / "icon.svg", media_type="image/svg+xml")
 
     return application
 
