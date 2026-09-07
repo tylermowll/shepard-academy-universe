@@ -34,7 +34,7 @@ from math_tutor.adapters.db.engine import (
 from math_tutor.adapters.db.models import Learner, PracticeSession, ProblemInstance
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
-HEAD_REVISION = "0010_ai_tutoring"
+HEAD_REVISION = "0011_photo_deletion"
 
 
 @pytest.fixture
@@ -135,6 +135,7 @@ def test_empty_file_migration_reaches_head(engine: Engine, db_url: str) -> None:
         "deletion_tombstone",
         "audit_event",
         "phone_upload",
+        "photo_deletion",
     }
     assert columns["practice_session"] >= {"id", "learner_id", "status", "created_at"}
     assert columns["problem_instance"] >= {
@@ -147,6 +148,18 @@ def test_empty_file_migration_reaches_head(engine: Engine, db_url: str) -> None:
     with engine.connect() as connection:
         version = connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar()
     assert version == HEAD_REVISION
+
+
+@pytest.mark.parametrize("key", ["", "../private", "a" * 63, "A" * 64, "g" * 64])
+def test_photo_cleanup_migration_rejects_invalid_storage_keys(
+    engine: Engine, db_url: str, key: str
+) -> None:
+    upgrade(db_url)
+    with engine.begin() as connection, pytest.raises(IntegrityError):
+        connection.exec_driver_sql(
+            "INSERT INTO photo_deletion(image_key, created_at) VALUES (?, datetime('now'))",
+            (key,),
+        )
 
 
 def test_migration_matches_model_metadata(engine: Engine, db_url: str, tmp_path: Path) -> None:

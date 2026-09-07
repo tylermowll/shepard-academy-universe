@@ -25,6 +25,7 @@ from math_tutor.api.practice import (
     owned_session,
     request_key,
 )
+from math_tutor.retention import photo_expired
 
 router = APIRouter(prefix="/api/v1", tags=["photos"])
 _decode_slots = asyncio.Semaphore(2)
@@ -153,7 +154,7 @@ async def upload_photo(
 @router.get("/submissions/{submission_id}/image")
 def photo(submission_id: UUID, db: Database, actor: Principal) -> Response:
     row = owned_operation(db, actor, submission_id)
-    if row.image_key is None or row.status == "completed":
+    if row.image_key is None or row.status == "completed" or photo_expired(row):
         raise HTTPException(404, "Photo expired or unavailable.")
     try:
         data = read_image(row.image_key)

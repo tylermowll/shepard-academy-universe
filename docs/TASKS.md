@@ -34,6 +34,54 @@ specification gates pass.
 | T24  | Implemented; physical phone/live provider verification pending | Expiring QR upload, computer confirmation, HTTPS launch/runbook; automated migration, authorization, retry and two-browser gates passed.                                                                                       |
 | T25  | Implemented; automated gates passed; live quality unverified   | AI-only multi-subject tutoring, reference-only homework intake, contextual guidance, adjustable initiative and automatic clear photo reading; 125 unit, 33 component, 128 integration and 28 browser tests passed.             |
 
+### T16/T19 — Beta-readiness retention and worker review (2026-09-07)
+
+The maintainer authorized closing the review's software gaps and pushing the
+reviewed result to `main`. Scope: reliable deletion after filesystem failures,
+photo expiry independent of cleanup, and worker recovery from temporary database
+or storage errors. Public API schemas and provider policy remain unchanged.
+
+Contracts and regression plan:
+
+- Migration `0011_photo_deletion` stores only pending opaque storage keys and
+  timestamps, atomically with learner/history purges. Retry after restart,
+  rollback, duplicate scheduling, malformed keys and crash-after-unlink are tested
+  against temporary on-disk SQLite; filesystem deletion holds no queue write lock.
+- Failed learner/history/orphan photo cleanup must not prevent another learner's
+  work from completing. Expired photos are inaccessible through the API and never
+  read for inference, even if the file cannot yet be removed.
+- The long-running worker retries operational database/storage errors with bounded
+  waits and safe warnings; `--once` fails honestly. Durable leases and call budgets
+  continue to own recovery, with no direct replay of a provider call.
+- Targeted tests, followed by `make check`, `make test-integration`, `make smoke`,
+  `make eval-mock`, public-file review and observed hosted CI after publication.
+
+Verification on synthetic data:
+
+- Targeted retention/workflow/schema/auth tests: 120 passed. The final complete
+  integration gate, including five additional malformed cleanup-key cases:
+  `make test-integration`, 146 passed. Migration upgrade/downgrade, rollback and
+  schema-drift checks passed.
+- `make check` passed: formatting/lint, strict Python/TypeScript checks, 125 Python
+  unit tests, 33 component tests, API/PWA builds, generated contract checks,
+  tracked-text credential scan and infrastructure validation. Its initial strict
+  type failure in the new test's time monkeypatch was corrected without weakening
+  checks. The existing Vite main-chunk size warning remains.
+- `make smoke`: all 28 desktop/mobile Chromium browser tests passed.
+  `make eval-mock`: passed for the 63 synthetic evaluation fixtures.
+- `git diff --check` passed. Public tracked-file review found no learner data or
+  credentials. Existing Git author metadata includes a personal name/email;
+  this is distinct from application data, and history has not been rewritten.
+  GitHub reports the repository public. The new commit uses GitHub's noreply
+  address. Hosted CI is to be observed after pushing; local container validation
+  was unavailable because Docker is not installed.
+
+These gates support handing the software to the maintainer as its first beta
+tester, not a claim of production acceptance. Live provider/model quality,
+physical iPhone testing and private operator configuration remain unverified;
+no live inference, model download or deployment was performed. Apply migration
+`0011_photo_deletion` with API/worker writes stopped before using this version.
+
 ### T25 — Restore the central AI tutoring experience (2026-09-07)
 
 Approved workflow: **Choose a topic → receive a problem → photograph your

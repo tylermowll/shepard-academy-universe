@@ -1,6 +1,7 @@
 """One-host durable worker. Short claims; no database locks during provider I/O."""
 
 import argparse
+import logging
 import secrets
 import time
 from dataclasses import dataclass
@@ -10,6 +11,7 @@ from uuid import UUID
 
 from sqlalchemy import or_, select
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from math_tutor.adapters.db.engine import create_default_engine
@@ -38,8 +40,10 @@ from math_tutor.adapters.providers.contracts import (
 )
 from math_tutor.api.practice import finish_deterministic
 from math_tutor.providers import authorize_route, complete, effective_configuration
-from math_tutor.retention import purge_completed_photo
+from math_tutor.retention import photo_expired, purge_completed_photo
 from math_tutor.tutoring import finish_model, make_request
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -214,7 +218,11 @@ def prepare(engine: Engine, work: Claim) -> Prepared | None:
         name, provider = authorize_route(db, config, stage, row.learner_id)
         if job.call_count >= 6:
             raise ProviderError("call_budget")
-        image = read_image(row.image_key) if stage == "vision" and row.image_key else None
+        image = (
+            read_image(row.image_key)
+            if stage == "vision" and row.image_key and not photo_expired(row)
+            else None
+        )
         if stage == "vision" and image is None:
             raise ProviderError(
                 "photo_expired",
@@ -331,9 +339,26 @@ def main() -> None:
         next_sweep = 0.0
         while True:
             if time.monotonic() >= next_sweep:
-                sweep(engine)
                 next_sweep = time.monotonic() + 60
-            worked = run_once(engine)
+                try:
+                    sweep(engine)
+                except OSError, OperationalError:
+                    if args.once:
+                        raise SystemExit(
+                            "Retention failed; check private storage/database."
+                        ) from None
+                    logger.warning(
+                        "Retention deferred; check private storage/database availability."
+                    )
+            try:
+                worked = run_once(engine)
+            except OSError, OperationalError:
+                if args.once:
+                    raise SystemExit("Worker failed; check private storage/database.") from None
+                # Preserve the durable lease/call budget; never directly repeat inference.
+                logger.warning("Worker retrying after a storage/database failure.")
+                time.sleep(5)
+                continue
             if args.once:
                 break
             if not worked:

@@ -89,14 +89,31 @@ deleted. A crash or storage failure leaves a durable cleanup reference for the
 next sweep. Failed/unprocessed photos default to 24 hours and are capped at 24;
 `PHOTO_RETENTION_HOURS` permits shorter retention. History defaults to 30 days;
 `HISTORY_RETENTION_DAYS` is bounded 1–365. The worker sweeps every 60 seconds while
-running. Monitor readiness and restart a failed worker; downtime delays physical
-expiry cleanup.
+running. Expired photos are rejected by both the image API and the worker before
+inference, including when physical deletion is delayed. Monitor readiness;
+downtime delays physical expiry cleanup.
+
+Migration `0011_photo_deletion` adds a durable image-deletion queue. Apply it with
+API/worker writes stopped before running this version. Learner deletion and
+history expiry commit pending opaque image keys with the database purge; the
+worker removes those files during its next sweep. Failed unlinks retain their
+queue entries across restarts. Other cleanup and tutoring continue after a file
+failure. Temporary database/storage errors in the worker loop retry after five
+seconds; a failed sweep retries on its next 60-second interval. Existing job
+leases and provider-call budgets still apply. `--once` exits unsuccessfully on
+a sweep/database failure so scripts cannot mistake it for completed work.
+
+Warnings report cleanup/storage categories without filenames, learner content,
+SQL, or raw exception details. If they persist, check the private volume's mount,
+space, ownership and write permissions. A running worker cannot repair a missing
+or read-only volume by itself.
 
 An adult export is an authenticated no-store download in the current request.
 There is no persistent bearer export URL. Downloaded copies are outside server
 revocation: the adult must delete them separately. Revocation prevents new device
 requests. Learner deletion immediately revokes sessions and cancels work, purges
-content, and records a content-free UUID tombstone. Late worker output is discarded.
+database content, queues physical image deletion, and records a content-free UUID
+tombstone. Late worker output is discarded.
 The journal `data/deletions.jsonl` is fsynced before the deletion commit. Keep it
 private and preserve its latest version during recovery. Content-free audit events
 and tombstones are retained for recovery/accountability; no raw prompts or photos

@@ -447,6 +447,20 @@ class DeletionTombstone(Base):
     deleted_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utcnow)
 
 
+class PhotoDeletion(Base):
+    """Retry private file deletion after its learner/history has been removed."""
+
+    __tablename__ = "photo_deletion"
+    __table_args__ = (
+        CheckConstraint(
+            "length(image_key) = 64 AND image_key NOT GLOB '*[^a-f0-9]*'",
+            name="ck_photo_deletion_key",
+        ),
+    )
+    image_key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utcnow)
+
+
 class AuditEvent(Base):
     __tablename__ = "audit_event"
     id: Mapped[uuid.UUID] = mapped_column(UUIDType, primary_key=True, default=uuid.uuid4)

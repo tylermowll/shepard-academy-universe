@@ -28,6 +28,13 @@ separate passphrase; losing the passphrase loses recovery. Preserve the current
 deletion ledger separately from old archives. Operator settings/secrets require
 their own secure recovery process.
 
+Image access and new vision calls enforce the photo retention deadline even if
+storage cleanup is unavailable. Learner/history deletion records pending image
+keys in the same transaction as its database purge. The worker retries physical
+deletion after storage recovers; pending keys contain no learner text or identity.
+Transient filesystem/database errors produce content-free warnings and bounded
+worker retries, without resetting job leases or provider-call budgets.
+
 The primary tutor provides model-based reasoning guidance across subjects. It is
 not an independently verified grade, a proof of mastery, or a guarantee of factual
 correctness. A clear/high-confidence reading can still be wrong; the student can

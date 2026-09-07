@@ -604,6 +604,14 @@ Store normalized photos privately and delete them after confirmed processing com
 
 Deletion revokes access and cancels jobs immediately, then deletes active database/storage content through an idempotent purge operation. Late worker results must be discarded. Logs avoid content and credentials; exports are authenticated and time-limited. Backups have a stated retention window and a restore procedure that reapplies deletion tombstones. Deletion from the application cannot promise immediate removal from provider-side logs or preexisting encrypted backups; document each boundary.
 
+Learner/history purges commit pending opaque image keys in a `photo_deletion`
+table before removing their owning records. The worker retries physical deletion
+without retaining deleted learning content or losing cleanup references on
+restart. A failed file removal must not stop unrelated cleanup or tutoring.
+Expired photos cannot be downloaded or sent to a provider even if physical
+cleanup is delayed. Worker database/storage failures have bounded retry waits;
+single-pass operator commands report failures with a nonzero exit status.
+
 ### Provider age and data policies
 
 Meta's published API terms, dated August 28, 2026, require the developer and end users to be at least 18. Therefore, the Spark route is disabled for mixed/unknown-audience and under-18 learner use in this design; a parent's API key is not treated as a bypass. The project may use Spark to **write public code** while using a different backend to **tutor learners**. These are independent choices. [^S02]
