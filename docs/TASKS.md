@@ -8,8 +8,8 @@ specification gates pass.
 | Task | Status | Current evidence / next boundary |
 |---|---|---|
 | T00 | Complete | Local gates and original hosted CI verified; review validation below. |
-| T01 | Reviewed; complete locally | Explicit transactional SQLite, stable/private storage, real rollback/migration/drift gates. Original hosted CI verified; review validation below. |
-| T02 | Reviewed; complete locally | Startup/setup, strict origins, expiring CSRF, reset/rotation/revocation, bounded login limits, and session constraints in migration 0003. Review validation below. |
+| T01 | Reviewed; complete | Explicit transactional SQLite, stable/private storage, real rollback/migration/drift gates. Review commit ae3f135 passes local and hosted CI. |
+| T02 | Reviewed; complete | Startup/setup, strict origins, expiring CSRF, reset/rotation/revocation, bounded login limits, and session constraints in migration 0003. Review commit ae3f135 passes local and hosted CI. |
 | T03 | Ready to start | T02 dependency satisfied by the reviewed foundation; implement pairing and two-learner isolation next. |
 | T04 | Not started | Blocked by its roadmap dependency. |
 | T05 | Not started | Blocked by its roadmap dependencies. |
@@ -517,7 +517,11 @@ Actual verification:
   passed with execution permission. No test policy was disabled. `git diff
   --check` and `git diff --cached --check` passed. `make hooks-check` passed all
   applicable file/privacy, lock, lint/format/type, and unit/component checks.
-  The review push and its hosted run are pending at the time of this entry.
+  Commit `ae3f135` was pushed to `main`; [its full hosted CI run passed](https://github.com/tylermowll/shepard-academy-universe/actions/runs/34072697983)
+  in 1m31s, including locked installs, hooks, Make checks, SQLite runtime,
+  integration, and browser smoke gates. A documentation follow-up records this
+  observed result and warns existing installations to retain their absolute
+  database URL when adopting the corrected default path.
 
 Assessment of Spark's original work: **5/10 overall for these two tasks**, a
 qualitative review judgment rather than a general model benchmark. It produced

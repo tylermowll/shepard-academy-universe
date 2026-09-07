@@ -77,6 +77,10 @@ directory/file permissions. `make migrate` requires application writes stopped.
 `make admin` creates or resets the named administrator interactively; reset revokes
 that administrator's existing sessions. Passwords must contain 12–256 characters.
 
+If you already created a database before the T01/T02 review, retain its absolute
+`DATABASE_URL` before migrating. The old default depended on the command's working
+directory; the corrected default does not relocate an existing database.
+
 Startup rejects missing/placeholder session secrets and invalid public origins.
 The development origin is `http://127.0.0.1:8000`; use that exact address for the
 API. Non-loopback origins require HTTPS. Requests must use the configured Host
