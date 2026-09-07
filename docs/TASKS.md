@@ -690,3 +690,21 @@ job built the image and passed non-root API/UI/worker/migration checks, then fai
 the strict image scan on inherited OS/installer packages. D007 records the minimal
 runtime correction. Public CI visibility and the checked-in synthetic-only job
 were verified before reading scanner output; no private application logs were read.
+
+Hosted [run 34080218959](https://github.com/tylermowll/shepard-academy-universe/actions/runs/34080218959)
+passed the complete package job: image build, non-root API/UI/worker readiness,
+migrations, HEIF/cryptography runtime checks, strict HIGH/CRITICAL scan (including
+unfixed findings), and SBOM generation. Its source job exposed three intermittent
+browser failures in learner creation/pairing. An independent database reader at
+the ASGI success-header boundary reproduced the cause: the default request-scoped
+yield dependency committed after sending the response, allowing immediate browser
+reads to see old state. The transaction dependency now uses FastAPI's function
+scope, completing the commit before success. The new regression failed before
+the fix and passed afterward. This complements the earlier stale-response guards;
+no browser assertions, retries, timeouts, or scan severity were relaxed.
+
+Final transaction fix validation: `make check` passed all source/build/contract/
+secret/IaC gates with **61 backend unit tests** and **5 frontend component tests**;
+`make test-integration` passed **84 tests**; `make smoke` passed **14 desktop/mobile
+browser tests**. `git diff --check` passed. Hosted CI verifies the pushed revision
+with its own fresh environment and the required packaging job.

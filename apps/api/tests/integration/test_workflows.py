@@ -24,6 +24,7 @@ from math_tutor.adapters.db.models import (
     Evaluation,
     Interpretation,
     Job,
+    Learner,
     PairingRequest,
     ProblemInstance,
     ProgressEvent,
@@ -692,3 +693,43 @@ async def test_upload_rechecks_assignment_after_decode(
     assert response.status_code == 409
     with Session(engine) as db:
         assert db.scalar(select(func.count()).select_from(Submission)) == 0
+
+
+@pytest.mark.anyio
+async def test_mutation_commits_before_success_response_headers(
+    adult: AsyncClient, engine: Engine
+) -> None:
+    from starlette.types import Message, Receive, Scope, Send
+
+    application = create_app(engine)
+    checked = False
+
+    async def observe(scope: Scope, receive: Receive, send_response: Send) -> None:
+        async def inspect_response(message: Message) -> None:
+            nonlocal checked
+            if message["type"] == "http.response.start" and message["status"] == 201:
+                # This connection represents a fast browser's next request.
+                with Session(engine) as reader:
+                    assert (
+                        reader.scalar(
+                            select(Learner.id).where(Learner.alias == "Synthetic commit boundary")
+                        )
+                        is not None
+                    )
+                checked = True
+            await send_response(message)
+
+        await application(scope, receive, inspect_response)
+
+    async with AsyncClient(
+        transport=ASGITransport(app=observe),
+        base_url=ORIGIN,
+        cookies=adult.cookies,
+        headers=adult.headers,
+    ) as browser:
+        response = await browser.post(
+            "/api/v1/admin/learners",
+            json={"alias": "Synthetic commit boundary", "eligibility": "unknown"},
+        )
+    assert response.status_code == 201
+    assert checked

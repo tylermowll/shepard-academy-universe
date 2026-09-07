@@ -20,7 +20,8 @@ def transaction(request: Request) -> Iterator[Session]:
         db.commit()
 
 
-Database = Annotated[Session, Depends(transaction)]
+# Commit before sending success: the browser may immediately request the new state.
+Database = Annotated[Session, Depends(transaction, scope="function")]
 
 
 def principal(request: Request, db: Database) -> DeviceSession:
