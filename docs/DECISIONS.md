@@ -166,3 +166,22 @@ Sources: [SQLite use cases](https://sqlite.org/whentouse.html),
 [SQLite backup API](https://sqlite.org/backup.html),
 [SQLite release history](https://sqlite.org/changes.html),
 [EBS volumes](https://docs.aws.amazon.com/ebs/latest/userguide/ebs-volumes.html).
+
+## D005 — Pre-production hard cutovers (2026-09-06)
+
+The maintainer confirmed that nothing is in production and explicitly prefers
+hard cutovers without legacy compatibility code. Maintain one current
+implementation. Correct initial migrations in place and recreate disposable
+development databases when needed; do not add upgrade bridges, dual schemas,
+or fallback paths solely to preserve an earlier development state.
+
+For the T01/T02 review, session identity/lifetime constraints belong directly in
+migration 0002. The review-only 0003 migration and its legacy-data upgrade tests
+are removed. This supersedes the review's existing-database preservation plan,
+including the initial recommendation to retain an earlier database URL and
+upgrade those files. Old development database revisions are unsupported.
+
+Real migrations, named constraints, explicit transactions, rollback tests,
+current-data persistence, and private-data protections still apply. Revisit
+compatibility and migration guarantees before a production release or a promise
+to retain user data.

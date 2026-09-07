@@ -12,7 +12,7 @@ introductory one-variable linear equations.
 | Area | Implemented today |
 |---|---|
 | Backend | Packaged Python 3.14 / FastAPI application with typed `GET /health` response and adult session endpoints (`GET /api/v1/auth/session`, `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`) |
-| Database | SQLite/SQLAlchemy/Alembic foundation with migrations 0001–0003, explicit transactions, private storage, UUID/UTC adapters, constrained practice/authentication tables, and public/private schemas |
+| Database | SQLite/SQLAlchemy/Alembic foundation with migrations 0001–0002, explicit transactions, private storage, UUID/UTC adapters, constrained practice/authentication tables, and public/private schemas |
 | Frontend | React/TypeScript/Vite preview with Tailwind, an availability notice, and a JavaScript-disabled fallback |
 | Quality checks | Locked dependencies, Python/frontend lint/format/types/tests/builds, on-disk SQLite integration tests, desktop/mobile browser smoke tests |
 | Development workflow | Pre-commit checks and a full-stack GitHub Actions workflow; T00–T02 hosted runs verified, with review evidence in the task log |
@@ -77,9 +77,9 @@ directory/file permissions. `make migrate` requires application writes stopped.
 `make admin` creates or resets the named administrator interactively; reset revokes
 that administrator's existing sessions. Passwords must contain 12–256 characters.
 
-If you already created a database before the T01/T02 review, retain its absolute
-`DATABASE_URL` before migrating. The old default depended on the command's working
-directory; the corrected default does not relocate an existing database.
+The project is pre-production and uses hard cutovers ([D005](docs/DECISIONS.md#d005--pre-production-hard-cutovers-2026-09-06)).
+Recreate any disposable database made before this review, then run `make migrate`
+and `make admin`. Earlier development schemas have no upgrade path.
 
 Startup rejects missing/placeholder session secrets and invalid public origins.
 The development origin is `http://127.0.0.1:8000`; use that exact address for the
@@ -190,8 +190,8 @@ roadmap as one implementation task.
 The approved [SQLite decision](docs/DECISIONS.md#d004--sqlite-for-the-initial-deployment-2026-09-06)
 defines WAL, connection settings, migrations, job claims, and consistent backups.
 T01 implemented the foundation with migration 0001 and T02 added the
-administrator/device-session tables in migration 0002. Review migration 0003 adds
-session identity/lifetime constraints while preserving valid rows. The embedded SQLite floor
+administrator/device-session tables in migration 0002, including session
+identity/lifetime constraints. The embedded SQLite floor
 is 3.53.1 with a documented exception (see D001). Multiple application hosts and
 network-mounted database files are outside this design.
 

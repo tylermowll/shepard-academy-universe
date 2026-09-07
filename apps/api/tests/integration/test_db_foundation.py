@@ -34,7 +34,7 @@ from math_tutor.adapters.db.engine import (
 from math_tutor.adapters.db.models import PracticeSession, ProblemInstance
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
-HEAD_REVISION = "0003_session_invariants"
+HEAD_REVISION = "0002_auth_sessions"
 
 
 @pytest.fixture

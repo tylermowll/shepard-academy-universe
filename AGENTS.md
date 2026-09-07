@@ -40,6 +40,12 @@ Keep scope bounded; no unrelated refactors. Use real migrations and typed schema
 Generated API clients are regenerated, not hand-edited. Do not loosen tests or
 requirements to conceal a failure. Do not add empty production stubs as features.
 
+This project is pre-production. Prefer a hard cutover to one current implementation;
+do not add legacy compatibility shims or development-schema upgrade bridges unless
+the maintainer requests them. Initial migrations may be corrected in place and
+disposable development databases recreated (D005). Keep current-schema integrity,
+rollback tests, and the private-data boundaries above.
+
 ## Commands
 
 Treat the checked-in Makefile as the authority for implemented commands. Add a

@@ -33,7 +33,7 @@ from math_tutor.api.app import create_app
 from math_tutor.api.auth import ANON_CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
-HEAD_REVISION = "0003_session_invariants"
+HEAD_REVISION = "0002_auth_sessions"
 
 TEST_SECRET = "t02-synthetic-session-secret-0123456789abcdef"
 TEST_ORIGIN = "http://127.0.0.1:8000"
@@ -651,36 +651,25 @@ def test_session_identity_and_expiry_constraints(engine: Engine, invalid: str) -
             db.flush()
 
 
-@pytest.mark.parametrize("invalid_legacy_row", [False, True])
-def test_session_migration_preserves_data_or_rolls_back_invalid_rows(
-    engine: Engine, db_url: str, invalid_legacy_row: bool
-) -> None:
-    config = Config()
-    config.set_main_option("script_location", str(MIGRATIONS_DIR))
-    config.set_main_option("sqlalchemy.url", db_url)
-    command.downgrade(config, "0002_auth_sessions")
+def test_authenticated_session_survives_engine_reopen(engine: Engine, db_url: str) -> None:
     admin = create_admin(engine)
     with Session(engine) as db:
         row, token = auth_service.create_device_session(db, db.merge(admin))
-        if invalid_legacy_row:
-            row.role = "invalid"
+        csrf = row.csrf_token
         db.commit()
-    if invalid_legacy_row:
-        with pytest.raises(IntegrityError):
-            command.upgrade(config, "head")
-    else:
-        command.upgrade(config, "head")
-        with Session(engine) as db:
-            assert auth_service.get_valid_session(db, token) is not None
-    with engine.connect() as connection:
-        expected = "0002_auth_sessions" if invalid_legacy_row else HEAD_REVISION
-        assert (
-            connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar()
-            == expected
-        )
-        assert not connection.exec_driver_sql("PRAGMA foreign_key_check").all()
-        assert connection.exec_driver_sql("SELECT count(*) FROM device_session").scalar() == 1
-        assert "_alembic_tmp_device_session" not in inspect(connection).get_table_names()
+    engine.dispose()
+    reopened = create_engine_for_url(db_url)
+    try:
+        with Session(reopened) as db:
+            stored = auth_service.get_valid_session(db, token)
+            assert stored is not None
+            assert stored.administrator_id == admin.id
+            assert stored.csrf_token == csrf
+            assert auth_service.authenticate_admin(db, ADMIN_LOGIN, ADMIN_PASSWORD) is not None
+        with reopened.connect() as connection:
+            assert not connection.exec_driver_sql("PRAGMA foreign_key_check").all()
+    finally:
+        reopened.dispose()
 
 
 def test_setup_generates_private_settings_once_without_disclosing_secret(

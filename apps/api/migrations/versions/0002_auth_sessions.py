@@ -45,6 +45,12 @@ def upgrade() -> None:
         ),
         sa.PrimaryKeyConstraint("id", name="pk_device_session"),
         sa.UniqueConstraint("token_hash", name="uq_device_session_token_hash"),
+        sa.CheckConstraint(
+            "(role = 'adult' AND administrator_id IS NOT NULL AND learner_id IS NULL) OR "
+            "(role = 'learner' AND administrator_id IS NULL AND learner_id IS NOT NULL)",
+            name="ck_device_session_principal",
+        ),
+        sa.CheckConstraint("expires_at > created_at", name="ck_device_session_expiration"),
     )
 
 

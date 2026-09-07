@@ -9,7 +9,7 @@ specification gates pass.
 |---|---|---|
 | T00 | Complete | Local gates and original hosted CI verified; review validation below. |
 | T01 | Reviewed; complete | Explicit transactional SQLite, stable/private storage, real rollback/migration/drift gates. Review commit ae3f135 passes local and hosted CI. |
-| T02 | Reviewed; complete | Startup/setup, strict origins, expiring CSRF, reset/rotation/revocation, bounded login limits, and session constraints in migration 0003. Review commit ae3f135 passes local and hosted CI. |
+| T02 | Reviewed; complete | Startup/setup, strict origins, expiring CSRF, reset/rotation/revocation, bounded login limits, and session constraints in migration 0002. D005 removes the review's development-schema upgrade bridge; cutover evidence below. |
 | T03 | Ready to start | T02 dependency satisfied by the reviewed foundation; implement pairing and two-learner isolation next. |
 | T04 | Not started | Blocked by its roadmap dependency. |
 | T05 | Not started | Blocked by its roadmap dependencies. |
@@ -545,3 +545,36 @@ Not run: live/paid provider inference, model downloads, deployment, real learner
 data, real-phone testing, or release vulnerability scans. These are outside
 T01/T02; the SQLite compatibility exception remains D001. No runtime/private
 configuration was opened, and no live database was migrated.
+
+### 2026-09-06 — Maintainer-directed pre-production cutover
+
+The maintainer clarified that nothing is in production and requested hard
+cutovers without legacy bloat. D005 and `AGENTS.md` record that policy for future
+work. This supersedes the preceding review's development-database upgrade plan;
+the historical test/CI observations above remain observations of those commits.
+
+- Folded session identity/lifetime constraints into migration
+  `0002_auth_sessions.py` and deleted `0003_session_invariants.py`. There is one
+  current schema and no bridge for previous development databases. README now
+  directs users to recreate disposable development databases.
+- Updated both integration suites to head 0002. Removed the two legacy-upgrade
+  cases and added a current-schema test proving administrator authentication and
+  opaque sessions survive an engine reopen. Kept empty-file migrations,
+  constraints, foreign-key checks, DDL/savepoint rollback, failed-migration
+  atomicity, expiry/revocation, ownership-principal checks, and secret exclusion.
+- `make test-integration`: **62 passed**. `make check
+  PNPM='pnpm --store-dir /tmp/math-tutor-pnpm-store'`: all locks, lint/format,
+  strict types, **22 unit + 1 frontend tests**, and Python/Vite builds passed.
+  The current backend total is **84 tests**; the count change follows the removed
+  compatibility behavior. No failing assertion was suppressed.
+- `make db` and `make migrate` passed against a fresh, private `/tmp` database
+  through the corrected head 0002; the generated database was removed afterward.
+  `make hooks-check` and `git diff --cached --check` passed.
+- The preceding documentation commit `99c5286` also passed its
+  [hosted CI run](https://github.com/tylermowll/shepard-academy-universe/actions/runs/34072857295).
+  The cutover push/hosted CI are verified separately after this entry.
+
+The assessment of Spark's original code remains **5/10 for T01/T02**. The removed
+compatibility migration was added during this review, not by Spark. T03 remains
+ready to start. No private database/configuration was opened or reset, and no
+provider, deployment, or model-download work was performed.
