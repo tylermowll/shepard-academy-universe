@@ -264,6 +264,7 @@ def logout(request: Request, response: Response) -> LogoutResponse:
     if not token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_NOT_AUTHENTICATED)
     with Session(engine_for(request)) as db:
+        db.connection(execution_options={"sqlite_begin_immediate": True})
         row = auth_service.get_valid_session(db, token)
         if row is None:
             response.delete_cookie(SESSION_COOKIE, path="/")

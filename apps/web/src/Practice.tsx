@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, newKey, type Schema } from "./client";
 import { PhotoInput } from "./PhotoInput";
 import { SafeText } from "./SafeText";
@@ -21,19 +21,30 @@ export function Practice({ learner, offline, act }: Props) {
   const [key, setKey] = useState(newKey);
   const [sessionKey, setSessionKey] = useState(newKey);
   const [working, setWorking] = useState(false);
+  const loadSequence = useRef(0);
+  const selectedSession = useRef("");
   const load = useCallback(
     async (id?: string) => {
-      const [h, p, g, f] = await Promise.all([
+      const sequence = ++loadSequence.current;
+      if (id) selectedSession.current = id;
+      const [h, p, g, f, loaded] = await Promise.all([
         api<Schema<"SessionSummary">[]>("/sessions"),
         api<Schema<"ProfilePublic">[]>("/tutor-profiles"),
         api<Schema<"ProgressPublic">>(`/learners/${learner}/progress`),
         api<Schema<"Features">>(`/learners/${learner}/features`),
+        id
+          ? api<Schema<"SessionPublic">>(`/sessions/${id}`)
+          : Promise.resolve(null),
       ]);
+      if (sequence !== loadSequence.current) return;
       setHistory(h.filter((s) => s.learner_id === learner));
       setProfiles(p);
       setProgress(g);
       setFeatures(f);
-      if (id) setSession(await api<Schema<"SessionPublic">>(`/sessions/${id}`));
+      if (loaded) {
+        setSession(loaded);
+        window.location.hash = loaded.id;
+      }
     },
     [learner],
   );
@@ -46,12 +57,12 @@ export function Practice({ learner, offline, act }: Props) {
     if (!sessionId) return;
     const timer = window.setInterval(() => {
       if (document.visibilityState === "visible" && navigator.onLine)
-        void load(sessionId).catch(() => {});
+        void load(selectedSession.current).catch(() => {});
     }, 2500);
     return () => window.clearInterval(timer);
   }, [sessionId, load]);
   const refresh = async () => {
-    if (session) await load(session.id);
+    if (selectedSession.current) await load(selectedSession.current);
   };
   const problem = session?.problems.find((p) => p.status === "assigned");
   const active =
@@ -124,7 +135,6 @@ export function Practice({ learner, offline, act }: Props) {
               if (id)
                 void act(async () => {
                   await load(id);
-                  window.location.hash = id;
                 });
             }}
           >

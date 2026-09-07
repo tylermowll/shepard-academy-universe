@@ -648,3 +648,37 @@ and exercise. It is presentation evidence, not a correctness test.
 Docker is not installed in this workspace; the release container build, runtime
 smoke and image scan are executed by hosted CI after the authorized push. A clean
 checkout rehearsal and observed hosted result will be recorded separately.
+
+
+Clean-clone rehearsal of implementation commit `9c81e37820dce43193d416bd427bd68a5bf93e29`:
+`git clone --no-hardlinks` into a new `/tmp` checkout, `make bootstrap` with a
+writable pnpm store, `make smoke` (**14 passed**) and `make test-integration`
+(**81 passed**) all succeeded. Fresh virtualenv and node_modules were created;
+the previously installed pinned Python runtime/package caches were reused.
+The clone's tracked working tree remained clean. No operator settings were copied.
+Hosted verification is [run 34078898044](https://github.com/tylermowll/shepard-academy-universe/actions/runs/34078898044);
+it passed source/unit/integration gates but failed two browser flows because an
+older learner-list request could replace a newer list after creation. A focused
+component regression reproduced the empty selection (one failure out of four),
+and the adult panel now discards superseded refresh results. Original browser
+assertions remain unchanged. The CI failure-context step now prints only synthetic
+browser snapshots to make any further timing failures reviewable.
+
+Follow-up recovery review applied the same response-order protection to session
+selection/polling, with a second component regression. A subsequent browser run
+exposed a logout `503` when a worker write invalidated its deferred read snapshot.
+Logout now reserves its short write transaction before reading the session; an
+on-disk competing-writer regression verifies this boundary. Authentication and
+browser assertions were retained, with no retries or timeout relaxation.
+
+The recovery fixes passed `make test-integration` (**82 tests**), `pnpm test`
+(**5 component tests**), strict frontend types/lint, and `make smoke` (**14 browser
+tests**). External-mode feedback now explicitly explains its missing trusted
+answer key instead of suggesting a different numeric format. CI packaging runs
+as a separate required job; no gate or failed assertion was disabled.
+
+The same transaction-boundary review reproduced a stale photo assignment during
+image decoding: the upload originally accepted version 1 after another connection
+advanced it to version 2. Post-decode authorization now expires cached ORM state
+inside the reacquired write transaction; the regression requires `409` and zero
+submissions. Provider probes likewise refresh authorization state after I/O.

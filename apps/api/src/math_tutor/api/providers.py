@@ -138,6 +138,7 @@ def probe(
     ):
         raise HTTPException(422, "Synthetic vision probe did not read the known fraction.")
     db.connection(execution_options={"sqlite_begin_immediate": True})
+    db.expire_all()
     current = principal(request, db)
     if current.role != "adult":
         raise HTTPException(403, "Adult access required.")

@@ -79,6 +79,7 @@ async def upload_photo(
         except ValueError as error:
             raise HTTPException(422, str(error)) from None
     db.connection(execution_options={"sqlite_begin_immediate": True})
+    db.expire_all()
     actor = principal(request, db)
     problem = owned_problem(db, actor, problem_id)
     old = db.scalar(

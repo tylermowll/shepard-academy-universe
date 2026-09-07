@@ -356,6 +356,8 @@ def finish_deterministic(db: Session, row: Submission, problem: ProblemInstance)
             "unverifiable": "I cannot check that input. Use a bounded integer, fraction, or decimal.",
             "no_answer": "Enter a final answer to check.",
         }[verdict.answer_status]
+        if problem.template_id == "external-photo":
+            message = "This external problem has no trusted answer key. Its answer remains unverifiable; an adult can review your confirmed work."
         if verdict.format_status == "needs_simplification":
             message += " Reduce the fraction to simplest form."
         if verdict.answer_status in {"correct", "incorrect"}:

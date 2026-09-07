@@ -48,10 +48,28 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
       - name: Verify built UI and API in a browser
         run: make smoke
+      - name: Report synthetic browser failure context
+        if: failure()
+        run: |
+          python - <<'PYTHON'
+          from pathlib import Path
+          for path in Path("test-results").glob("*/error-context.md"):
+              print(path)
+              print(path.read_text()[:20000])
+          PYTHON
       - name: Evaluate original synthetic fixtures
         run: make eval-mock
       - name: Audit locked dependencies
         run: make audit
+
+  package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
       - name: Build the non-root release container
         run: docker build -f infra/docker/Dockerfile -t math-practice-tutor:ci .
       - name: Verify the packaged API, UI and worker

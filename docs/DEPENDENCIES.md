@@ -115,7 +115,8 @@ Sources: [Node releases](https://nodejs.org/en/about/previous-releases),
 
 | Package | Locked resolution | Purpose |
 |---|---|---|
-| boto3 / botocore / matching stubs | 1.43.89 | Bedrock Converse and explicit S3 archive transport; stubs are development only |
+| boto3 / botocore | 1.43.89 | Bedrock Converse and explicit S3 archive transport |
+| boto3-stubs / service stubs | 1.43.89 / exact per-service versions in uv.lock | Development-only schema typing; service packages have independent release numbers |
 | Pillow | 12.3.0 | Bounded raster normalization and original synthetic fixtures |
 | pillow-heif | 1.7.0 | HEIC/HEIF decoder |
 | cryptography | 50.0.1 | Authenticated encrypted backup format |

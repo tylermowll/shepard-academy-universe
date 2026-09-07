@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from math_tutor import auth, backup, worker
 from math_tutor.adapters.db.engine import create_engine_for_url
 from math_tutor.adapters.db.models import (
+    DeviceSession,
     Evaluation,
     Interpretation,
     Job,
@@ -29,7 +30,7 @@ from math_tutor.adapters.db.models import (
     Submission,
 )
 from math_tutor.adapters.db.types import utcnow
-from math_tutor.adapters.images import object_path
+from math_tutor.adapters.images import normalize, object_path
 from math_tutor.api.app import create_app
 from math_tutor.demo import DEMO_PASSWORD, seed
 from math_tutor.retention import sweep
@@ -461,6 +462,7 @@ async def test_external_problem_stays_unverifiable(
     worker.run_once(engine)
     result = await read_problem(adult, session["id"])
     assert result["operations"][-1]["verdict"]["answer_status"] == "unverifiable"
+    assert "no trusted answer key" in result["operations"][-1]["message"]
     with Session(engine) as db:
         assert db.scalar(select(func.count()).select_from(ProgressEvent)) == 0
 
@@ -631,3 +633,62 @@ async def test_simultaneous_workers_claim_once(adult: AsyncClient, engine: Engin
     assert worker.finish(engine, claimed[0])
     with Session(engine) as db:
         assert db.scalar(select(func.count()).select_from(ProgressEvent)) == 1
+
+
+@pytest.mark.anyio
+async def test_logout_reserves_writer_before_session_read(
+    adult: AsyncClient, engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sqlite3
+    from contextlib import closing
+
+    original = auth.get_valid_session
+    checked = False
+
+    def read_while_worker_contends(db: Session, token: str) -> DeviceSession | None:
+        nonlocal checked
+        row = original(db, token)
+        # A competing worker must wait rather than invalidate logout's read snapshot.
+        with (
+            closing(sqlite3.connect(str(engine.url.database), timeout=0)) as contender,
+            pytest.raises(sqlite3.OperationalError, match="locked"),
+        ):
+            contender.execute("BEGIN IMMEDIATE")
+        checked = True
+        return row
+
+    monkeypatch.setattr(auth, "get_valid_session", read_while_worker_contends)
+    response = await adult.post("/api/v1/auth/logout")
+    assert response.status_code == 200
+    assert checked
+    monkeypatch.setattr(auth, "get_valid_session", original)
+    assert not (await adult.get("/api/v1/auth/session")).json()["authenticated"]
+
+
+@pytest.mark.anyio
+async def test_upload_rechecks_assignment_after_decode(
+    adult: AsyncClient, engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from math_tutor.api import photos
+
+    _, problem = await start(adult, (await learner_ids(adult))[0])
+    original = normalize
+
+    def concurrent_edit(data: bytes) -> bytes:
+        normalized = original(data)
+        with Session(engine) as competing:
+            current = competing.get(ProblemInstance, UUID(problem["id"]))
+            assert current is not None
+            current.version += 1
+            competing.commit()
+        return normalized
+
+    monkeypatch.setattr(photos, "normalize", concurrent_edit)
+    response = await adult.post(
+        f"/api/v1/problems/{problem['id']}/photos?version={problem['version']}",
+        content=photo_bytes(),
+        headers={"Idempotency-Key": str(uuid4())},
+    )
+    assert response.status_code == 409
+    with Session(engine) as db:
+        assert db.scalar(select(func.count()).select_from(Submission)) == 0

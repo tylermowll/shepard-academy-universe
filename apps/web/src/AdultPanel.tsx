@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, newKey, type Schema } from "./client";
 
 type Props = {
@@ -13,12 +13,15 @@ export function AdultPanel({ learner, onLearner, act }: Props) {
     null,
   );
   const [message, setMessage] = useState("");
+  const refreshSequence = useRef(0);
   const refresh = useCallback(async () => {
+    const sequence = ++refreshSequence.current;
     const [l, p, c] = await Promise.all([
       api<Schema<"LearnerPublic">[]>("/admin/learners"),
       api<Schema<"ProfilePublic">[]>("/admin/tutor-profiles"),
       api<Schema<"ProvidersPublic">>("/admin/providers"),
     ]);
+    if (sequence !== refreshSequence.current) return;
     setLearners(l);
     setProfiles(p);
     setProviders(c);

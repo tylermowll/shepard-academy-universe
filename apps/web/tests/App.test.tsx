@@ -1,8 +1,17 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useState } from "react";
+import { AdultPanel } from "../src/AdultPanel";
 import { App } from "../src/App";
 import { OfflinePractice } from "../src/OfflinePractice";
 import { checkOffline } from "../src/offline-math";
+import { Practice } from "../src/Practice";
 import { SafeText } from "../src/SafeText";
 
 beforeEach(() =>
@@ -73,4 +82,150 @@ describe("entry and offline practice", () => {
     expect(screen.getByText("Hint").tagName).toBe("STRONG");
     expect(container.querySelector("math")).not.toBeNull();
   });
+});
+
+it("keeps a newly created learner when an older list request finishes late", async () => {
+  const row = {
+    id: "4a15f6fc-8866-468e-801c-1faedc9ae88b",
+    alias: "Synthetic",
+    eligibility: "unknown",
+    enabled: true,
+  };
+  let resolveOld: (response: Response) => void = () => {
+    throw new Error("not initialized");
+  };
+  const oldResponse = new Promise<Response>((resolve) => {
+    resolveOld = resolve;
+  });
+  let firstList = true;
+  const response = (value: unknown) =>
+    new Response(JSON.stringify(value), {
+      headers: { "Content-Type": "application/json" },
+    });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string, options: RequestInit) => {
+      if (url.endsWith("/admin/learners")) {
+        if (options.method === "POST") return Promise.resolve(response(row));
+        if (firstList) {
+          firstList = false;
+          return oldResponse;
+        }
+        return Promise.resolve(response([row]));
+      }
+      if (url.endsWith("/admin/tutor-profiles"))
+        return Promise.resolve(response([]));
+      return Promise.resolve(
+        response({ providers: [], routes: { tutor: "demo", vision: "demo" } }),
+      );
+    }),
+  );
+  const run = async (action: () => Promise<void>) => {
+    await action();
+  };
+  function Workspace() {
+    const [learner, setLearner] = useState("");
+    return <AdultPanel learner={learner} onLearner={setLearner} act={run} />;
+  }
+  render(<Workspace />);
+  fireEvent.click(screen.getByText("Manage learners and devices"));
+  fireEvent.change(screen.getByLabelText("Alias"), {
+    target: { value: "Synthetic" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Create learner" }));
+  await vi.waitFor(() =>
+    expect(screen.getByRole("combobox", { name: "Learner" })).toHaveValue(
+      row.id,
+    ),
+  );
+  await act(async () => {
+    resolveOld(response([]));
+    await oldResponse;
+  });
+  expect(screen.getByRole("combobox", { name: "Learner" })).toHaveValue(row.id);
+});
+
+it("keeps the selected session when a previous session response arrives late", async () => {
+  const learner = "4a15f6fc-8866-468e-801c-1faedc9ae88b";
+  const first = "4a15f6fc-8866-468e-801c-1faedc9ae881";
+  const second = "4a15f6fc-8866-468e-801c-1faedc9ae882";
+  window.location.hash = "";
+  let resolveOld: (response: Response) => void = () => {
+    throw new Error("not initialized");
+  };
+  const oldResponse = new Promise<Response>((resolve) => {
+    resolveOld = resolve;
+  });
+  const response = (value: unknown) => new Response(JSON.stringify(value));
+  const session = (id: string) => ({
+    id,
+    learner_id: learner,
+    status: "completed",
+    problems: [],
+    profile: {
+      name: id === first ? "Old session" : "Chosen session",
+      topics: ["fractions.add"],
+      session_problem_limit: 5,
+    },
+  });
+  const fetcher = vi.fn((url: string) => {
+    if (url.endsWith(`/sessions/${first}`)) return oldResponse;
+    if (url.endsWith(`/sessions/${second}`))
+      return Promise.resolve(response(session(second)));
+    if (url.endsWith("/sessions"))
+      return Promise.resolve(
+        response(
+          [first, second].map((id) => ({
+            id,
+            learner_id: learner,
+            status: "completed",
+            created_at: "2026-09-06T00:00:00Z",
+          })),
+        ),
+      );
+    if (url.endsWith("/progress"))
+      return Promise.resolve(
+        response({
+          checked_answers: 0,
+          correct_without_help: 0,
+          correct_with_help: 0,
+          incorrect: 0,
+        }),
+      );
+    if (url.endsWith("/features"))
+      return Promise.resolve(
+        response({ photos_available: false, external_problems: false }),
+      );
+    return Promise.resolve(response([]));
+  });
+  vi.stubGlobal("fetch", fetcher);
+  const run = async (action: () => Promise<void>) => {
+    await action();
+  };
+  render(<Practice learner={learner} offline={false} act={run} />);
+  await vi.waitFor(() =>
+    expect(
+      screen.getByRole("combobox", { name: "Saved sessions" }).children,
+    ).toHaveLength(3),
+  );
+  fireEvent.change(screen.getByRole("combobox", { name: "Saved sessions" }), {
+    target: { value: first },
+  });
+  fireEvent.change(screen.getByRole("combobox", { name: "Saved sessions" }), {
+    target: { value: second },
+  });
+  await vi.waitFor(() =>
+    expect(
+      screen.getByRole("combobox", { name: "Saved sessions" }),
+    ).toHaveValue(second),
+  );
+  await act(async () => {
+    resolveOld(response(session(first)));
+    await oldResponse;
+  });
+  expect(screen.getByRole("combobox", { name: "Saved sessions" })).toHaveValue(
+    second,
+  );
+  expect(window.location.hash).toBe(`#${second}`);
+  window.location.hash = "";
 });
