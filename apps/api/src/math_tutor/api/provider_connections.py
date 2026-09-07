@@ -12,7 +12,7 @@ from sqlalchemy import delete, func, select
 
 from math_tutor.adapters.db.models import ProviderConnection, ProviderPolicy, ProviderProbe
 from math_tutor.adapters.providers.config import ProviderConfig, load_configuration
-from math_tutor.adapters.providers.contracts import Capabilities
+from math_tutor.adapters.providers.contracts import MAX_CONFIGURED_CONTEXT_LIMIT, Capabilities
 from math_tutor.adapters.providers.transports import local_destination
 from math_tutor.api.access import Adult, Database
 from math_tutor.api.learners import Acknowledged
@@ -32,7 +32,7 @@ class ProviderConnectionInput(BaseModel):
     audience: Literal["adult_only", "mixed"]
     eligibility_record: str = Field(min_length=1, max_length=500)
     image_input: bool = False
-    configured_context_limit: int = Field(default=32768, ge=2048, le=131072)
+    configured_context_limit: int = Field(default=32768, ge=2048, le=MAX_CONFIGURED_CONTEXT_LIMIT)
     structured_output_mode: Literal["native", "json_prompt"] = "native"
     api_key_action: Literal["keep", "replace", "remove"] = "keep"
     api_key: SecretStr | None = Field(default=None, min_length=1, max_length=8192, repr=False)

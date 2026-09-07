@@ -182,6 +182,186 @@ test("Meta hosted policy is explicit while local model controls remain usable", 
   await expect(audience).toHaveValue("adult_only");
 });
 
+test("a saved connection stays selectable while setup blockers point to their exact steps", async ({
+  page,
+}) => {
+  const fixture = await modelFixture();
+  const id = `synthetic-pending-${Date.now()}`;
+  try {
+    await login(page);
+    await navigate(page, "Settings");
+    await page
+      .getByRole("button", { name: "Add AI connection", exact: true })
+      .click();
+    await page.getByLabel("Connection name", { exact: true }).fill(id);
+    await page
+      .getByRole("combobox", { name: "Connection type", exact: true })
+      .selectOption("compatible");
+    await page
+      .getByRole("combobox", { name: "Where this model runs", exact: true })
+      .selectOption("local_network");
+    await page
+      .getByLabel("Server address", { exact: true })
+      .fill(`${fixture.url}/v1`);
+    await page
+      .getByLabel("Model name", { exact: true })
+      .fill("synthetic-million-context-model");
+    await page
+      .getByLabel("This model supports photo input", { exact: true })
+      .check();
+    await page
+      .getByRole("combobox", { name: "Allowed users", exact: true })
+      .selectOption("adult_only");
+    await page.getByLabel("API key", { exact: true }).fill(syntheticKey);
+    await page
+      .getByText("Advanced connection options", { exact: true })
+      .click();
+    const contextLimit = page.getByLabel("Model context limit", {
+      exact: true,
+    });
+    await contextLimit.fill("1000000");
+    await expect(contextLimit).toHaveValue("1000000");
+    expect(
+      await contextLimit.evaluate(
+        (input) => input instanceof HTMLInputElement && input.checkValidity(),
+      ),
+    ).toBe(true);
+    await page
+      .getByLabel(
+        "I reviewed the model and provider terms for the users selected above.",
+        { exact: true },
+      )
+      .check();
+    await page
+      .getByRole("button", { name: "Save connection", exact: true })
+      .click();
+    expect(fixture.calls()).toBe(0);
+
+    await page.getByRole("tab", { name: /Connections/ }).click();
+    const card = page
+      .getByRole("article")
+      .filter({ has: page.getByRole("heading", { name: id, exact: true }) });
+    await expect(card).toContainText("Saved, but blocked by App permissions.");
+    await expect(
+      card.getByRole("button", { name: "Open App permissions", exact: true }),
+    ).toBeVisible();
+
+    await page.getByRole("tab", { name: /Assign active connections/ }).click();
+    await expect(
+      page.getByRole("heading", {
+        name: "Assign active connections",
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      page.getByText(/used across this app for future learner work/i),
+    ).toBeVisible();
+    await expect(
+      page.getByText(
+        /Saving a connection never activates it; this final step does/i,
+      ),
+    ).toBeVisible();
+    const tutor = page.getByRole("combobox", {
+      name: "Tutor connection",
+      exact: true,
+    });
+    const photoReader = page.getByRole("combobox", {
+      name: "Photo reader connection",
+      exact: true,
+    });
+    await expect(tutor.locator(`option[value="${id}"]`)).toBeEnabled();
+    await expect(photoReader.locator(`option[value="${id}"]`)).toBeEnabled();
+    await tutor.selectOption(id);
+    await photoReader.selectOption(id);
+    await expect(tutor).toHaveValue(id);
+    await expect(photoReader).toHaveValue(id);
+    await expect(
+      page.getByText(
+        "Its Allowed users setting does not match the app-wide audience.",
+      ),
+    ).toHaveCount(2);
+    await expect(
+      page.getByText("Its tutor test has not passed.", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByText("Its photo-reader test has not passed.", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Open App permissions", exact: true }),
+    ).toHaveCount(2);
+    await expect(
+      page.getByRole("button", { name: "Open Connection tests", exact: true }),
+    ).toHaveCount(2);
+    await page
+      .getByLabel(
+        "I authorize these app-wide connections to process future learner text and photos.",
+        { exact: true },
+      )
+      .check();
+    await expect(
+      page.getByRole("button", {
+        name: "Save active connections",
+        exact: true,
+      }),
+    ).toBeDisabled();
+
+    await page
+      .getByRole("button", { name: "Open App permissions", exact: true })
+      .first()
+      .click();
+    const permissionsHeading = page.getByRole("heading", {
+      name: "App permissions",
+      exact: true,
+    });
+    await expect(permissionsHeading).toBeVisible();
+    await expect(permissionsHeading).toBeFocused();
+    await expect(
+      page.getByText(
+        /one app-wide permission gate for every connection and learner/i,
+      ),
+    ).toBeVisible();
+    const appAudience = page.getByRole("combobox", {
+      name: "Who uses this app?",
+      exact: true,
+    });
+    await expect(appAudience).toHaveValue("mixed");
+    await expect(appAudience).toBeDisabled();
+    await expect(page.getByText(/locked the app audience/i)).toBeVisible();
+
+    const settings = await page.request.get("/api/v1/admin/providers");
+    const body = (await settings.json()) as {
+      routes: { tutor: string; vision: string };
+      providers: Array<{
+        id: string;
+        tutor_probed: boolean;
+        vision_probed: boolean;
+        configured_context_limit: number;
+      }>;
+    };
+    expect(body.routes).toEqual({ tutor: "demo", vision: "demo" });
+    expect(body.providers.find((provider) => provider.id === id)).toMatchObject(
+      {
+        tutor_probed: false,
+        vision_probed: false,
+        configured_context_limit: 1_000_000,
+      },
+    );
+    expect(fixture.calls()).toBe(0);
+
+    await page.getByRole("tab", { name: /Connections/ }).click();
+    await card
+      .getByText("Technical details and actions", { exact: true })
+      .click();
+    page.once("dialog", (dialog) => dialog.accept());
+    await card
+      .getByRole("button", { name: "Delete connection", exact: true })
+      .click();
+    await expect(card).toHaveCount(0);
+  } finally {
+    await fixture.close();
+  }
+});
+
 for (const adapter of ["vllm", "ollama", "compatible"] as const) {
   test(`adult configures ${adapter} with a write-only key, probes it, and uses it without a restart`, async ({
     page,
@@ -230,6 +410,12 @@ for (const adapter of ["vllm", "ollama", "compatible"] as const) {
       const card = page
         .getByRole("article")
         .filter({ has: page.getByRole("heading", { name: id, exact: true }) });
+      const tutorStatus = card
+        .locator("dl.readiness-list > div")
+        .filter({ hasText: "Tutor test" });
+      const photoReaderStatus = card
+        .locator("dl.readiness-list > div")
+        .filter({ hasText: "Photo-reader test" });
       await expect(card).toBeVisible();
       expect(fixture.calls()).toBe(0);
       await expect(page.getByLabel("API key", { exact: true })).toHaveCount(0);
@@ -261,7 +447,7 @@ for (const adapter of ["vllm", "ollama", "compatible"] as const) {
           "Edit this connection and replace the key",
         );
         await expect(page.getByRole("alert")).not.toContainText(syntheticKey);
-        await expect(card).toContainText("Tutor: not tested");
+        await expect(tutorStatus).toContainText("Not run");
         expect(fixture.calls()).toBe(1);
         fixture.rejectAuthentication(false);
       }
@@ -269,39 +455,59 @@ for (const adapter of ["vllm", "ollama", "compatible"] as const) {
       await card
         .getByRole("button", { name: "Test tutor", exact: true })
         .click();
-      await expect(card).toContainText("Tutor: test recorded");
+      await expect(tutorStatus).toContainText("Passed");
       page.once("dialog", (dialog) => dialog.accept());
       await card
         .getByRole("button", { name: "Test photo reader", exact: true })
         .click();
-      await expect(card).toContainText("Photo reader: test recorded");
+      await expect(photoReaderStatus).toContainText("Passed");
       expect(fixture.calls()).toBe(3 + failedCalls);
       expect(fixture.authenticatedCalls()).toBe(3 + failedCalls);
       await page
-        .getByRole("combobox", { name: "Tutor", exact: true })
+        .getByRole("tab", { name: /Assign active connections/ })
+        .click();
+      await page
+        .getByRole("combobox", { name: "Tutor connection", exact: true })
         .selectOption(id);
       await page
-        .getByRole("combobox", { name: "Photo reader", exact: true })
+        .getByRole("combobox", {
+          name: "Photo reader connection",
+          exact: true,
+        })
         .selectOption(id);
       await page
         .getByLabel(
-          "I authorize sending text and photos to the providers selected above.",
+          "I authorize these app-wide connections to process future learner text and photos.",
           { exact: true },
         )
         .check();
       await page
-        .getByRole("button", { name: "Save AI settings", exact: true })
+        .getByRole("button", {
+          name: "Save active connections",
+          exact: true,
+        })
         .click();
       await expect(
-        page.getByRole("status").filter({ hasText: "AI settings saved" }),
+        page
+          .getByRole("status")
+          .filter({ hasText: "Active connections saved" }),
       ).toBeVisible();
 
       await page.reload();
+      await page
+        .getByRole("tab", { name: /Assign active connections/ })
+        .click();
       await expect(
-        page.getByRole("combobox", { name: "Tutor", exact: true }),
+        page.getByRole("combobox", {
+          name: "Tutor connection",
+          exact: true,
+        }),
       ).toHaveValue(id);
       await expect(
-        page.getByRole("combobox", { name: "Photo reader", exact: true }),
+        page.getByRole("combobox", {
+          name: "Photo reader connection",
+          exact: true,
+        }),
       ).toHaveValue(id);
       await createLearner(page);
       await page
@@ -319,10 +525,10 @@ for (const adapter of ["vllm", "ollama", "compatible"] as const) {
 
       await restoreDemoRoutes(page);
       await navigate(page, "Settings");
-      await page
-        .getByText("Connection tests & provider details", { exact: true })
+      await page.getByRole("tab", { name: /Connections/ }).click();
+      await card
+        .getByText("Technical details and actions", { exact: true })
         .click();
-      await card.getByText("Connection details", { exact: true }).click();
       await card
         .getByRole("button", { name: "Edit connection", exact: true })
         .click();
@@ -342,20 +548,23 @@ for (const adapter of ["vllm", "ollama", "compatible"] as const) {
       await page
         .getByRole("button", { name: "Save connection", exact: true })
         .click();
-      await expect(card).toContainText("Tutor: not tested");
-      await expect(card).toContainText("Photo reader: not tested");
+      await expect(tutorStatus).toContainText("Not run");
+      await expect(photoReaderStatus).toContainText("Not run");
       expect(fixture.calls()).toBe(4 + failedCalls);
       // Editing persisted settings doesn't redisplay the saved secret.
       const edited = await page.request.get("/api/v1/admin/providers");
       expect(await edited.text()).not.toContain(syntheticKey);
-      const details = card.getByText("Connection details", { exact: true });
+      await page.getByRole("tab", { name: /Connections/ }).click();
+      const details = card.getByText("Technical details and actions", {
+        exact: true,
+      });
       if (
         !(await details
           .locator("..")
           .evaluate((node) => node.hasAttribute("open")))
       )
         await details.click();
-      await expect(card).toContainText("No API key saved");
+      await expect(card).toContainText("API key: not saved");
       page.once("dialog", (dialog) => dialog.accept());
       await card
         .getByRole("button", { name: "Delete connection", exact: true })

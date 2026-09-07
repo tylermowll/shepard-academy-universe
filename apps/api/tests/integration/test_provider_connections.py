@@ -23,6 +23,7 @@ from math_tutor.adapters.db.models import Job, ProviderConnection, ProviderPolic
 from math_tutor.adapters.db.types import utcnow
 from math_tutor.adapters.providers.config import ProviderConfig, Routes, route
 from math_tutor.adapters.providers.contracts import (
+    MAX_CONFIGURED_CONTEXT_LIMIT,
     ModelRequest,
     ModelResult,
     ProviderError,
@@ -114,6 +115,34 @@ async def test_private_connection_lifecycle_encrypts_reopens_and_never_returns_k
     assert response.status_code == 200
     with Session(engine) as db:
         assert db.get(ProviderConnection, "local") is None
+
+
+@pytest.mark.anyio
+async def test_large_context_limit_is_saved_and_excessive_value_is_rejected(
+    adult: AsyncClient, engine: Engine
+) -> None:
+    await add(adult, "million-context", configured_context_limit=1_000_000)
+    saved = next(
+        provider
+        for provider in (await adult.get(BASE)).json()["providers"]
+        if provider["id"] == "million-context"
+    )
+    assert saved["configured_context_limit"] == 1_000_000
+    with Session(engine) as db:
+        persisted = db.get(ProviderConnection, "million-context")
+        assert persisted is not None
+        assert persisted.configuration["capabilities"]["configured_context_limit"] == 1_000_000
+
+    response = await adult.post(
+        BASE + "/connections",
+        json={
+            "id": "excessive-context",
+            **connection(configured_context_limit=MAX_CONFIGURED_CONTEXT_LIMIT + 1),
+        },
+    )
+    assert response.status_code == 422
+    with Session(engine) as db:
+        assert db.get(ProviderConnection, "excessive-context") is None
 
 
 @pytest.mark.anyio

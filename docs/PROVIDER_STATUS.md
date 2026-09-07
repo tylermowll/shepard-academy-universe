@@ -26,12 +26,13 @@ endpoint/model from the disabled example.
 
 ## Activate one reviewed route
 
-1. In adult **Settings → Add AI connection**, select Ollama, vLLM, a compatible
+1. In adult **Settings → Connections**, select Ollama, vLLM, a compatible
    API, or Meta. Enter the exact installed/approved model ID and endpoint, and an
    API key if required. Review model/provider terms, intended audience and data
    handling. Declare image capability and context limits honestly; a text-only
    route cannot receive images. Save sends no model request and changes no route.
-2. Review **App privacy & audience** in Settings. Enable cloud processing only
+2. Open **App permissions** in Settings. This installation-wide ceiling is
+   separate from any one connection. Enable cloud processing only
    deliberately. Adult-only routes require an adults-only app audience and an
    adult learner; mixed routes use the operator's separate terms attestation.
    Meta-hosted connections display a provider-specific age/data disclaimer but
@@ -39,16 +40,18 @@ endpoint/model from the disabled example.
    `ALLOW_CLOUD_INFERENCE` and `APP_AUDIENCE` values lock their UI controls; absent
    values allow saved Settings policy, defaulting to cloud off and mixed ages.
    Local routes stay local and never fall back to cloud.
-3. Saved changes are visible to API and worker without restarting. Explicitly
-   authorize the synthetic test for each required stage. The tutor test makes
-   two bounded sample calls, checking activity generation and feedback. The photo
-   test makes one call using the current work-reading schema and must
+3. Open **Connection tests**. Saved changes are visible to API and worker without
+   restarting. Explicitly authorize the synthetic test for each required stage.
+   The tutor test makes two bounded sample calls, checking activity generation
+   and feedback. The photo test makes one call using the current work-reading schema and must
    return the known synthetic `1/2` transcription as a clear, unambiguous reading;
    mere HTTP success is insufficient. A matching probe lasts seven days and is
    invalidated by capability/configuration/key changes.
-4. Select the eligible route with the displayed data-boundary acknowledgment.
-   Test only synthetic material first. Record exact runtime/model/config/prompt
-   versions, date, sample counts, failures, latency, token usage and human review.
+4. Open **Assign active connections** and select the tested tutor and photo
+   reader with the displayed data-boundary acknowledgment. This app-wide choice,
+   not saving a connection, changes future learner routing. Record exact runtime,
+   model, configuration and prompt versions, date, sample counts, failures,
+   latency, token usage and human review.
    A failed local route never invokes an alternate provider.
 
 Saved keys are encrypted in the private SQLite database and never returned in

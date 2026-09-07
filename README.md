@@ -64,12 +64,13 @@ needs an upgrade, startup stops with instructions. Stop all app/worker writes,
 back up retained data, then run `make migrate start`. `make admin` is an explicit
 password-reset tool, not a routine restart step; resetting revokes sessions.
 
-Sign in and open **Settings → Add AI connection**. Choose Ollama, vLLM or an API
-type, enter its address and exact model name, and enter an API key if required.
-Review the audience/data boundary, save, explicitly test the required roles,
-then select your **Tutor** and **Photo reader** and **Save AI settings**. Saving
-a connection does not perform inference, choose a route, or download a model.
-Tests send synthetic material and may incur your provider's charges.
+Sign in and open **Settings**. Its four steps keep different decisions separate:
+**Connections** saves a model/server/key, **App permissions** controls the
+installation-wide cloud and audience ceiling, **Connection tests** sends only
+explicitly approved synthetic checks, and **Assign active connections** chooses
+what future learner work actually uses. A saved connection is not automatically
+tested or activated. If a connection is not ready, its assignment shows the exact
+missing step and links directly to it. Tests may incur your provider's charges.
 For Meta-hosted inference, the cloud location is fixed but the allowed audience
 is your explicit choice. The app shows a provider-terms disclaimer and records
 your required acknowledgment; it does not certify that an account or agreement
@@ -88,8 +89,9 @@ The page tabs separate the workflow:
 - **Learners & devices** (adult): add learners, pair browsers, export saved work,
   revoke access, and delete learners.
 - **Settings** (adult): add/edit AI connections and keys, review cloud/audience
-  policy, and test/select the tutor and photo reader. The browser model
-  experiment is under **Advanced** and is not required for practice.
+  permissions, test connections, and separately assign the active tutor and photo
+  reader. The browser model experiment is under **Advanced** and is not required
+  for practice.
 - **Help**: setup, phone connection, model configuration, troubleshooting, and
   privacy. Contextual disclosures explain controls without leaving the page.
 
@@ -184,8 +186,8 @@ The [Makefile](Makefile) is authoritative.
 | `make contracts` / `make contracts-check`                                | Regenerate OpenAPI/TypeScript or reject drift                                                               |
 | `make format`, `make lint`, `make typecheck`                             | Focused developer checks                                                                                    |
 | `make demo`, `make seed-demo`                                            | Disposable supervisor, or explicit empty demo database seed                                                 |
-| `make start`, `make dev`, `make worker`                                  | Persistent local setup/start, loopback-only start, or worker alone                                           |
-| `make migrate`                                                          | Upgrade a retained database with all app/worker writes stopped                                               |
+| `make start`, `make dev`, `make worker`                                  | Persistent local setup/start, loopback-only start, or worker alone                                          |
+| `make migrate`                                                           | Upgrade a retained database with all app/worker writes stopped                                              |
 | `make serve`                                                             | API/worker behind your configured private HTTPS gateway; see PHONE_SETUP                                    |
 | `make down`                                                              | Stop Compose services while retaining data; native services use Ctrl+C                                      |
 | `make backup OUTPUT=...`, `make restore INPUT=... OUTPUT=... LEDGER=...` | Interactive encrypted backup/restore with writes stopped                                                    |

@@ -14,7 +14,16 @@ from math_tutor.auth import get_valid_session, register_login_attempt
 
 def transaction(request: Request) -> Iterator[Session]:
     with Session(engine_for(request), expire_on_commit=False) as db:
-        if request.method not in {"GET", "HEAD", "OPTIONS"}:
+        # The delegated phone upload validates, commits, awaits bounded image
+        # normalization, then explicitly begins an immediate transaction and
+        # revalidates under that lock. Taking the write lock here can deadlock
+        # concurrent async uploads: one request can resume and synchronously
+        # wait for a lock held by another request whose endpoint needs the same
+        # event loop in order to release it.
+        deferred_phone_upload = (
+            request.method == "POST" and request.url.path == "/api/v1/phone-upload/photos"
+        )
+        if request.method not in {"GET", "HEAD", "OPTIONS"} and not deferred_phone_upload:
             db.connection(execution_options={"sqlite_begin_immediate": True})
         yield db
         db.commit()

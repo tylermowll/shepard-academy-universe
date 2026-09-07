@@ -1,6 +1,9 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ProviderConnections } from "../src/ProviderConnections";
+import {
+  ProviderConnections,
+  type ProviderSettingsSection,
+} from "../src/ProviderConnections";
 import { setIdentity, type Schema } from "../src/client";
 
 const saved: Schema<"ProviderPublic"> = {
@@ -41,8 +44,7 @@ const terms = () =>
     name: "I reviewed the model and provider terms for the users selected above.",
   });
 const openDetails = () => {
-  fireEvent.click(screen.getByText("Connection tests & provider details"));
-  fireEvent.click(screen.getByText("Connection details"));
+  fireEvent.click(screen.getByText("Technical details and actions"));
 };
 
 beforeEach(() => {
@@ -58,18 +60,33 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function show(value = configuration) {
+function show(
+  value = configuration,
+  section: ProviderSettingsSection = "connections",
+) {
   const onChanged = vi.fn(async () => {});
   const onNavigate = vi.fn();
-  const view = render(
-    <ProviderConnections
-      configuration={value}
-      act={run}
-      onChanged={onChanged}
-      onNavigate={onNavigate}
-    />,
-  );
-  return { ...view, onChanged, onNavigate };
+  const onSectionChange = vi.fn();
+  const props = {
+    configuration: value,
+    act: run,
+    onChanged,
+    onNavigate,
+    onSectionChange,
+  };
+  const view = render(<ProviderConnections {...props} section={section} />);
+  const showSection = (
+    next: ProviderSettingsSection,
+    nextValue: Schema<"ProvidersPublic"> = value,
+  ) =>
+    view.rerender(
+      <ProviderConnections
+        {...props}
+        configuration={nextValue}
+        section={next}
+      />,
+    );
+  return { ...view, onChanged, onNavigate, onSectionChange, showSection };
 }
 
 function fillNew() {
@@ -127,8 +144,7 @@ describe("adult connection setup", () => {
           ),
         ),
       );
-      const { onChanged } = show();
-      fireEvent.click(screen.getByText("Connection tests & provider details"));
+      const { onChanged } = show(configuration, "tests");
       vi.spyOn(window, "confirm").mockReturnValue(true);
       fireEvent.click(
         screen.getByRole("button", {
@@ -147,7 +163,7 @@ describe("adult connection setup", () => {
   );
 
   it("saves an exact local model without calling it or changing practice routes", async () => {
-    const { onChanged } = show();
+    const { onChanged, onSectionChange } = show();
     fillNew();
     const save = screen.getByRole("button", { name: "Save connection" });
     expect(save).toBeDisabled();
@@ -179,7 +195,25 @@ describe("adult connection setup", () => {
       }),
     );
     expect(onChanged).toHaveBeenCalledOnce();
+    expect(onSectionChange).toHaveBeenCalledWith("tests", true);
     expect(screen.queryByLabelText("Model name")).toBeNull();
+  });
+
+  it("accepts a one-million-token model context limit", async () => {
+    show();
+    fillNew();
+    fireEvent.click(screen.getByText("Advanced connection options"));
+    const contextLimit = screen.getByLabelText("Model context limit");
+    fireEvent.change(contextLimit, { target: { value: "1000000" } });
+    expect(contextLimit).toHaveValue(1_000_000);
+    expect(contextLimit).toBeValid();
+    fireEvent.click(terms());
+    fireEvent.click(screen.getByRole("button", { name: "Save connection" }));
+    await screen.findByText(/local-tutor saved/);
+    const request = vi.mocked(fetch).mock.calls[0]![1]!;
+    expect(JSON.parse(request.body as string)).toMatchObject({
+      configured_context_limit: 1_000_000,
+    });
   });
 
   it("requires model, connection name, valid address and explicit reviewed terms", () => {
@@ -378,7 +412,7 @@ describe("adult connection setup", () => {
   });
 
   it("saves the selected Meta audience while keeping its hosted location fixed", async () => {
-    show();
+    const { onSectionChange } = show();
     fireEvent.click(screen.getByRole("button", { name: "Add AI connection" }));
     fireEvent.change(screen.getByLabelText("Connection name"), {
       target: { value: "meta-policy" },
@@ -409,7 +443,84 @@ describe("adult connection setup", () => {
       boundary: "cloud",
       audience: "mixed",
     });
+    expect(onSectionChange).toHaveBeenCalledWith("policy", true);
   });
+
+  it("shows why saved connections are not ready and links directly to the blocking step", () => {
+    const pending = {
+      ...saved,
+      tutor_probed: false,
+      vision_probed: false,
+      requires_approval: true,
+    };
+    const view = show({ ...configuration, providers: [pending] });
+    expect(
+      screen.getByText(
+        /Saved, but not ready to assign until its required tests pass/,
+      ),
+    ).toBeVisible();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Test this connection" }),
+    );
+    expect(view.onSectionChange).toHaveBeenLastCalledWith("tests", true);
+
+    view.showSection("connections", {
+      ...configuration,
+      providers: [{ ...pending, boundary: "cloud" }],
+    });
+    expect(
+      screen.getByText(/Saved, but blocked by App permissions/),
+    ).toBeVisible();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open App permissions" }),
+    );
+    expect(view.onSectionChange).toHaveBeenLastCalledWith("policy", true);
+  });
+
+  it("explains that App permissions is one app-wide permission gate", () => {
+    show(configuration, "policy");
+    expect(
+      screen.getByRole("heading", { name: "App permissions" }),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /one app-wide permission gate for every connection and learner/i,
+      ),
+    ).toBeVisible();
+    expect(
+      screen.getByText(/It does not choose a model or send any requests/i),
+    ).toBeVisible();
+  });
+
+  it.each(["tutor", "photo reader"])(
+    "allows assignment for the tested %s role while the other role still needs testing",
+    (role) => {
+      const view = show({
+        ...configuration,
+        providers: [
+          {
+            ...saved,
+            tutor_probed: role === "tutor",
+            vision_probed: role === "photo reader",
+            requires_approval: true,
+          },
+        ],
+      });
+      expect(
+        screen.getByText(`Ready for ${role}.`, { exact: false }),
+      ).toBeVisible();
+      expect(screen.getByText(/Other roles still need testing/)).toBeVisible();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Assign active connections" }),
+      );
+      expect(view.onSectionChange).toHaveBeenLastCalledWith("roles", true);
+      view.showSection("tests");
+      expect(
+        screen.getByRole("button", { name: "Assign active connections" }),
+      ).toBeEnabled();
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([
     ["ollama", "cloud", "https://ollama.example.invalid"],
@@ -494,17 +605,10 @@ describe("adult connection setup", () => {
     expect(
       screen.queryByRole("button", { name: "Edit connection" }),
     ).toBeNull();
-    view.rerender(
-      <ProviderConnections
-        configuration={{
-          ...configuration,
-          routes: { tutor: saved.id, vision: saved.id },
-        }}
-        act={run}
-        onChanged={view.onChanged}
-        onNavigate={view.onNavigate}
-      />,
-    );
+    view.showSection("connections", {
+      ...configuration,
+      routes: { tutor: saved.id, vision: saved.id },
+    });
     expect(
       screen.getByRole("button", { name: "Delete connection" }),
     ).toBeDisabled();
@@ -515,7 +619,7 @@ describe("adult connection setup", () => {
   });
 
   it("prevents demo connection/key writes and live probes", () => {
-    const { onNavigate } = show({
+    const view = show({
       ...configuration,
       policy: { ...configuration.policy, demo_mode: true },
     });
@@ -524,37 +628,48 @@ describe("adult connection setup", () => {
     ).toBeDisabled();
     expect(screen.queryByLabelText("API key")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Private setup help" }));
-    expect(onNavigate).toHaveBeenCalledWith("help", "setup");
-    openDetails();
-    expect(
-      screen.getByRole("button", { name: "Edit connection" }),
-    ).toBeDisabled();
+    expect(view.onNavigate).toHaveBeenCalledWith("help", "setup");
+    view.showSection("tests", {
+      ...configuration,
+      policy: { ...configuration.policy, demo_mode: true },
+    });
     expect(screen.getByRole("button", { name: "Test tutor" })).toBeDisabled();
     expect(fetch).not.toHaveBeenCalled();
   });
 
   it("requires explicit cloud/audience consent and displays server locks", async () => {
-    const view = show({
+    const view = show(
+      {
+        ...configuration,
+        providers: [{ ...saved, boundary: "cloud", audience: "adult_only" }],
+      },
+      "tests",
+    );
+    expect(screen.getByRole("button", { name: "Test tutor" })).toBeDisabled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open App permissions" }),
+    );
+    expect(view.onSectionChange).toHaveBeenCalledWith("policy", true);
+    view.showSection("policy", {
       ...configuration,
       providers: [{ ...saved, boundary: "cloud", audience: "adult_only" }],
     });
-    fireEvent.click(screen.getByText("Connection tests & provider details"));
-    expect(screen.getByRole("button", { name: "Test tutor" })).toBeDisabled();
-    fireEvent.click(screen.getByText("App privacy & audience"));
     fireEvent.change(screen.getByLabelText("Who uses this app?"), {
       target: { value: "adult_only" },
     });
     fireEvent.click(screen.getByLabelText("Allow cloud AI for this app"));
     expect(
-      screen.getByRole("button", { name: "Save app policy" }),
+      screen.getByRole("button", { name: "Save app permissions" }),
     ).toBeDisabled();
     fireEvent.click(
       screen.getByLabelText(
         "I confirm this audience and authorize the selected data boundary.",
       ),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Save app policy" }));
-    await screen.findByText(/App policy saved/);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save app permissions" }),
+    );
+    await screen.findByText(/App permissions saved/);
     expect(fetch).toHaveBeenCalledWith(
       "/api/v1/admin/providers/policy",
       expect.objectContaining({
@@ -566,21 +681,14 @@ describe("adult connection setup", () => {
         }),
       }),
     );
-    view.rerender(
-      <ProviderConnections
-        configuration={{
-          ...configuration,
-          policy: {
-            ...configuration.policy,
-            cloud_locked: true,
-            audience_locked: true,
-          },
-        }}
-        act={run}
-        onChanged={view.onChanged}
-        onNavigate={view.onNavigate}
-      />,
-    );
+    view.showSection("policy", {
+      ...configuration,
+      policy: {
+        ...configuration.policy,
+        cloud_locked: true,
+        audience_locked: true,
+      },
+    });
     expect(screen.getByLabelText("Allow cloud AI for this app")).toBeDisabled();
     expect(screen.getByLabelText("Who uses this app?")).toBeDisabled();
     expect(screen.getByText(/locked cloud access/)).toBeVisible();
@@ -589,7 +697,6 @@ describe("adult connection setup", () => {
   it("offers an explicit enable action for disabled connections", async () => {
     show({ ...configuration, providers: [{ ...saved, enabled: false }] });
     openDetails();
-    expect(screen.getByRole("button", { name: "Test tutor" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Enable connection" }));
     await screen.findByText(/home-vision enabled/);
     expect(

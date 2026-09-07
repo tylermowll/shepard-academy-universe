@@ -1,6 +1,25 @@
 # Current handoff
 
-The current task is **T29: product identity and honest provider controls**. The
+The current task is **T30: guided AI setup and truthful context windows**. Settings
+now has separate Connections, App permissions, Connection tests, and Assign active
+connections tabs. A saved model remains selectable while its exact setup blockers
+are shown beside the selected role. Readiness is independent for tutoring and photo
+reading. Cloud permission is visible and applies across the app; only the final
+assignment changes future learner routing. Context windows accept 1,000,000 tokens
+and larger values up to the shared signed-32-bit validation bound. This is model
+metadata, not an allocation or an increase in actual request/output sizes.
+
+The maintainer requested another review, completion, and push to main. T30's
+repository hooks, production build, contract/secret/infrastructure checks, 162 unit,
+113 component, 217 integration and 18 affected desktop/mobile browser tests passed.
+The review also reproduced and fixed an intermittent phone-upload retry lock, with
+10 consecutive focused passes and the full integration gate afterward. See
+[TASKS](TASKS.md) for exact evidence. No live provider request or private operator
+configuration was used. No migration or key re-entry is needed. After restarting,
+use App permissions, then Connection tests, then Assign active connections to
+activate a saved Spark connection.
+
+T29 completed **product identity and honest provider controls**. The
 maintainer selected **Shepard Academy Universe**, matching the repository name,
 and reported that the model-location and allowed-user dropdowns looked broken
 while configuring Meta. After reviewing the provider-specific terms, the maintainer

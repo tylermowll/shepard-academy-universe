@@ -37,6 +37,77 @@ specification gates pass.
 | T27  | Implemented; automated gates passed                            | Browser-managed AI connections/keys, current-schema tests, persistent startup and safe backup settings; 145 unit, 80 component, 188 integration and 42 browser tests passed.                                                   |
 | T28  | Implemented; automated gates passed                            | Browser-first owner setup, inline recovery, six-character loopback passwords with network safeguards; 159 unit, 103 component, 215 integration and 46 browser tests passed.                                                    |
 | T29  | Implemented; automated gates passed                            | Shepard Academy Universe branding; fixed Meta cloud location, editable audience and disclaimer; project hooks/check, 216 integration and 4 affected browser tests passed.                                                      |
+| T30  | Implemented; automated gates passed                            | Guided AI setup, visible blockers, selectable pending connections and million-token context windows; 162 unit, 113 component, 217 integration and 18 affected browser tests passed.                                            |
+
+### T30 — Guided AI setup and truthful context windows (2026-09-07)
+
+The maintainer found that a newly saved Spark connection remained greyed out in
+the provider selectors, while the app-wide permissions and connection tests that
+block assignment were hidden in other collapsed sections. They also found that the
+generic 131,072-token validation ceiling rejects Spark's larger documented context.
+
+Bounded implementation and acceptance:
+
+- Separate connection editing, app-wide permissions, synthetic connection tests,
+  and active tutor/photo assignment into clearly named settings sections with an
+  explicit **save → permissions → test → assign** sequence.
+- Show every blocker on the affected connection or role, explain that policy is a
+  global safety switch rather than part of one connection, and provide a direct
+  action to the section that resolves it. Do not represent a merely untested
+  connection as a mysteriously disabled option.
+- Preserve explicit cloud authorization, synthetic-test confirmation, capability
+  checks and final role authorization. Saving must still make no provider call and
+  must not activate a route automatically.
+- Raise the provider-neutral context-window contract to a justified bounded value
+  that accepts 1,000,000 tokens and other currently supported large-context models.
+  Keep frontend and backend validation aligned and reject values outside the bound.
+- Add backend, component and desktop/mobile browser regressions for the main path
+  and blocked path, regenerate contracts, run the applicable project gates, and use
+  only synthetic fixtures. Do not inspect private configuration or call a live model.
+
+Implemented:
+
+- Split Settings into four keyboard-accessible tabs: Connections, App permissions,
+  Connection tests, and Assign active connections. Saving directs the operator to
+  the next missing step. Help and setup documentation follow the same sequence.
+- Pending connections remain selectable. Assignment lists their exact permission,
+  credential, capability and test blockers with direct navigation. Draft selections
+  survive visits to other setup steps; activation still requires valid tests and
+  explicit authorization. Tutor and photo-reader readiness are independent.
+- Accept context windows from 2,048 through 2,147,483,647 consistently in the browser
+  and provider schemas, including 1,000,000-token values. Actual request/output
+  limits remain separately bounded. Regenerated the public API contract.
+- Clarified the connection-name format, including the valid example `spark-1-3`.
+- Added regression coverage for large-context persistence and rejected values,
+  pending selections, separate role readiness, direct blocker links, keyboard tabs,
+  and zero model calls or route activation when merely saving a connection.
+- Final review reproduced a pre-existing intermittent 503 in concurrent phone
+  retries. Deferred that endpoint's eager write lock until after image processing,
+  retaining locked authorization/idempotency revalidation and releasing the lock
+  before returning a duplicate receipt. This is a bounded transaction correction
+  with no schema change; the existing concurrency assertions remain intact.
+
+Verification:
+
+- `make hooks-check build contracts-check secret-check infra-check` passed after
+  correcting a browser-test type error and the partial-readiness status message.
+  This includes locked dependency, lint, formatting, type, unit and component gates.
+- Final code checks passed **162 backend unit tests** and **113 component tests**.
+  The final hook run also includes the phone-upload correction below.
+- The production build retains the existing non-fatal bundle-size warning.
+- `pnpm exec playwright test tests/smoke/connections.spec.ts tests/smoke/navigation.spec.ts`
+  passed **18/18** cases on desktop and mobile Chromium, using a synthetic local
+  server and model fixtures. No real provider calls were made.
+- `make test-integration` passed **217/217** after fixing the reproduced phone-upload
+  lock. The unchanged `test_concurrent_phone_retry_and_changed_photo` regression
+  passed **10/10** consecutive focused runs after the fix. Before correction, the
+  full suite had one failure (**216 passed**) and the focused test reproduced the
+  same `[503, 202]` result on its third run.
+- `git diff --check` passed. Validation used Node 24.20.0, the repository's locked
+  dependencies, an isolated uv cache, `UV_NO_ENV_FILE=true`, and system Chromium for
+  Playwright. No live provider request, private configuration access, model download,
+  physical-phone test or cloud deployment was performed. Live Spark verification
+  remains the operator's next step after saving permissions and running its tests.
 
 ### T29 — Product identity and honest provider controls (2026-09-07)
 

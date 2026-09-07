@@ -235,6 +235,10 @@ async def upload(request: Request, db: Database) -> PhoneReceipt:
             raise HTTPException(
                 409, "This link already received a different photo. Return to your computer."
             )
+        # Release the explicit immediate transaction before the async request
+        # returns and dependency teardown is scheduled. A concurrent retry must
+        # never wait on a successful duplicate receipt.
+        db.commit()
         return PhoneReceipt()
     problem = db.get(ProblemInstance, grant.problem_id)
     issuer = db.get(DeviceSession, grant.issuer_id)

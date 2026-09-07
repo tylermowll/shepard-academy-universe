@@ -294,7 +294,49 @@ describe("learner and device page", () => {
 });
 
 describe("AI settings page", () => {
-  it("requires successful current tests before assigning a connection to a role", async () => {
+  it("separates the four setup purposes into keyboard-navigable tabs", async () => {
+    render(<AdultPanel {...props()} page="settings" />);
+    const connections = await screen.findByRole("tab", {
+      name: /Connections.*Save model access/,
+    });
+    const permissions = screen.getByRole("tab", {
+      name: /App permissions.*Allow data use/,
+    });
+    const tests = screen.getByRole("tab", {
+      name: /Connection tests.*Check readiness/,
+    });
+    const roles = screen.getByRole("tab", {
+      name: /Assign active connections.*Activate for the app/,
+    });
+    expect(screen.getAllByRole("tab")).toHaveLength(4);
+    expect(connections).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("heading", { name: "Connections" })).toBeVisible();
+
+    fireEvent.click(permissions);
+    expect(permissions).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByRole("heading", { name: "App permissions" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Add AI connection" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.keyDown(permissions, { key: "ArrowRight" });
+    expect(tests).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByRole("heading", { name: "Connection tests" }),
+    ).toBeVisible();
+    expect(tests).toHaveFocus();
+
+    fireEvent.keyDown(tests, { key: "End" });
+    expect(roles).toHaveAttribute("aria-selected", "true");
+    expect(
+      screen.getByRole("heading", { name: "Assign active connections" }),
+    ).toBeVisible();
+    expect(roles).toHaveFocus();
+  });
+
+  it("keeps an untested connection selectable while blocking final app-wide activation", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(() =>
@@ -312,20 +354,36 @@ describe("AI settings page", () => {
       ),
     );
     render(<AdultPanel {...props()} page="settings" />);
-    const tutor = await screen.findByRole("combobox", { name: "Tutor" });
+    const rolesTab = await screen.findByRole("tab", {
+      name: /Assign active connections/,
+    });
+    fireEvent.click(rolesTab);
     expect(
-      within(tutor).getByRole("option", { name: "local-text" }),
-    ).toBeDisabled();
+      screen.getByRole("heading", { name: "Assign active connections" }),
+    ).toBeVisible();
     expect(
-      screen.getByText(/successful tutor test before it can be used/),
+      screen.getByText(/used across this app for future learner work/i),
+    ).toBeVisible();
+    expect(
+      screen.getByText(
+        /Saving a connection never activates it; this final step does/i,
+      ),
+    ).toBeVisible();
+    const tutor = screen.getByRole("combobox", { name: "Tutor connection" });
+    expect(
+      within(tutor).getByRole("option", { name: "local-text (setup needed)" }),
+    ).toBeEnabled();
+    expect(screen.getByText("Its tutor test has not passed.")).toBeVisible();
+    expect(
+      screen.getByRole("button", { name: "Open Connection tests" }),
     ).toBeVisible();
     fireEvent.click(
       screen.getByRole("checkbox", {
-        name: "I authorize sending text and photos to the providers selected above.",
+        name: "I authorize these app-wide connections to process future learner text and photos.",
       }),
     );
     expect(
-      screen.getByRole("button", { name: "Save AI settings" }),
+      screen.getByRole("button", { name: "Save active connections" }),
     ).toBeDisabled();
     expect(fetch).toHaveBeenCalledOnce();
   });
@@ -348,23 +406,26 @@ describe("AI settings page", () => {
       ),
     );
     render(<AdultPanel {...props()} page="settings" />);
-    const tutor = await screen.findByRole("combobox", { name: "Tutor" });
+    fireEvent.click(
+      await screen.findByRole("tab", { name: /Assign active connections/ }),
+    );
+    const tutor = screen.getByRole("combobox", { name: "Tutor connection" });
     expect(
-      within(tutor).getByRole("option", { name: "local-text" }),
+      within(tutor).getByRole("option", { name: "local-text (ready)" }),
     ).toBeEnabled();
     expect(
-      screen.getByText(
-        /This connection changed. Test it, then save AI settings/,
-      ),
+      screen.getByText(/This connection changed. Saving below approves/),
     ).toBeVisible();
     fireEvent.click(
       screen.getByRole("checkbox", {
-        name: "I authorize sending text and photos to the providers selected above.",
+        name: "I authorize these app-wide connections to process future learner text and photos.",
       }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Save AI settings" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save active connections" }),
+    );
     await screen.findByText(
-      "AI settings saved. New requests use these providers.",
+      "Active connections saved. Future learner work will use these app-wide choices.",
     );
     expect(fetch).toHaveBeenCalledWith(
       "/api/v1/admin/providers/routes",
@@ -377,21 +438,30 @@ describe("AI settings page", () => {
     const { rerender } = render(<AdultPanel {...handlers} />);
     expect(fetch).not.toHaveBeenCalled();
     rerender(<AdultPanel {...handlers} page="settings" />);
-    const tutor = await screen.findByRole("combobox", { name: "Tutor" });
-    const photoReader = screen.getByRole("combobox", { name: "Photo reader" });
+    fireEvent.click(
+      await screen.findByRole("tab", { name: /Assign active connections/ }),
+    );
+    const tutor = screen.getByRole("combobox", { name: "Tutor connection" });
+    const photoReader = screen.getByRole("combobox", {
+      name: "Photo reader connection",
+    });
     expect(
-      within(photoReader).queryByRole("option", { name: "local-text" }),
-    ).not.toBeInTheDocument();
+      within(photoReader).getByRole("option", {
+        name: "local-text (no photo input)",
+      }),
+    ).toBeDisabled();
     expect(
-      within(tutor).getByRole("option", { name: "local-text" }),
+      within(tutor).getByRole("option", { name: "local-text (ready)" }),
     ).toBeInTheDocument();
     expect(
       screen.queryByLabelText("Pairing request ID"),
     ).not.toBeInTheDocument();
-    const save = screen.getByRole("button", { name: "Save AI settings" });
+    const save = screen.getByRole("button", {
+      name: "Save active connections",
+    });
     expect(save).toBeDisabled();
     const consent = screen.getByRole("checkbox", {
-      name: "I authorize sending text and photos to the providers selected above.",
+      name: "I authorize these app-wide connections to process future learner text and photos.",
     });
     fireEvent.click(consent);
     expect(save).toBeEnabled();
@@ -401,7 +471,7 @@ describe("AI settings page", () => {
     fireEvent.click(consent);
     fireEvent.click(save);
     await screen.findByText(
-      "AI settings saved. New requests use these providers.",
+      "Active connections saved. Future learner work will use these app-wide choices.",
     );
     expect(fetch).toHaveBeenCalledWith(
       "/api/v1/admin/providers/routes",
@@ -419,8 +489,9 @@ describe("AI settings page", () => {
 
   it("does not call a live provider without approving the individual test", async () => {
     render(<AdultPanel {...props()} page="settings" />);
-    await screen.findByRole("combobox", { name: "Tutor" });
-    fireEvent.click(screen.getByText("Connection tests & provider details"));
+    fireEvent.click(
+      await screen.findByRole("tab", { name: /Connection tests/ }),
+    );
     const card = screen
       .getByRole("heading", { name: "local-text" })
       .closest("article")!;
@@ -463,7 +534,7 @@ describe("AI settings page", () => {
     expect(failures[0]?.message).toBe("Provider configuration unavailable.");
     expect(screen.queryByText("Loading AI settings…")).not.toBeInTheDocument();
     fireEvent.click(retry);
-    await screen.findByRole("combobox", { name: "Tutor" });
+    await screen.findByRole("heading", { name: "Connections" });
     expect(
       screen.queryByRole("button", { name: "Retry AI settings" }),
     ).not.toBeInTheDocument();

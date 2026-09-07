@@ -134,9 +134,7 @@ test("adult pages isolate each job and browser navigation preserves a new sessio
   );
 
   await navigate(page, "Settings");
-  await page
-    .getByText("Connection tests & provider details", { exact: true })
-    .click();
+  await page.getByRole("tab", { name: /Connection tests/ }).click();
   await expect(page.getByRole("button", { name: "Test tutor" })).toBeVisible();
   await expect(
     page.getByRole("button", { name: "Approve device" }),

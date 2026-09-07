@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, newKey, type Schema } from "./client";
 import { ContextHelp } from "./Help";
 import { followPage, pageUrl, type Navigate } from "./navigation";
-import { ProviderConnections } from "./ProviderConnections";
+import {
+  ProviderConnections,
+  type ProviderSettingsSection,
+} from "./ProviderConnections";
 
 type Props = {
   learner: string;
@@ -14,6 +17,25 @@ type Props = {
   onProvidersChanged?: () => void;
   act: (action: () => Promise<void>) => Promise<void>;
 };
+
+const providerSettingsSteps: Array<{
+  id: ProviderSettingsSection;
+  label: string;
+  description: string;
+}> = [
+  {
+    id: "connections",
+    label: "Connections",
+    description: "Save model access",
+  },
+  { id: "policy", label: "App permissions", description: "Allow data use" },
+  { id: "tests", label: "Connection tests", description: "Check readiness" },
+  {
+    id: "roles",
+    label: "Assign active connections",
+    description: "Activate for the app",
+  },
+];
 
 function processingLocation(provider?: Schema<"ProviderPublic">) {
   if (!provider) return "Not available";
@@ -37,6 +59,8 @@ export function AdultPanel({
     null,
   );
   const [routes, setRoutes] = useState({ tutor: "", vision: "" });
+  const [settingsSection, setSettingsSection] =
+    useState<ProviderSettingsSection>("connections");
   const [acknowledged, setAcknowledged] = useState(false);
   const [message, setMessage] = useState("");
   const [loadFailed, setLoadFailed] = useState(false);
@@ -44,6 +68,9 @@ export function AdultPanel({
   const learnerAge = useRef<HTMLSelectElement>(null);
   const pageVersion = useRef(0);
   const refreshSequence = useRef(0);
+  const routesDirty = useRef(false);
+  const focusSettingsContent = useRef(false);
+  const settingsTabs = useRef<Array<HTMLButtonElement | null>>([]);
   useEffect(() => {
     return () => {
       pageVersion.current += 1;
@@ -61,7 +88,7 @@ export function AdultPanel({
     }
     if (sequence !== refreshSequence.current) return;
     setProviders(result);
-    setRoutes(result.routes);
+    if (!routesDirty.current) setRoutes(result.routes);
     setAcknowledged(false);
   }, []);
   useEffect(() => {
@@ -93,6 +120,71 @@ export function AdultPanel({
         ? provider.tutor_probed
         : provider.image_input && provider.vision_probed),
     );
+  const chooseSettingsSection = (
+    next: ProviderSettingsSection,
+    focusContent = false,
+  ) => {
+    focusSettingsContent.current = focusContent;
+    setSettingsSection(next);
+  };
+  useEffect(() => {
+    if (page !== "settings" || !focusSettingsContent.current) return;
+    focusSettingsContent.current = false;
+    document.getElementById(`settings-${settingsSection}-heading`)?.focus();
+  }, [page, settingsSection]);
+  const routeIssues = (
+    provider: Schema<"ProviderPublic"> | undefined,
+    stage: "tutor" | "vision",
+  ) => {
+    if (!provider)
+      return [
+        {
+          text: "Choose a connection.",
+          section: "connections" as ProviderSettingsSection,
+        },
+      ];
+    const issues: Array<{
+      text: string;
+      section: ProviderSettingsSection;
+    }> = [];
+    if (!provider.enabled)
+      issues.push({
+        text: "The connection is disabled.",
+        section: "connections",
+      });
+    if (provider.key_needs_replacement)
+      issues.push({
+        text: "Its saved API key must be replaced.",
+        section: "connections",
+      });
+    if (
+      provider.boundary === "cloud" &&
+      !providers?.policy.allow_cloud_inference
+    )
+      issues.push({
+        text: "Cloud AI is off in App permissions.",
+        section: "policy",
+      });
+    if (
+      provider.audience === "adult_only" &&
+      providers?.policy.app_audience !== "adult_only"
+    )
+      issues.push({
+        text: "Its Allowed users setting does not match the app-wide audience.",
+        section: "policy",
+      });
+    if (stage === "vision" && !provider.image_input)
+      issues.push({
+        text: "Photo input is not enabled for this connection.",
+        section: "connections",
+      });
+    if (stage === "tutor" ? !provider.tutor_probed : !provider.vision_probed)
+      issues.push({
+        text: `Its ${stage === "tutor" ? "tutor" : "photo-reader"} test has not passed.`,
+        section: "tests",
+      });
+    return issues;
+  };
 
   return (
     <section className="admin">
@@ -347,152 +439,251 @@ export function AdultPanel({
               <p role="status">Loading AI settings…</p>
             )
           ) : (
-            <>
-              <ProviderConnections
-                configuration={providers}
-                onNavigate={onNavigate}
-                act={act}
-                onChanged={async () => {
-                  await refreshProviders();
-                  onProvidersChanged?.();
-                }}
-              />
-              <form
-                className="card"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (
-                    !acknowledged ||
-                    !routeAvailable(selectedProviders.tutor, "tutor") ||
-                    !routeAvailable(selectedProviders.vision, "vision")
-                  )
-                    return;
-                  void act(async () => {
-                    await api("/admin/providers/routes", "POST", {
-                      ...routes,
-                      acknowledge_data_boundary: true,
-                    });
+            <div className="settings-workflow">
+              <div
+                className="settings-tabs"
+                role="tablist"
+                aria-label="AI setup steps"
+              >
+                {providerSettingsSteps.map((step, index) => (
+                  <button
+                    key={step.id}
+                    ref={(element) => {
+                      settingsTabs.current[index] = element;
+                    }}
+                    id={`settings-tab-${step.id}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={settingsSection === step.id}
+                    aria-controls="provider-settings-panel"
+                    tabIndex={settingsSection === step.id ? 0 : -1}
+                    onClick={() => chooseSettingsSection(step.id)}
+                    onKeyDown={(event) => {
+                      let next: number;
+                      if (event.key === "ArrowRight")
+                        next = (index + 1) % providerSettingsSteps.length;
+                      else if (event.key === "ArrowLeft")
+                        next =
+                          (index - 1 + providerSettingsSteps.length) %
+                          providerSettingsSteps.length;
+                      else if (event.key === "Home") next = 0;
+                      else if (event.key === "End")
+                        next = providerSettingsSteps.length - 1;
+                      else return;
+                      event.preventDefault();
+                      chooseSettingsSection(providerSettingsSteps[next]!.id);
+                      settingsTabs.current[next]?.focus();
+                    }}
+                  >
+                    <span className="settings-step-number">{index + 1}</span>
+                    <span>
+                      <strong>{step.label}</strong>
+                      <small>{step.description}</small>
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div
+                id="provider-settings-panel"
+                role="tabpanel"
+                aria-labelledby={`settings-tab-${settingsSection}`}
+              >
+                <ProviderConnections
+                  configuration={providers}
+                  section={settingsSection}
+                  onSectionChange={chooseSettingsSection}
+                  onNavigate={onNavigate}
+                  act={act}
+                  onChanged={async () => {
                     await refreshProviders();
                     onProvidersChanged?.();
-                    setMessage(
-                      "AI settings saved. New requests use these providers.",
-                    );
-                  });
-                }}
-              >
-                <h2>Choose providers</h2>
-                <p>
-                  Use a connection that passed its test. Saving these roles
-                  changes where future learner work is sent.
-                </p>
-                <div className="grid">
-                  {(["tutor", "vision"] as const).map((stage) => (
-                    <div key={stage}>
-                      <label>
-                        {stage === "tutor" ? "Tutor" : "Photo reader"}
-                        <select
-                          name={stage}
-                          value={routes[stage]}
-                          onChange={(e) => {
-                            setRoutes({ ...routes, [stage]: e.target.value });
-                            setAcknowledged(false);
-                          }}
-                          aria-describedby={`${stage}-provider-help`}
-                        >
-                          {!providers.providers.some(
-                            (p) =>
-                              p.id === routes[stage] &&
-                              p.enabled &&
-                              (stage === "tutor" || p.image_input),
-                          ) && (
-                            <option value={routes[stage]} disabled>
-                              {routes[stage]
-                                ? `${routes[stage]} (unavailable)`
-                                : "No provider available"}
-                            </option>
-                          )}
-                          {providers.providers
-                            .filter(
-                              (p) =>
-                                p.enabled &&
-                                (stage === "tutor" || p.image_input),
-                            )
-                            .map((p) => (
-                              <option
-                                key={p.id}
-                                value={p.id}
-                                disabled={!routeAvailable(p, stage)}
+                  }}
+                />
+                {settingsSection === "roles" && (
+                  <form
+                    className="card role-assignment"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      if (
+                        !acknowledged ||
+                        !routeAvailable(selectedProviders.tutor, "tutor") ||
+                        !routeAvailable(selectedProviders.vision, "vision")
+                      )
+                        return;
+                      void act(async () => {
+                        await api("/admin/providers/routes", "POST", {
+                          ...routes,
+                          acknowledge_data_boundary: true,
+                        });
+                        routesDirty.current = false;
+                        await refreshProviders();
+                        onProvidersChanged?.();
+                        setMessage(
+                          "Active connections saved. Future learner work will use these app-wide choices.",
+                        );
+                      });
+                    }}
+                  >
+                    <h2 id="settings-roles-heading" tabIndex={-1}>
+                      Assign active connections
+                    </h2>
+                    <p>
+                      Choose the tutor and photo reader used across this app for
+                      future learner work. Saving a connection never activates
+                      it; this final step does.
+                    </p>
+                    <div className="grid">
+                      {(["tutor", "vision"] as const).map((stage) => {
+                        const selected = selectedProviders[stage];
+                        const issues = routeIssues(selected, stage);
+                        const actionSections = [
+                          ...new Set(issues.map((issue) => issue.section)),
+                        ];
+                        return (
+                          <div key={stage}>
+                            <label>
+                              {stage === "tutor"
+                                ? "Tutor connection"
+                                : "Photo reader connection"}
+                              <select
+                                name={stage}
+                                value={routes[stage]}
+                                onChange={(e) => {
+                                  routesDirty.current = true;
+                                  setRoutes({
+                                    ...routes,
+                                    [stage]: e.target.value,
+                                  });
+                                  setAcknowledged(false);
+                                }}
+                                aria-describedby={`${stage}-provider-help`}
                               >
-                                {p.id}
-                                {p.adapter === "mock"
-                                  ? " (synthetic demo)"
-                                  : ""}
-                              </option>
-                            ))}
-                        </select>
-                      </label>
-                      <p className="fine" id={`${stage}-provider-help`}>
-                        {stage === "tutor"
-                          ? "Creates activities and gives feedback on text, including text read from photos."
-                          : "Reads submitted photos before the tutor gives feedback."}{" "}
-                        Processing:{" "}
-                        {processingLocation(selectedProviders[stage])}.
-                      </p>
-                      {!routeAvailable(selectedProviders[stage], stage) && (
-                        <p className="notice">
-                          This connection needs an enabled, permitted model and
-                          a successful{" "}
-                          {stage === "tutor" ? "tutor" : "photo reader"} test
-                          before it can be used.
-                        </p>
-                      )}
-                      {selectedProviders[stage]?.requires_approval && (
-                        <p className="notice">
-                          This connection changed. Test it, then save AI
-                          settings to approve its use for this role.
-                        </p>
-                      )}
+                                {!providers.providers.some(
+                                  (provider) => provider.id === routes[stage],
+                                ) && (
+                                  <option value={routes[stage]} disabled>
+                                    {routes[stage]
+                                      ? `${routes[stage]} (no longer available)`
+                                      : "Choose a connection"}
+                                  </option>
+                                )}
+                                {providers.providers.map((provider) => (
+                                  <option
+                                    key={provider.id}
+                                    value={provider.id}
+                                    disabled={
+                                      stage === "vision" &&
+                                      !provider.image_input
+                                    }
+                                  >
+                                    {provider.id}
+                                    {provider.adapter === "mock"
+                                      ? " (synthetic demo)"
+                                      : routeAvailable(provider, stage)
+                                        ? " (ready)"
+                                        : stage === "vision" &&
+                                            !provider.image_input
+                                          ? " (no photo input)"
+                                          : " (setup needed)"}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <p className="fine" id={`${stage}-provider-help`}>
+                              {stage === "tutor"
+                                ? "Creates activities and gives feedback on text, including text read from photos."
+                                : "Reads submitted photos before the tutor gives feedback. Connections without photo input cannot fill this role."}{" "}
+                              Processing: {processingLocation(selected)}.
+                            </p>
+                            {issues.length > 0 ? (
+                              <div className="notice route-readiness">
+                                <p>
+                                  <strong>
+                                    {selected?.id ?? "This role"} is not ready
+                                    yet:
+                                  </strong>
+                                </p>
+                                <ul>
+                                  {issues.map((issue) => (
+                                    <li key={`${issue.section}-${issue.text}`}>
+                                      {issue.text}
+                                    </li>
+                                  ))}
+                                </ul>
+                                <div className="actions">
+                                  {actionSections.map((target) => (
+                                    <button
+                                      key={target}
+                                      type="button"
+                                      onClick={() =>
+                                        chooseSettingsSection(target, true)
+                                      }
+                                    >
+                                      {target === "connections"
+                                        ? "Open Connections"
+                                        : target === "policy"
+                                          ? "Open App permissions"
+                                          : "Open Connection tests"}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="ready-state">
+                                Ready for app-wide use.
+                              </p>
+                            )}
+                            {selected?.requires_approval &&
+                              issues.length === 0 && (
+                                <p className="notice">
+                                  This connection changed. Saving below approves
+                                  its current settings for this role.
+                                </p>
+                              )}
+                          </div>
+                        );
+                      })}
                     </div>
-                  ))}
-                </div>
-                {(selectedProviders.tutor?.adapter === "mock" ||
-                  selectedProviders.vision?.adapter === "mock") && (
-                  <p className="fine">
-                    A synthetic demo provider returns sample responses. It
-                    cannot teach or interpret your work.
-                  </p>
+                    {(selectedProviders.tutor?.adapter === "mock" ||
+                      selectedProviders.vision?.adapter === "mock") && (
+                      <p className="fine">
+                        A synthetic demo connection returns sample responses. It
+                        cannot teach or interpret learner work.
+                      </p>
+                    )}
+                    <label className="check">
+                      <input
+                        type="checkbox"
+                        required
+                        checked={acknowledged}
+                        onChange={(e) => setAcknowledged(e.target.checked)}
+                      />
+                      I authorize these app-wide connections to process future
+                      learner text and photos.
+                    </label>
+                    <button
+                      className="primary"
+                      disabled={
+                        !acknowledged ||
+                        !routeAvailable(selectedProviders.tutor, "tutor") ||
+                        !routeAvailable(selectedProviders.vision, "vision")
+                      }
+                    >
+                      Save active connections
+                    </button>
+                    <ContextHelp topic="Where does learner work go?">
+                      <p>
+                        A cloud provider receives the content for its selected
+                        role. A cloud tutor also receives text read by a local
+                        photo reader. Changing these choices does not resend
+                        earlier requests. The app never switches connections
+                        automatically when one fails.
+                      </p>
+                    </ContextHelp>
+                  </form>
                 )}
-                <label className="check">
-                  <input
-                    type="checkbox"
-                    required
-                    checked={acknowledged}
-                    onChange={(e) => setAcknowledged(e.target.checked)}
-                  />
-                  I authorize sending text and photos to the providers selected
-                  above.
-                </label>
-                <button
-                  className="primary"
-                  disabled={
-                    !acknowledged ||
-                    !routeAvailable(selectedProviders.tutor, "tutor") ||
-                    !routeAvailable(selectedProviders.vision, "vision")
-                  }
-                >
-                  Save AI settings
-                </button>
-                <ContextHelp topic="Where does learner work go?">
-                  <p>
-                    A cloud provider receives the content for its selected role.
-                    A cloud tutor also receives text read by a local photo
-                    reader. Changing settings does not resend earlier requests.
-                    The app never switches providers automatically when one
-                    fails.
-                  </p>
-                </ContextHelp>
-              </form>
-            </>
+              </div>
+            </div>
           )}
         </>
       )}

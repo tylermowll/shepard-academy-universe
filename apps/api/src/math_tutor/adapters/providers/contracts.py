@@ -6,6 +6,12 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+# Context sizes cross the JSON API and are persisted in SQLite JSON. A signed
+# 32-bit ceiling is exact in browser numbers, comfortably inside SQLite's signed
+# 64-bit integer range, and leaves Python's request-budget arithmetic unbounded by
+# machine-word overflow while accommodating current million-token models.
+MAX_CONFIGURED_CONTEXT_LIMIT = 2_147_483_647
+
 
 class Capabilities(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
@@ -14,7 +20,7 @@ class Capabilities(BaseModel):
     structured_output_mode: Literal["native", "json_prompt"] = "native"
     max_images: int = Field(default=1, ge=0, le=1)
     accepted_image_mime_types: list[str] = Field(default_factory=lambda: ["image/png"])
-    configured_context_limit: int = Field(default=8192, ge=2048, le=131072)
+    configured_context_limit: int = Field(default=8192, ge=2048, le=MAX_CONFIGURED_CONTEXT_LIMIT)
 
 
 class Message(BaseModel):

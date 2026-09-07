@@ -312,35 +312,46 @@ export function HelpPage({
               </p>
               <ol className="steps">
                 <li>
-                  Open {link("settings", "Settings")} and choose{" "}
-                  <strong>Add AI connection</strong>. Select Ollama, vLLM, or
-                  your API type. Enter the server URL and exact model name.
-                  Enter an API key if your server requires one.
+                  Open {link("settings", "Settings")} and use the{" "}
+                  <strong>Connections</strong> step. Select Ollama, vLLM, or
+                  your API type. Enter the server URL, exact model name, and an
+                  API key if required, then save. Saving does not activate it.
                 </li>
                 <li>
-                  Review who may use the model and where work is processed.
-                  Enable cloud processing only if you intend to send work to a
-                  cloud provider. Save the connection. Saving alone does not
-                  call the model or send learner work.
+                  Open <strong>App permissions</strong>. This is the global
+                  safety switch for every connection, not another part of the
+                  connection you just saved. Enable cloud processing only if you
+                  intend to send work to a cloud provider.
                 </li>
                 <li>
-                  Test the connection for tutoring and, if needed, reading
-                  photos. Tests send sample material, not learner work; API
-                  providers may charge. The tutor test makes two sample calls;
-                  the photo test makes one. A photo test must read the known
-                  sample correctly, not just connect to the server.
+                  Open <strong>Connection tests</strong> and test tutoring and,
+                  if needed, photo reading. Tests send sample material, not
+                  learner work; API providers may charge. The tutor test makes
+                  two sample calls; the photo test makes one.
                 </li>
                 <li>
-                  Select the tutor and photo reader, review where your work will
-                  be sent, and save. Return to {link("practice", "Practice")}.
+                  Open <strong>Assign active connections</strong>. Choose the
+                  tutor and photo reader for future learner work, authorize the
+                  destinations, and save. Return to{" "}
+                  {link("practice", "Practice")}.
                 </li>
               </ol>
               <p>
-                If only <strong>demo</strong> is listed, add a real connection.
-                Demo cannot teach or read handwriting. The app does not install
-                or download models: start your local model server separately, or
-                use a provider account you already have.
+                A saved connection can be selected before it is ready; the
+                assignment step then names each missing permission or test and
+                links to the step that fixes it. Demo cannot teach or read
+                handwriting. The app does not install or download models.
               </p>
+              <ContextHelp topic="What is the model context limit?">
+                <p>
+                  It is the model server&apos;s documented total context window,
+                  including input and output tokens—not the desired response
+                  length and not memory reserved by this app. Enter the value
+                  supported by the exact model/server combination. Million-token
+                  windows are accepted; ordinary tutoring requests remain much
+                  smaller and separately bounded.
+                </p>
+              </ContextHelp>
               <ContextHelp topic="Where do I enter an API key?">
                 <p>
                   In the adult <strong>Add AI connection</strong> form in{" "}

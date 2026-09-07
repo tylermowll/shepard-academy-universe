@@ -1100,7 +1100,7 @@
           },
           "configured_context_limit": {
             "default": 32768,
-            "maximum": 131072.0,
+            "maximum": 2147483647.0,
             "minimum": 2048.0,
             "title": "Configured Context Limit",
             "type": "integer"
@@ -1216,7 +1216,7 @@
           },
           "configured_context_limit": {
             "default": 32768,
-            "maximum": 131072.0,
+            "maximum": 2147483647.0,
             "minimum": 2048.0,
             "title": "Configured Context Limit",
             "type": "integer"

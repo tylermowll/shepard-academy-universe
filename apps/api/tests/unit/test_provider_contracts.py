@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from math_tutor.adapters.providers.config import Configuration, ProviderConfig, Routes, route
 from math_tutor.adapters.providers.contracts import (
+    MAX_CONFIGURED_CONTEXT_LIMIT,
     Capabilities,
     InterpretationPayload,
     Message,
@@ -35,6 +36,16 @@ PAYLOAD = {
     "suggested_next_action": "revise_answer",
     "uncertainty_note": None,
 }
+
+
+def test_capabilities_accept_large_context_and_reject_values_above_portable_bound() -> None:
+    assert Capabilities(configured_context_limit=1_000_000).configured_context_limit == 1_000_000
+    assert (
+        Capabilities(configured_context_limit=MAX_CONFIGURED_CONTEXT_LIMIT).configured_context_limit
+        == MAX_CONFIGURED_CONTEXT_LIMIT
+    )
+    with pytest.raises(ValidationError):
+        Capabilities(configured_context_limit=MAX_CONFIGURED_CONTEXT_LIMIT + 1)
 
 
 def request(image: bool = False) -> ModelRequest:
