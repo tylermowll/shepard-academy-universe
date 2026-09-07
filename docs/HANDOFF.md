@@ -1,6 +1,21 @@
 # Current handoff
 
-The current task is **T28: browser-first administrator setup**,
+The current task is **T29: product identity and honest provider controls**. The
+maintainer selected **Shepard Academy Universe**, matching the repository name,
+and reported that the model-location and allowed-user dropdowns looked broken
+while configuring Meta. After reviewing the provider-specific terms, the maintainer
+explicitly chose a disclaimer instead of a hard-coded age rule. Meta-hosted
+inference remains cloud-only, while its audience is operator-selected and checked
+like other providers. Other supported connection types keep working boundary and
+audience selects. See [D012](DECISIONS.md#d012--operator-selected-audience-for-meta-hosted-inference-2026-09-07)
+and the T29 entry in [TASKS](TASKS.md) for scope and current evidence.
+
+T29 local gates passed: the full repository hooks/check gate, 216 integration
+tests, 107 component tests, focused provider backend suites, and four affected
+desktop/mobile browser cases. No live provider request or private operator
+configuration was used.
+
+T28 completed browser-first administrator setup,
 building on T27's in-app provider configuration and persistent startup. The
 maintainer rejected terminal account creation and the uniform twelve-character
 password requirement, then authorized wise refinements and another push to main.

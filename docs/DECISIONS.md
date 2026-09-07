@@ -1,5 +1,29 @@
 # Implementation decisions
 
+## D012 — Operator-selected audience for Meta-hosted inference (2026-09-07)
+
+The maintainer explicitly rejected a hard-coded Meta age gate and
+directed the application to use a disclaimer instead. The dedicated Meta adapter
+remains cloud-only because it calls Meta's hosted Model API; a locally served
+Llama model is configured through Ollama or vLLM. The Meta connection's audience
+is otherwise selected and attested by the adult operator, then enforced by the
+same backend learner/app-audience checks used for other providers.
+
+Meta's hosted API has provider-specific age and data terms. The connection editor
+must disclose that fact and require the existing terms acknowledgment, but this
+app will not encode a blanket provider age rule. The operator is responsible for
+the current agreement and jurisdiction; the app does not certify eligibility. A
+connection configured for a restricted audience still rejects learners outside
+that selection server-side, while a mixed connection can serve either app audience
+and still requires explicit cloud authorization, successful probes and normal
+learner ownership. No provider call occurs on save.
+
+Sources: [Meta's official terms page](https://llama.developer.meta.com/legal/terms-of-service)
+(authenticated access may be required), and Meta's separate
+[Llama 4 license](https://github.com/meta-llama/llama-models/blob/main/models/llama4/LICENSE)
+and [acceptable-use policy](https://github.com/meta-llama/llama-models/blob/main/models/llama4/USE_POLICY.md)
+for locally hosted weights.
+
 ## D011 — Browser-first owner setup and loopback password policy (2026-09-07)
 
 The maintainer supersedes D010's CLI-only first-account decision. `make start`

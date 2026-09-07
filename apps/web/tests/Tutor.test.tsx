@@ -427,7 +427,9 @@ describe("AI learning conversation", () => {
         /Built-in math|offline practice pack|Tutor profiles|Full solution/,
       ),
     ).toBeNull();
-    expect(screen.getByRole("link", { name: "Shepard Tutor" })).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Shepard Academy Universe" }),
+    ).toBeVisible();
   });
 
   it("shows one current activity and keeps the response draft across page changes", async () => {

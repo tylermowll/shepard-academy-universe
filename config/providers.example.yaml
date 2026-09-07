@@ -20,7 +20,7 @@ providers:
     api_key_env: META_API_KEY
     enabled: false
     data_boundary: cloud
-    audience: adult_only
+    audience: mixed
     eligibility_record: ''
     capabilities:
       image_input: false

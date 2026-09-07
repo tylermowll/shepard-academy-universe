@@ -1,1 +1,1 @@
-"""HTTP API boundary for Math Practice Tutor."""
+"""HTTP API boundary for Shepard Academy Universe."""

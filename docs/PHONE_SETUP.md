@@ -95,8 +95,11 @@ In the signed-in adult app, open **Settings → Add AI connection**:
    only if the installed model actually supports images; a checkbox cannot add
    that capability. Review the model/provider terms and save the connection.
 5. Under **App privacy & audience**, explicitly enable cloud processing if needed.
-   Meta requires adults-only app policy and an adult learner. An operator policy
-   lock is shown and cannot be overridden by this page.
+   A Meta-hosted connection is always cloud processing, but its allowed audience
+   is selected by the adult operator. Read its provider-specific age/data notice
+   and confirm the terms applying to your account. The app records that choice;
+   it does not certify provider eligibility. Environment policy locks are shown
+   and cannot be overridden by this page.
 6. Explicitly run **Test tutor** and **Test photo reader** as needed. Tests send
    sample data, not learner work, and API providers may charge. The tutor test
    uses two calls (activity generation and feedback); the photo test uses one and

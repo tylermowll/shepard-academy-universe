@@ -64,10 +64,8 @@ class ProviderConfig(BaseModel):
             raise ValueError("Only mock can use the synthetic boundary.")
         if not self.eligibility_record:
             raise ValueError("Live routes need an operator eligibility record.")
-        if self.adapter == "meta" and (
-            self.data_boundary != "cloud" or self.audience != "adult_only"
-        ):
-            raise ValueError("Meta requires the adult-only cloud policy.")
+        if self.adapter == "meta" and self.data_boundary != "cloud":
+            raise ValueError("Meta requires the cloud data boundary.")
         if self.adapter == "bedrock":
             if not self.region or self.data_boundary != "cloud":
                 raise ValueError("Bedrock requires an explicit region and cloud boundary.")
@@ -176,8 +174,6 @@ def route(
                 "audience_blocked",
                 safe_message="This route is not eligible for the configured audience.",
             )
-        if provider.adapter == "meta" and eligibility != "adult":
-            raise ProviderError("audience_blocked")
     if not provider.capabilities.text_input:
         raise ProviderError("unsupported_modality")
     if stage == "vision" and not provider.capabilities.image_input:

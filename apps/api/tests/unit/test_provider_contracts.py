@@ -218,8 +218,26 @@ def test_bedrock_converse_uses_sdk_schema_and_image_blocks() -> None:
 
 
 @pytest.mark.parametrize("eligibility", ["minor", "unknown", "adult"])
-def test_meta_blocks_mixed_and_unknown_audiences(
+def test_meta_mixed_audience_routes_under_cloud_policy(
     monkeypatch: pytest.MonkeyPatch, eligibility: str
+) -> None:
+    provider = ProviderConfig(
+        adapter="meta",
+        model="synthetic-model-v1",
+        enabled=True,
+        base_url="https://synthetic.invalid/v1",
+        data_boundary="cloud",
+        audience="mixed",
+        eligibility_record="synthetic",
+    )
+    config = Configuration(routes=Routes(tutor="meta", vision="meta"), providers={"meta": provider})
+    monkeypatch.setenv("ALLOW_CLOUD_INFERENCE", "true")
+    monkeypatch.setenv("APP_AUDIENCE", "mixed")
+    assert route(config, "tutor", eligibility)[0] == "meta"
+
+
+def test_meta_selected_restricted_audience_uses_general_routing_policy(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     provider = ProviderConfig(
         adapter="meta",
@@ -233,14 +251,25 @@ def test_meta_blocks_mixed_and_unknown_audiences(
     config = Configuration(routes=Routes(tutor="meta", vision="meta"), providers={"meta": provider})
     monkeypatch.setenv("ALLOW_CLOUD_INFERENCE", "true")
     monkeypatch.setenv("APP_AUDIENCE", "mixed")
-    with pytest.raises(ProviderError):
-        route(config, "tutor", eligibility)
+    with pytest.raises(ProviderError, match="audience_blocked"):
+        route(config, "tutor", "adult")
     monkeypatch.setenv("APP_AUDIENCE", "adult_only")
-    if eligibility == "adult":
-        assert route(config, "tutor", eligibility)[0] == "meta"
-    else:
-        with pytest.raises(ProviderError):
-            route(config, "tutor", eligibility)
+    assert route(config, "tutor", "adult")[0] == "meta"
+    with pytest.raises(ProviderError, match="audience_blocked"):
+        route(config, "tutor", "minor")
+
+
+def test_meta_rejects_local_data_boundary() -> None:
+    with pytest.raises(ValidationError, match="cloud data boundary"):
+        ProviderConfig(
+            adapter="meta",
+            model="synthetic-model-v1",
+            enabled=True,
+            base_url="https://synthetic.invalid/v1",
+            data_boundary="local_network",
+            audience="mixed",
+            eligibility_record="synthetic",
+        )
 
 
 def test_invalid_config_and_image_capability_fail_closed() -> None:

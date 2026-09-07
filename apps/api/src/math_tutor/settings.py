@@ -1,4 +1,4 @@
-"""Local configuration for the Math Practice Tutor.
+"""Local configuration for Shepard Academy Universe.
 
 T01 owns the database-path portion of the configuration contract; T02 owns
 the session-secret and public-origin portion. Provider settings belong to

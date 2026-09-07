@@ -117,6 +117,53 @@ async def test_private_connection_lifecycle_encrypts_reopens_and_never_returns_k
 
 
 @pytest.mark.anyio
+async def test_meta_mixed_audience_saves_and_routes_without_provider_call(
+    adult: AsyncClient, engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def no_call(*_args: object) -> None:
+        pytest.fail("Saving and selecting a tested route must not contact the provider")
+
+    monkeypatch.setenv("ALLOW_CLOUD_INFERENCE", "true")
+    monkeypatch.setattr("math_tutor.api.providers.complete", no_call)
+    eligibility_record = "Synthetic fixture: operator reviewed Meta terms for mixed users."
+    await add(
+        adult,
+        "meta-mixed",
+        adapter="meta",
+        model="synthetic-meta-model-v1",
+        base_url="https://synthetic.meta.invalid/v1",
+        boundary="cloud",
+        audience="mixed",
+        eligibility_record=eligibility_record,
+        api_key_action="replace",
+        api_key=KEY,
+    )
+    record_probes(engine, "meta-mixed")
+    response = await adult.post(
+        BASE + "/routes",
+        json={
+            "tutor": "meta-mixed",
+            "vision": "meta-mixed",
+            "acknowledge_data_boundary": True,
+        },
+    )
+    assert response.status_code == 200, response.text
+    saved = next(
+        provider
+        for provider in (await adult.get(BASE)).json()["providers"]
+        if provider["id"] == "meta-mixed"
+    )
+    assert saved["boundary"] == "cloud"
+    assert saved["audience"] == "mixed"
+    assert saved["eligibility_record"] == eligibility_record
+    with Session(engine) as db:
+        config = effective_configuration(db)
+        assert config.routes == Routes(tutor="meta-mixed", vision="meta-mixed")
+        for eligibility in ("adult", "minor", "unknown"):
+            assert route(config, "tutor", eligibility)[0] == "meta-mixed"
+
+
+@pytest.mark.anyio
 async def test_key_retention_replacement_endpoint_changes_and_probe_expiry(
     adult: AsyncClient, engine: Engine
 ) -> None:

@@ -1,7 +1,7 @@
 [project]
 name = "math-practice-tutor"
 version = "0.1.0"
-description = "Backend for the self-hosted Math Practice Tutor"
+description = "Backend for the self-hosted Shepard Academy Universe"
 license = "MIT"
 requires-python = ">=3.14.7,<3.15"
 dependencies = [

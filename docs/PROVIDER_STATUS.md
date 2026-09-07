@@ -8,7 +8,7 @@ eligibility for a particular audience.
 | Adapter    | Implemented protocol                                                                                  | Automated evidence                                                   | Live status                                                              |
 | ---------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------ |
 | Mock       | Explicit synthetic generation/guidance and one recognized public image fixture; other images rejected | Worker, schema, automatic clear reading, rejection and fixture tests | No model; not an OCR or quality result                                   |
-| Meta Spark | Bounded Chat Completions messages/image data URI, structured JSON                                     | Wire shape, errors, adult-only/cloud policy                          | Pending exact approved model/account and current provider contract check |
+| Meta Spark | Bounded Chat Completions messages/image data URI, structured JSON                                     | Wire shape, errors, cloud boundary and selected-audience policy      | Pending exact approved model/account and current provider contract check |
 | Ollama     | Native `/api/chat`, separate system message, base64 image, `format` schema                            | Text/image mapping and typed error contracts                         | Pending exact installed model/runtime                                    |
 | vLLM       | `/chat/completions`, content image blocks and JSON schema response format                             | Capability and compatible transport contracts                        | Pending exact served model/runtime/template                              |
 | Compatible | Bounded Chat Completions endpoint, explicit native or JSON-prompt mode                                | Strict payload, malformed/refusal/429/timeout handling               | Pending exact endpoint semantics                                         |
@@ -32,8 +32,10 @@ endpoint/model from the disabled example.
    handling. Declare image capability and context limits honestly; a text-only
    route cannot receive images. Save sends no model request and changes no route.
 2. Review **App privacy & audience** in Settings. Enable cloud processing only
-   deliberately. Adult-only routes also require an adults-only app audience and
-   an adult learner; Meta retains that restriction. Explicit deployment
+   deliberately. Adult-only routes require an adults-only app audience and an
+   adult learner; mixed routes use the operator's separate terms attestation.
+   Meta-hosted connections display a provider-specific age/data disclaimer but
+   do not impose a provider-specific audience value. Explicit deployment
    `ALLOW_CLOUD_INFERENCE` and `APP_AUDIENCE` values lock their UI controls; absent
    values allow saved Settings policy, defaulting to cloud off and mixed ages.
    Local routes stay local and never fall back to cloud.

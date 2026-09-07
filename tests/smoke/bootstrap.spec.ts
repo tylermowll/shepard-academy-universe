@@ -26,7 +26,7 @@ test("same-origin entry renders without external requests, templates, or overflo
   });
   expect((await request.get("/health/ready")).status()).toBe(200);
   await page.goto("/");
-  await expect(page).toHaveTitle("Sign in · Shepard Tutor");
+  await expect(page).toHaveTitle("Sign in · Shepard Academy Universe");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Sign in");
   await expect(
     page.getByRole("button", { name: "Sign in", exact: true }),

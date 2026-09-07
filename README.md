@@ -1,4 +1,4 @@
-# Shepard Tutor
+# Shepard Academy Universe
 
 A self-hosted AI tutor: choose a topic, receive an activity, work on paper, send
 an iPhone photo, and get guidance on your actual work. Revise or discuss it, then
@@ -70,6 +70,11 @@ Review the audience/data boundary, save, explicitly test the required roles,
 then select your **Tutor** and **Photo reader** and **Save AI settings**. Saving
 a connection does not perform inference, choose a route, or download a model.
 Tests send synthetic material and may incur your provider's charges.
+For Meta-hosted inference, the cloud location is fixed but the allowed audience
+is your explicit choice. The app shows a provider-terms disclaimer and records
+your required acknowledgment; it does not certify that an account or agreement
+permits a particular audience. To run a Meta/Llama model locally, configure it
+through Ollama or vLLM instead.
 
 Open **Learners & devices** to add yourself or a child. Select the profile, choose
 **Start practice**, enter a topic and choose **Start session**, then

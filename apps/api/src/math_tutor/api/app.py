@@ -67,7 +67,7 @@ def create_app(engine: Engine | None = None) -> FastAPI:
             if engine is None:
                 application.state.engine.dispose()
 
-    application = FastAPI(title="Math Practice Tutor API", version="0.1.0", lifespan=lifespan)
+    application = FastAPI(title="Shepard Academy Universe API", version="0.1.0", lifespan=lifespan)
     application.add_middleware(BoundedBodies)
     application.state.setup_gate = SetupGate.from_environment()
     application.state.engine = engine if engine is not None else create_default_engine()

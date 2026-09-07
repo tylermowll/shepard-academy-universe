@@ -43,7 +43,7 @@ for attempt in range(30):
  try:
   with urllib.request.urlopen('http://127.0.0.1:18080/health/ready',timeout=2) as response:
    assert json.load(response)=={'status':'ready'}
-  with urllib.request.urlopen('http://127.0.0.1:18080/') as response:assert b'Shepard Tutor' in response.read()
+  with urllib.request.urlopen('http://127.0.0.1:18080/') as response:assert b'Shepard Academy Universe' in response.read()
   break
  except OSError:
   time.sleep(1)

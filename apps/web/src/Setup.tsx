@@ -198,9 +198,9 @@ export function Setup({
         <div className="card">
           <h2>Open the setup link from your terminal</h2>
           <p>
-            On the computer running Shepard Tutor, open the setup link printed
-            by <code>make start</code>. It works for 30 minutes and creates only
-            the first account.
+            On the computer running Shepard Academy Universe, open the setup
+            link printed by <code>make start</code>. It works for 30 minutes and
+            creates only the first account.
           </p>
           <p>
             If the link expired or no link is shown, press Ctrl+C in that

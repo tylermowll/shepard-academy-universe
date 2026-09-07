@@ -120,6 +120,68 @@ async function restoreDemoRoutes(page: Page) {
   expect(response.status()).toBe(200);
 }
 
+test("Meta hosted policy is explicit while local model controls remain usable", async ({
+  page,
+}) => {
+  await login(page);
+  await navigate(page, "Settings");
+  await page
+    .getByRole("button", { name: "Add AI connection", exact: true })
+    .click();
+  const connectionType = page.getByRole("combobox", {
+    name: "Connection type",
+    exact: true,
+  });
+  await expect(
+    connectionType.getByRole("option", {
+      name: "Meta hosted API",
+      exact: true,
+    }),
+  ).toHaveCount(1);
+  await connectionType.selectOption("meta");
+  await expect(
+    page.getByRole("combobox", {
+      name: "Where this model runs",
+      exact: true,
+    }),
+  ).toHaveCount(0);
+  const fixedLocation = page.getByRole("group", {
+    name: "Where this model runs",
+    exact: true,
+  });
+  await expect(fixedLocation).toContainText("Cloud service Fixed");
+  const metaAudience = page.getByRole("combobox", {
+    name: "Allowed users",
+    exact: true,
+  });
+  await expect(metaAudience).toBeEnabled();
+  await expect(metaAudience).toHaveValue("mixed");
+  await metaAudience.selectOption("adult_only");
+  await expect(metaAudience).toHaveValue("adult_only");
+  await expect(page.locator("#meta-policy-help")).toContainText(
+    "records your decision; it is not a certification from this app",
+  );
+  await expect(page.locator("#meta-policy-help")).toContainText(
+    "choose Ollama or vLLM instead",
+  );
+
+  await connectionType.selectOption("vllm");
+  const boundary = page.getByRole("combobox", {
+    name: "Where this model runs",
+    exact: true,
+  });
+  const audience = page.getByRole("combobox", {
+    name: "Allowed users",
+    exact: true,
+  });
+  await expect(boundary).toBeEnabled();
+  await expect(audience).toBeEnabled();
+  await boundary.selectOption("cloud");
+  await audience.selectOption("adult_only");
+  await expect(boundary).toHaveValue("cloud");
+  await expect(audience).toHaveValue("adult_only");
+});
+
 for (const adapter of ["vllm", "ollama", "compatible"] as const) {
   test(`adult configures ${adapter} with a write-only key, probes it, and uses it without a restart`, async ({
     page,

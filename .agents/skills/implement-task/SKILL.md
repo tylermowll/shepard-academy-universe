@@ -1,6 +1,6 @@
 ---
 name: implement-task
-description: Implement one approved Math Practice Tutor task with bounded scope, contract checks, tests, and evidence. Use when starting or continuing a task from docs/TASKS.md.
+description: Implement one approved Shepard Academy Universe task with bounded scope, contract checks, tests, and evidence. Use when starting or continuing a task from docs/TASKS.md.
 ---
 
 # Implement one task

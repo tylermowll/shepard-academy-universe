@@ -270,7 +270,7 @@ export function ProviderConnections({
             const { id, api_key, ...values } = draft;
             const body = {
               ...values,
-              eligibility_record: `Operator confirmed the model and provider terms permit ${draft.audience === "adult_only" ? "adult-only" : "mixed-age"} use.`,
+              eligibility_record: `Operator reviewed the model and provider terms for the ${draft.audience === "adult_only" ? "adult-only" : "mixed"} audience.`,
               ...(draft.api_key_action === "replace" ? { api_key } : {}),
             } satisfies ConnectionInput;
             void act(async () => {
@@ -349,7 +349,7 @@ export function ProviderConnections({
                         adapter === "meta" || adapter === "compatible"
                           ? "cloud"
                           : "local_network",
-                      audience: adapter === "meta" ? "adult_only" : "mixed",
+                      audience: "mixed",
                       api_key_action:
                         adapter === "meta" || adapter === "compatible"
                           ? "replace"
@@ -363,7 +363,7 @@ export function ProviderConnections({
                   <option value="ollama">Ollama</option>
                   <option value="vllm">vLLM</option>
                   <option value="compatible">OpenAI-compatible API</option>
-                  <option value="meta">Meta API</option>
+                  <option value="meta">Meta hosted API</option>
                 </select>
               </label>
             </div>
@@ -502,26 +502,45 @@ export function ProviderConnections({
           <fieldset disabled={busy}>
             <legend>Users and data</legend>
             <div className="grid">
-              <label>
-                Where this model runs
-                <select
-                  value={draft.boundary}
-                  disabled={draft.adapter === "meta"}
-                  onChange={(event) =>
-                    change("boundary", event.target.value as Draft["boundary"])
-                  }
+              {draft.adapter === "meta" ? (
+                <div
+                  role="group"
+                  aria-labelledby="meta-location-label"
+                  aria-describedby="meta-policy-help"
                 >
-                  <option value="local_network">
-                    This computer or private network
-                  </option>
-                  <option value="cloud">Cloud service</option>
-                </select>
-              </label>
+                  <p id="meta-location-label">
+                    <strong>Where this model runs</strong>
+                  </p>
+                  <p>
+                    Cloud service <span className="pill">Fixed</span>
+                  </p>
+                </div>
+              ) : (
+                <label>
+                  Where this model runs
+                  <select
+                    value={draft.boundary}
+                    onChange={(event) =>
+                      change(
+                        "boundary",
+                        event.target.value as Draft["boundary"],
+                      )
+                    }
+                  >
+                    <option value="local_network">
+                      This computer or private network
+                    </option>
+                    <option value="cloud">Cloud service</option>
+                  </select>
+                </label>
+              )}
               <label>
                 Allowed users
                 <select
                   value={draft.audience}
-                  disabled={draft.adapter === "meta"}
+                  aria-describedby={
+                    draft.adapter === "meta" ? "meta-policy-help" : undefined
+                  }
                   onChange={(event) =>
                     change("audience", event.target.value as Draft["audience"])
                   }
@@ -532,9 +551,13 @@ export function ProviderConnections({
               </label>
             </div>
             {draft.adapter === "meta" && (
-              <p className="notice">
-                Meta connections are restricted to cloud processing and
-                adult-only use in this app.
+              <p className="notice" id="meta-policy-help">
+                Meta's hosted API has provider-specific age and data terms.
+                Confirm the current terms for your account and intended users
+                before enabling this connection. Your Allowed users selection
+                records your decision; it is not a certification from this app.
+                To serve a Meta or Llama model locally, choose Ollama or vLLM
+                instead.
               </p>
             )}
             {draft.boundary === "cloud" && !policy.allow_cloud_inference && (

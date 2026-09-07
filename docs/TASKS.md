@@ -16,7 +16,7 @@ specification gates pass.
 | T06  | Implemented; automated gates passed                            | Durable leases, six-call budget, idempotency, crash/deletion recovery.                                                                                                                                                         |
 | T07  | Implemented; contract-tested                                   | Mock and strict provider policy/errors; no cloud fallback.                                                                                                                                                                     |
 | T08  | Implemented; automated gates passed                            | Versioned profiles, questions, authored assistance and preview.                                                                                                                                                                |
-| T09  | Implemented; live verification pending                         | Meta wire-contract/adult-policy tests; exact account contract must be verified.                                                                                                                                                |
+| T09  | Implemented; live verification pending                         | Meta wire-contract, cloud-boundary and selected-audience tests; exact account contract must be verified.                                                                                                                       |
 | T10  | Implemented; automated gates passed                            | Private normalized photos, immutable confirmation and stale-write tests.                                                                                                                                                       |
 | T11  | Implemented; physical phone evidence pending                   | HEIF/metadata/bounds tests and browser preview/crop/rotation flow.                                                                                                                                                             |
 | T12  | Implemented; live unverified                                   | Ollama native text/image contracts; operator setup documented.                                                                                                                                                                 |
@@ -33,9 +33,63 @@ specification gates pass.
 | T23  | Implemented experiment; device measurement pending             | Pinned text-only WebLLM research with consent/hash validation/cancel/delete; no weights downloaded.                                                                                                                            |
 | T24  | Implemented; physical phone/live provider verification pending | Expiring QR upload, computer confirmation, HTTPS launch/runbook; automated migration, authorization, retry and two-browser gates passed.                                                                                       |
 | T25  | Implemented; automated gates passed; live quality unverified   | AI-only multi-subject tutoring, reference-only homework intake, contextual guidance, adjustable initiative and automatic clear photo reading; 125 unit, 33 component, 128 integration and 28 browser tests passed.             |
-| T26  | Implemented; automated gates passed                            | Purposeful tabs, plain wording, in-context Help, parent-as-student profiles and guided phone setup; 125 unit, 51 component, 146 integration and 36 browser tests passed.                                                           |
-| T27  | Implemented; automated gates passed                            | Browser-managed AI connections/keys, current-schema tests, persistent startup and safe backup settings; 145 unit, 80 component, 188 integration and 42 browser tests passed.                                                         |
-| T28  | Implemented; automated gates passed                            | Browser-first owner setup, inline recovery, six-character loopback passwords with network safeguards; 159 unit, 103 component, 215 integration and 46 browser tests passed.                                                        |
+| T26  | Implemented; automated gates passed                            | Purposeful tabs, plain wording, in-context Help, parent-as-student profiles and guided phone setup; 125 unit, 51 component, 146 integration and 36 browser tests passed.                                                       |
+| T27  | Implemented; automated gates passed                            | Browser-managed AI connections/keys, current-schema tests, persistent startup and safe backup settings; 145 unit, 80 component, 188 integration and 42 browser tests passed.                                                   |
+| T28  | Implemented; automated gates passed                            | Browser-first owner setup, inline recovery, six-character loopback passwords with network safeguards; 159 unit, 103 component, 215 integration and 46 browser tests passed.                                                    |
+| T29  | Implemented; automated gates passed                            | Shepard Academy Universe branding; fixed Meta cloud location, editable audience and disclaimer; project hooks/check, 216 integration and 4 affected browser tests passed.                                                      |
+
+### T29 — Product identity and honest provider controls (2026-09-07)
+
+The maintainer reported that the UI's obsolete tutor label does not match the
+repository and that the **Where this model runs** and **Allowed users** dropdowns
+do not work while adding a Meta connection. The selected product name is
+**Shepard Academy Universe**. In a follow-up, the maintainer explicitly rejected
+the app's provider-specific age rule and chose a terms disclaimer plus
+operator-selected audience instead. Meta's hosted boundary remains cloud-only.
+
+Bounded implementation and acceptance:
+
+- Replace the obsolete user-facing product name in the app shell, document title,
+  install manifest, phone/setup copy, native startup output and public API/project
+  descriptions. Keep established internal package/module/database identifiers to
+  avoid an unrelated compatibility rename.
+- For Meta, show its hosted cloud boundary as an explicit fixed value rather than
+  a broken-looking dropdown. Make **Allowed users** editable and persist the
+  operator's choice. Show a provider-specific age/data disclaimer and require the
+  existing provider-terms acknowledgment, but do not hard-code an age restriction.
+  Point to Ollama/vLLM for locally served Llama models.
+- For Ollama, vLLM and compatible endpoints, retain real enabled selects and prove
+  that both changed values reach the save request. Preserve backend enforcement
+  of the selected audience, key/origin checks, explicit cloud consent and learner
+  ownership.
+- Add accessible component and browser regressions, run the focused checks and
+  appropriate project gates, inspect the public diff, then record exact evidence.
+  Use only synthetic fixtures; do not inspect the operator's provider settings or
+  key and do not make a live model call.
+
+Implemented:
+
+- Renamed all user-visible product surfaces to **Shepard Academy Universe** while
+  retaining compatibility-sensitive package, database and deployment identifiers.
+- Removed the Meta-specific audience validator and routing block. Meta now defaults
+  to the editable mixed audience and uses the same selected-audience policy as every
+  other provider; its hosted endpoint remains accurately fixed to cloud processing.
+- Replaced the disabled location control with a labeled fixed value, added the
+  provider-terms disclaimer and local Ollama/vLLM guidance, and kept the existing
+  acknowledgment tied to every audience change.
+- Added backend, component and desktop/mobile browser regressions proving Meta's
+  mixed route, generic audience enforcement, fixed hosted location, editable saved
+  audience, and usable Ollama/vLLM/compatible controls without provider calls.
+
+Verification:
+
+- `make hooks-check test-integration` passed: the repository hooks and full project
+  check passed, followed by **216 integration tests**.
+- Provider-focused suites passed: **50 backend unit tests**, **28 provider
+  integration tests**, and **107 frontend component tests**.
+- The affected Playwright cases passed on desktop and mobile Chromium: **4/4**.
+- `git diff --check` passed. No live provider request, model download, private
+  operator configuration, physical-phone test or cloud deployment was performed.
 
 ### T28 — Browser-first administrator setup (2026-09-07)
 

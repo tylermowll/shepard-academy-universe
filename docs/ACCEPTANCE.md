@@ -60,7 +60,7 @@ Paths below are relative to the repository. `workflows` means
 | A17 deletion during inference/restore | `test_deletion_during_work_prevents_resurrection_and_restore`                                                                                 |
 | A18 hostile upload/math bounds        | `test_images.py`, parser properties, `test_csrf_and_chunked_body_limits`                                                                      |
 | A19 reconnect same operation          | Persisted-practice browser test disconnects after accepted submission, reloads and recovers one verdict; physical phone backgrounding pending |
-| A20 Meta minor/mixed block            | Provider audience/explicit-cloud policy tests                                                                                                 |
+| A20 selected provider audience        | Mixed Meta route accepts mixed eligibility; a restricted route blocks learners outside its selection; explicit-cloud policy tests             |
 | A21 protected help uses authored text | Profile/solution-policy test; models never provide protected hints; actual pedagogy/disclosure evaluation pending                             |
 | A22 no previous learner UI/cache      | Browser logout and paired-device revocation; offline cache asserts public assets only                                                         |
 | A23 stale photo revision              | `test_photo_confirmation_is_explicit_immutable_and_stale_safe`                                                                                |

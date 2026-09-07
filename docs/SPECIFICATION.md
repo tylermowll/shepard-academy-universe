@@ -1,4 +1,4 @@
-# Shepard Tutor specification
+# Shepard Academy Universe specification
 
 This document preserves the product, architecture, safety contracts, and roadmap
 from the original README. **These are implementation requirements, not working
@@ -370,7 +370,7 @@ All support is **planned until contract tests and a recorded live smoke test pas
 | Adapter ID          | Transport                                       | Initial purpose                        | Important boundary                                                       |
 | ------------------- | ----------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------ |
 | `mock`              | In-process deterministic fixtures               | No-key demo, CI, failure simulation    | Not an AI model; visibly labeled                                         |
-| `meta`              | Meta Model API Chat Completions over HTTPS      | Muse Spark 1.3 adult/synthetic testing | Age/data terms; provider-specific mapping                                |
+| `meta`              | Meta Model API Chat Completions over HTTPS      | Muse Spark 1.3 hosted testing         | Cloud-only; operator-attested audience and provider-specific mapping      |
 | `ollama`            | Native Ollama HTTP API                          | Easy local model hosting               | Select an installed vision-capable model for photos                      |
 | `vllm`              | OpenAI-compatible Chat Completions              | Local or private GPU server            | Serving version, model architecture, and vision configuration all matter |
 | `bedrock`           | boto3 `bedrock-runtime` Converse                | AWS-managed model inference            | Region, model access, IAM, and model-specific capabilities               |
@@ -673,7 +673,14 @@ single-pass operator commands report failures with a nonzero exit status.
 
 ### Provider age and data policies
 
-Meta's published API terms, dated August 28, 2026, require the developer and end users to be at least 18. Therefore, the Spark route is disabled for mixed/unknown-audience and under-18 learner use in this design; a parent's API key is not treated as a bypass. The project may use Spark to **write public code** while using a different backend to **tutor learners**. These are independent choices. [^S02]
+Meta's hosted API has provider-specific age and data terms. Under D012, the adult
+operator selects and attests the audience that their current agreement and
+jurisdiction permit; the app displays a disclaimer but does not hard-code a
+provider age restriction or certify eligibility. The backend still enforces the
+selected audience for every learner request, together with explicit cloud
+authorization. A locally hosted Llama model uses its separate model license and
+acceptable-use policy and is configured through Ollama or vLLM, not the hosted
+`meta` adapter. [^S02][^S46]
 
 Meta documents different Standard and Contributor data-use treatment. Keep Contributor disabled for real learner data. Public source code does not make photos, application logs, environment files, or conversations public data. Non-training promises do not automatically mean zero retention. [^S03]
 
@@ -726,7 +733,7 @@ The tutor should remain an educational tool, not claim to be a human friend or p
 | A17 | Student deleted while inference runs                  | Jobs canceled; late data discarded; no resurrection                                      |
 | A18 | Malicious/oversized upload or unsafe math string      | Safe rejection; no execution or excessive resource use                                   |
 | A19 | Phone loses connection after submit                   | Reconnect retrieves the same operation                                                   |
-| A20 | Under-18/mixed session selects Meta                   | Server-side policy blocks request                                                        |
+| A20 | Learner does not match a connection's selected audience | Server-side policy blocks request; an attested mixed route accepts mixed eligibility  |
 | A21 | Model gives solution before allowed                   | Evaluation failure; protected mode uses authored fallback                                |
 | A22 | Logout/profile change                                 | No previous learner content in cache or UI                                               |
 | A23 | Two devices confirm stale interpretation              | One accepted revision; stale update rejected                                             |
@@ -871,7 +878,7 @@ Use one implementation agent at a time initially. An independent review pass can
 | T06  | T05                 | Jobs, leases, idempotency, worker and recovery                                         | Crash/concurrent-worker tests; A08/A09/A17                                                                                                              |
 | T07  | T06                 | Provider contracts, deterministic mock, policy router                                  | Malformed response/refusal/timeout fixtures and no-cloud tests                                                                                          |
 | T08  | T07                 | Versioned tutor profiles, questions, assistance levels                                 | A07/A16/A21; synthetic profile preview                                                                                                                  |
-| T09  | T08                 | Meta Spark adapter                                                                     | Wire-contract tests; optional adult synthetic smoke test explicitly recorded                                                                            |
+| T09  | T08                 | Meta Spark adapter                                                                     | Wire-contract tests; optional explicitly authorized synthetic smoke test recorded                                                                        |
 | T10  | T08                 | Image submission, private storage, interpretation confirmation                         | Mock vision flow; A06/A13/A18/A23                                                                                                                       |
 | T11  | T10                 | Mobile camera/file UX, HEIC/HEIF support, crop/rotate                                  | Real-device manual evidence and automated decoder tests                                                                                                 |
 | T12  | T10                 | Ollama adapter and documented local model setup                                        | Local text+image smoke test or explicit unverified status                                                                                               |
@@ -992,7 +999,7 @@ The following defaults allow implementation to start without another planning ro
 
 | Decision             | Chosen default                                                     | Change procedure                                                                       |
 | -------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| Product name         | Math Practice Tutor; descriptive working title                     | Rename before public branding if desired                                               |
+| Product name         | Shepard Academy Universe; maintainer-selected repository name      | Treat further renaming as an explicit product decision                                 |
 | Initial use          | One private deployment, adult administrator, managed learners      | Multi-tenant/public sign-up is a separate architecture review                          |
 | Primary client       | Responsive PWA                                                     | Native shell only after a concrete unmet requirement                                   |
 | Core topics          | Fractions and `a*x+b=c`                                            | Add a template/verifier/evaluation task                                                |
@@ -1009,11 +1016,17 @@ A fully customizable tutor does not require letting users modify every safety-cr
 
 ## 20. Research references
 
-Official project/vendor sources were checked on **September 6, 2026**. These references support external facts; the architecture, defaults, limits, and acceptance gates above are project design decisions. Version numbers and terms can change. Recheck them when implementing or deploying, and record any changes rather than silently substituting remembered APIs. Some Meta pages were accessible in indexed official search results but their direct page text was not retrievable during preparation; re-read those terms directly before activating the provider.
+Official project/vendor sources were checked through **September 7, 2026**. These
+references support external facts; the architecture, defaults, limits, and
+acceptance gates above are project design decisions. Version numbers and terms can
+change. Recheck them when implementing or deploying, and record any changes rather
+than silently substituting remembered APIs. Meta's current terms page requires an
+authenticated session, so the operator must read the agreement applying to their
+account before use.
 
 [^S01]: **Meta API quickstart:** [API base and model configuration](https://ai.developer.meta.com/docs/quickstart/).
 
-[^S02]: **Meta API terms:** [Terms of Service, August 28, 2026](https://ai.developer.meta.com/legal/terms-of-service).
+[^S02]: **Meta hosted API terms:** [official terms](https://llama.developer.meta.com/legal/terms-of-service).
 
 [^S03]: **Meta model/data tiers:** [Models](https://ai.developer.meta.com/docs/models/).
 
@@ -1100,6 +1113,8 @@ Official project/vendor sources were checked on **September 6, 2026**. These ref
 [^S44]: **SQLite recovery:** [Online backup API](https://sqlite.org/backup.html).
 
 [^S45]: **AWS persistent storage:** [Amazon EBS volumes](https://docs.aws.amazon.com/ebs/latest/userguide/ebs-volumes.html).
+
+[^S46]: **Locally hosted Llama:** Meta's [Llama 4 Community License](https://github.com/meta-llama/llama-models/blob/main/models/llama4/LICENSE) and [Acceptable Use Policy](https://github.com/meta-llama/llama-models/blob/main/models/llama4/USE_POLICY.md).
 
 ## Appendix A. Root AGENTS.md
 

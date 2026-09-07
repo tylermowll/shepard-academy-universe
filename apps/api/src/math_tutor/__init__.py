@@ -1,1 +1,1 @@
-"""Math Practice Tutor backend package."""
+"""Shepard Academy Universe backend package."""

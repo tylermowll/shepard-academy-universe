@@ -103,7 +103,7 @@ export function App({ setupAuthority }: { setupAuthority?: SetupAuthority }) {
     };
   }, [authenticated, identity]);
   useEffect(() => {
-    document.title = `${authenticated || page === "help" ? pageNames[page] : setupRequired || checkingSetup ? "Create administrator account" : "Sign in"} · Shepard Tutor`;
+    document.title = `${authenticated || page === "help" ? pageNames[page] : setupRequired || checkingSetup ? "Create administrator account" : "Sign in"} · Shepard Academy Universe`;
     workspace.current
       ?.querySelector<HTMLElement>("h1")
       ?.focus({ preventScroll: true });
@@ -292,7 +292,7 @@ export function App({ setupAuthority }: { setupAuthority?: SetupAuthority }) {
           onClick={(event) => followPage(event, navigate, "practice")}
           className="wordmark"
         >
-          Shepard Tutor
+          Shepard Academy Universe
         </a>
         {identity?.authenticated && (
           <button
@@ -631,7 +631,7 @@ export function App({ setupAuthority }: { setupAuthority?: SetupAuthority }) {
         )}
       </div>
       <footer>
-        <span>Shepard Tutor</span>
+        <span>Shepard Academy Universe</span>
         <a
           href={pageUrl("help", "privacy")}
           onClick={(event) => followPage(event, navigate, "help", "privacy")}

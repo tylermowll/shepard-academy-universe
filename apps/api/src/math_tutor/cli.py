@@ -168,7 +168,7 @@ def run_admin() -> int:
 def main(argv: list[str] | None = None) -> int:
     """Dispatch operator subcommands."""
 
-    parser = argparse.ArgumentParser(prog="math-tutor", description="Math Practice Tutor CLI")
+    parser = argparse.ArgumentParser(prog="math-tutor", description="Shepard Academy Universe CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("db", help="Validate the SQLite path, runtime, and settings.")
     subparsers.add_parser("admin", help="Interactively create or reset the adult administrator.")

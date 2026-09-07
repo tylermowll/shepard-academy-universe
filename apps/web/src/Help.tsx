@@ -366,6 +366,20 @@ export function HelpPage({
                   support only for an image-capable model and test it.
                 </p>
               </ContextHelp>
+              <ContextHelp topic="Can children use a Meta or Llama model?">
+                <p>
+                  For Meta&apos;s hosted API, choose the allowed users only
+                  after checking the current age and data terms for your
+                  account. The app records and enforces your selection, but does
+                  not certify that a provider permits it. The hosted location is
+                  fixed to cloud processing.
+                </p>
+                <p>
+                  To serve a Meta/Llama model on your own computer or private
+                  network, choose Ollama or vLLM as the connection type instead
+                  and review that model&apos;s license and use policy.
+                </p>
+              </ContextHelp>
               <ContextHelp topic="Why is a setting managed by the server?">
                 <p>
                   An operator can lock cloud access or audience policy in the

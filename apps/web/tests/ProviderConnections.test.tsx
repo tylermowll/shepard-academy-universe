@@ -169,7 +169,7 @@ describe("adult connection setup", () => {
           boundary: "local_network",
           audience: "mixed",
           eligibility_record:
-            "Operator confirmed the model and provider terms permit mixed-age use.",
+            "Operator reviewed the model and provider terms for the mixed audience.",
           image_input: false,
           configured_context_limit: 32768,
           structured_output_mode: "native",
@@ -359,10 +359,109 @@ describe("adult connection setup", () => {
       target: { value: "meta" },
     });
     expect(screen.getByLabelText("API key")).toHaveValue("");
-    expect(screen.getByLabelText("Where this model runs")).toHaveValue("cloud");
-    expect(screen.getByLabelText("Allowed users")).toHaveValue("adult_only");
-    expect(screen.getByLabelText("Allowed users")).toBeDisabled();
+    expect(
+      screen.getByRole("option", { name: "Meta hosted API" }),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("combobox", { name: "Where this model runs" }),
+    ).toBeNull();
+    const location = screen.getByRole("group", {
+      name: "Where this model runs",
+    });
+    expect(location).toHaveTextContent("Cloud service Fixed");
+    const audience = screen.getByRole("combobox", { name: "Allowed users" });
+    expect(audience).toBeEnabled();
+    expect(audience).toHaveValue("mixed");
+    expect(audience).toHaveAccessibleDescription(
+      /records your decision; it is not a certification from this app/i,
+    );
   });
+
+  it("saves the selected Meta audience while keeping its hosted location fixed", async () => {
+    show();
+    fireEvent.click(screen.getByRole("button", { name: "Add AI connection" }));
+    fireEvent.change(screen.getByLabelText("Connection name"), {
+      target: { value: "meta-policy" },
+    });
+    fireEvent.change(screen.getByLabelText("Connection type"), {
+      target: { value: "meta" },
+    });
+    fireEvent.change(screen.getByLabelText("Model name"), {
+      target: { value: "synthetic-meta-model" },
+    });
+    fireEvent.change(screen.getByLabelText("API key"), {
+      target: { value: "synthetic-meta-key" },
+    });
+    const audience = screen.getByRole("combobox", { name: "Allowed users" });
+    fireEvent.click(terms());
+    expect(terms()).toBeChecked();
+    fireEvent.change(audience, { target: { value: "adult_only" } });
+    expect(audience).toHaveValue("adult_only");
+    expect(terms()).not.toBeChecked();
+    fireEvent.change(audience, { target: { value: "mixed" } });
+    expect(audience).toHaveValue("mixed");
+    fireEvent.click(terms());
+    fireEvent.click(screen.getByRole("button", { name: "Save connection" }));
+    await screen.findByText(/meta-policy saved/);
+    const request = vi.mocked(fetch).mock.calls[0]![1]!;
+    expect(JSON.parse(request.body as string)).toMatchObject({
+      adapter: "meta",
+      boundary: "cloud",
+      audience: "mixed",
+    });
+  });
+
+  it.each([
+    ["ollama", "cloud", "https://ollama.example.invalid"],
+    ["vllm", "cloud", "https://vllm.example.invalid/v1"],
+    ["compatible", "local_network", "http://127.0.0.1:8082/v1"],
+  ] as const)(
+    "keeps location and audience editable for %s and saves both selections",
+    async (adapter, selectedBoundary, baseUrl) => {
+      show();
+      fireEvent.click(
+        screen.getByRole("button", { name: "Add AI connection" }),
+      );
+      fireEvent.change(screen.getByLabelText("Connection name"), {
+        target: { value: `${adapter}-policy` },
+      });
+      fireEvent.change(screen.getByLabelText("Connection type"), {
+        target: { value: adapter },
+      });
+      fireEvent.change(screen.getByLabelText("Server address"), {
+        target: { value: baseUrl },
+      });
+      fireEvent.change(screen.getByLabelText("Model name"), {
+        target: { value: "installed-policy-model" },
+      });
+      const boundary = screen.getByRole("combobox", {
+        name: "Where this model runs",
+      });
+      const audience = screen.getByRole("combobox", {
+        name: "Allowed users",
+      });
+      expect(boundary).toBeEnabled();
+      expect(audience).toBeEnabled();
+      fireEvent.change(boundary, { target: { value: selectedBoundary } });
+      fireEvent.change(audience, { target: { value: "adult_only" } });
+      expect(boundary).toHaveValue(selectedBoundary);
+      expect(audience).toHaveValue("adult_only");
+      if (adapter === "compatible") {
+        fireEvent.change(screen.getByLabelText("API key"), {
+          target: { value: "synthetic-policy-key" },
+        });
+      }
+      fireEvent.click(terms());
+      fireEvent.click(screen.getByRole("button", { name: "Save connection" }));
+      await screen.findByText(new RegExp(`${adapter}-policy saved`));
+      const request = vi.mocked(fetch).mock.calls[0]![1]!;
+      expect(JSON.parse(request.body as string)).toMatchObject({
+        adapter,
+        boundary: selectedBoundary,
+        audience: "adult_only",
+      });
+    },
+  );
 
   it("disables a managed connection and requires confirmation for deletion", async () => {
     const { onChanged } = show();

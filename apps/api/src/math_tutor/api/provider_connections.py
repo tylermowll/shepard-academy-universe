@@ -113,7 +113,7 @@ def connection_config(body: ProviderConnectionInput) -> ProviderConfig:
     except ValueError, ValidationError:
         raise HTTPException(
             422,
-            "Check the server URL, exact model name, and eligibility. URLs cannot contain credentials, queries, or fragments; cloud URLs need HTTPS. Meta requires adult-only cloud use.",
+            "Check the server URL, exact model name, audience, and eligibility. URLs cannot contain credentials, queries, or fragments; cloud URLs need HTTPS. Meta requires the cloud boundary.",
         ) from None
 
 

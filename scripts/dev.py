@@ -65,7 +65,7 @@ try:
     ):
         children.append(subprocess.Popen(command, cwd=root, env=environment))
     print(
-        f"Shepard Tutor: {origin.geturl()} (Ctrl+C stops API and worker)",
+        f"Shepard Academy Universe: {origin.geturl()} (Ctrl+C stops API and worker)",
         flush=True,
     )
     while all(child.poll() is None for child in children):
