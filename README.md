@@ -7,16 +7,17 @@ introductory one-variable linear equations.
 
 ## Current status
 
-**T00 and T01 pass their local gates. This is a development scaffold, not a usable tutor.**
+**T00–T02 pass their local gates. This is a development scaffold, not a usable tutor.**
 
 | Area | Implemented today |
 |---|---|
-| Backend | Packaged Python 3.14 / FastAPI application with typed `GET /health` response |
-| Database | SQLite/SQLAlchemy/Alembic foundation with migration 0001, UUID/UTC adapters, and public/private schemas |
+| Backend | Packaged Python 3.14 / FastAPI application with typed `GET /health` response and adult session endpoints (`GET /api/v1/auth/session`, `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`) |
+| Database | SQLite/SQLAlchemy/Alembic foundation with migrations 0001–0002, UUID/UTC adapters, practice tables plus administrator/device-session tables, and public/private schemas |
 | Frontend | React/TypeScript/Vite preview with Tailwind, an availability notice, and a JavaScript-disabled fallback |
 | Quality checks | Locked dependencies, Python/frontend lint/format/types/tests/builds, on-disk SQLite integration tests, desktop/mobile browser smoke tests |
 | Development workflow | Pre-commit checks and a full-stack GitHub Actions workflow; hosted CI evidence is pending |
-| Authentication, tutoring, providers, deployment | Not implemented |
+| Authentication | Adult bootstrap via `make admin`, Argon2id password hashes, opaque sessions with CSRF/expiry/revocation; learner pairing arrives in T03 |
+| Tutoring, providers, deployment | Not implemented |
 
 The detailed [specification](docs/SPECIFICATION.md) describes planned behavior.
 [Task status and evidence](docs/TASKS.md) record what has actually passed. No live
@@ -48,9 +49,12 @@ Open <http://127.0.0.1:5173> for the frontend preview. In a second terminal, run
 Bootstrap installs locked backend dependencies in `apps/api/.venv` and frontend
 workspace dependencies in `node_modules`; uv can download Python 3.14.7 if missing.
 The first install requires network access to package/runtime sources. There is no
-model, API key, or required `.env` file at this stage. The database is a local
+model or API key at this stage. The database is a local
 SQLite file: copy `.env.example` to `.env` to override `DATABASE_URL`, then run
 `make db` to validate settings and `make migrate` to apply migrations.
+Adult login additionally needs a generated `SESSION_SECRET` in `.env`
+(authentication rejects the placeholder); run `make admin` to create the
+administrator account interactively.
 
 Open <http://127.0.0.1:8000/health>; the expected response is `{"status":"ok"}`.
 API documentation is at <http://127.0.0.1:8000/docs>. Stop the server with
@@ -89,6 +93,7 @@ The [Makefile](Makefile) is the authority for commands that exist today.
 | `make test-integration` | Run on-disk SQLite integration tests in isolated temporary files |
 | `make db` | Validate the SQLite path, embedded runtime version, and connection settings |
 | `make migrate` | Apply reviewed Alembic migrations with application writes stopped |
+| `make admin` | Interactively create or reset the adult administrator (password via prompt, never argv) |
 | `make lint` / `make format-check` | Check Python/frontend lint or formatting without changing files |
 | `make format` | Format Python/frontend files; review and stage the changes yourself |
 | `make typecheck` | Run strict mypy and TypeScript over source, tests, and configuration |
@@ -129,7 +134,8 @@ and dependency vulnerability scanning remain release requirements.
 repository permissions, uses actions pinned to commit SHAs, and needs no provider
 credentials. The initial push is authorized; hosted CI results remain unverified
 until a run is observed. T01 added the SQLite runtime check and on-disk
-integration gate to CI; hosted evidence is still pending under
+integration gate to CI; T02's auth tests run inside the existing unit and
+integration gates. Hosted evidence is still pending under
 [D002](docs/DECISIONS.md#d002--local-t00-completion-2026-09-06).
 
 ## Architecture and implementation order
@@ -143,16 +149,18 @@ transcription confirmation before grading. Providers cannot change permissions,
 answer keys, or workflow state, and local failures cannot silently send work to a
 cloud service. See the [architecture contract](docs/SPECIFICATION.md#5-application-architecture).
 
-The next task is T02: adult bootstrap and session authentication. Then follow
-T03–T05 toward one persisted fraction problem with a typed answer and deterministic
-feedback. AI integration follows that working slice. [HANDOFF.md](docs/HANDOFF.md)
-contains the Spark 1.3 prompt, per-task gates, and database runtime prerequisites.
-Do not skip unfinished gates or treat the full roadmap as one implementation task.
+The next task is T03: managed learner aliases, device pairing, and ownership
+checks. Then follow T04–T05 toward one persisted fraction problem with a typed
+answer and deterministic feedback. AI integration follows that working slice.
+[HANDOFF.md](docs/HANDOFF.md) contains the Spark 1.3 prompt, per-task gates, and
+database runtime prerequisites. Do not skip unfinished gates or treat the full
+roadmap as one implementation task.
 
 The approved [SQLite decision](docs/DECISIONS.md#d004--sqlite-for-the-initial-deployment-2026-09-06)
 defines WAL, connection settings, migrations, job claims, and consistent backups.
-T01 implemented the foundation with migration 0001; the embedded SQLite floor is
-3.53.1 with a documented exception (see D001). Multiple application hosts and
+T01 implemented the foundation with migration 0001 and T02 added the
+administrator/device-session tables in migration 0002; the embedded SQLite floor
+is 3.53.1 with a documented exception (see D001). Multiple application hosts and
 network-mounted database files are outside this design.
 
 ## Contributing and documentation

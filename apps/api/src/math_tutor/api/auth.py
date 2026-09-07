@@ -1,0 +1,246 @@
+"""Adult session endpoints for T02.
+
+Routes (all under ``/api/v1/auth``):
+
+* ``GET /session`` — minimal status plus CSRF bootstrap; never a learner list.
+* ``POST /login`` — opaque session cookie on valid credentials.
+* ``POST /logout`` — immediate revocation of the presenting session.
+
+State-changing requests require the ``X-CSRF-Token`` header and a passing
+``Origin`` check. Cookies are ``HttpOnly`` (session) and ``SameSite=Lax``;
+``Secure`` follows the configured public origin so loopback development over
+plain HTTP keeps working while HTTPS deployments set it. Login attempts are
+rate-limited per client address. A missing or placeholder ``SESSION_SECRET``
+fails closed with 500; the liveness probe stays exempt.
+"""
+
+from __future__ import annotations
+
+import hmac
+import math
+import secrets
+from typing import cast
+from urllib.parse import urlsplit
+
+from fastapi import APIRouter, HTTPException, Request, Response, status
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.engine import Engine
+from sqlalchemy.orm import Session
+
+from math_tutor import auth as auth_service
+from math_tutor import settings
+
+router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+
+SESSION_COOKIE = "mt_session"
+ANON_CSRF_COOKIE = "mt_csrf_anon"
+CSRF_HEADER = "x-csrf-token"
+
+_NOT_CONFIGURED = "Server authentication is not configured."
+_BAD_CREDENTIALS = "Invalid login name or password."
+_NOT_AUTHENTICATED = "Not authenticated."
+_CSRF_FAILED = "CSRF validation failed."
+_ORIGIN_REJECTED = "Origin not allowed."
+_RATE_LIMITED = "Too many login attempts. Try again later."
+
+
+class LoginRequest(BaseModel):
+    """Credentials supplied by the adult administrator."""
+
+    model_config = ConfigDict(frozen=True)
+
+    login_name: str = Field(min_length=1, max_length=64)
+    password: str = Field(min_length=1, max_length=256)
+
+
+class SessionStatus(BaseModel):
+    """Minimal session state plus the CSRF token the client must echo.
+
+    Never carries password hashes, opaque token hashes, or learner lists.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    authenticated: bool
+    role: str | None = None
+    login_name: str | None = None
+    csrf_token: str
+
+
+class LogoutResponse(BaseModel):
+    """Result of revoking the presenting session."""
+
+    model_config = ConfigDict(frozen=True)
+
+    authenticated: bool = False
+
+
+def require_secret() -> str:
+    """Return the session secret or fail closed when it is unconfigured."""
+
+    try:
+        return settings.session_secret()
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=_NOT_CONFIGURED,
+        ) from None
+
+
+def secure_cookies() -> bool:
+    """Use the Secure cookie flag outside loopback development."""
+
+    return urlsplit(settings.app_public_origin()).scheme == "https"
+
+
+def origin_allowed(request: Request) -> bool:
+    """Accept missing Origin (non-browser clients); otherwise same-origin only.
+
+    An explicit Origin must match the request Host or the configured public
+    origin. Anything else is rejected before credentials or sessions run.
+    """
+
+    origin = request.headers.get("origin")
+    if origin is None:
+        return True
+    try:
+        parsed = urlsplit(origin)
+    except ValueError:
+        return False
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        return False
+    host = request.headers.get("host", "").lower()
+    public = urlsplit(settings.app_public_origin()).netloc.lower()
+    return parsed.netloc.lower() in {host, public}
+
+
+def engine_for(request: Request) -> Engine:
+    """Return the application's database engine."""
+
+    return cast(Engine, request.app.state.engine)
+
+
+def client_key(request: Request) -> str:
+    """Return the rate-limit key for this caller."""
+
+    if request.client is not None:
+        return request.client.host
+    return "unknown"
+
+
+def set_session_cookie(response: Response, token: str, max_age: int) -> None:
+    """Store the opaque session token with the T02 cookie contract."""
+
+    response.set_cookie(
+        SESSION_COOKIE,
+        token,
+        max_age=max_age,
+        path="/",
+        httponly=True,
+        samesite="lax",
+        secure=secure_cookies(),
+    )
+
+
+def set_anon_csrf_cookie(response: Response, token: str) -> None:
+    """Store the anonymous bootstrap token for double-submit login CSRF."""
+
+    response.set_cookie(
+        ANON_CSRF_COOKIE,
+        token,
+        max_age=auth_service.ANON_CSRF_LIFETIME_SECONDS,
+        path="/",
+        httponly=False,
+        samesite="lax",
+        secure=secure_cookies(),
+    )
+
+
+def mint_anon_csrf(secret: str) -> str:
+    """Return a fresh anonymous bootstrap token signed with the secret."""
+
+    return auth_service.sign_anon_csrf(secrets.token_urlsafe(24), secret)
+
+
+@router.get("/session", response_model=SessionStatus, response_model_exclude_none=True)
+def get_session(request: Request, response: Response) -> SessionStatus:
+    """Report minimal session state and bootstrap a CSRF token."""
+
+    secret = require_secret()
+    token = request.cookies.get(SESSION_COOKIE)
+    if token:
+        with Session(engine_for(request)) as db:
+            row = auth_service.get_valid_session(db, token)
+            if row is not None:
+                login_name = row.administrator.login_name if row.administrator is not None else None
+                return SessionStatus(
+                    authenticated=True,
+                    role=row.role,
+                    login_name=login_name,
+                    csrf_token=row.csrf_token,
+                )
+        response.delete_cookie(SESSION_COOKIE, path="/")
+    anon = mint_anon_csrf(secret)
+    set_anon_csrf_cookie(response, anon)
+    return SessionStatus(authenticated=False, csrf_token=anon)
+
+
+@router.post("/login", response_model=SessionStatus, response_model_exclude_none=True)
+def login(credentials: LoginRequest, request: Request, response: Response) -> SessionStatus:
+    """Authenticate the adult and start an opaque-cookie session."""
+
+    secret = require_secret()
+    if not origin_allowed(request):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_ORIGIN_REJECTED)
+    presented = request.headers.get(CSRF_HEADER)
+    bootstrap = request.cookies.get(ANON_CSRF_COOKIE)
+    if (
+        presented is None
+        or bootstrap is None
+        or not hmac.compare_digest(presented, bootstrap)
+        or not auth_service.verify_anon_csrf(presented, secret)
+    ):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_CSRF_FAILED)
+    retry_after = auth_service.register_login_attempt(client_key(request))
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=_RATE_LIMITED,
+            headers={"Retry-After": str(max(1, math.ceil(retry_after)))},
+        )
+    with Session(engine_for(request)) as db:
+        admin = auth_service.authenticate_admin(db, credentials.login_name, credentials.password)
+        if admin is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_BAD_CREDENTIALS)
+        row, token = auth_service.create_device_session(db, admin)
+        name = admin.login_name
+        csrf = row.csrf_token
+        max_age = max(1, int((row.expires_at - auth_service.utcnow()).total_seconds()))
+        db.commit()
+    set_session_cookie(response, token, max_age)
+    response.delete_cookie(ANON_CSRF_COOKIE, path="/")
+    return SessionStatus(authenticated=True, role="adult", login_name=name, csrf_token=csrf)
+
+
+@router.post("/logout", response_model=LogoutResponse)
+def logout(request: Request, response: Response) -> LogoutResponse:
+    """Revoke the presenting session and clear its cookie."""
+
+    require_secret()
+    if not origin_allowed(request):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_ORIGIN_REJECTED)
+    token = request.cookies.get(SESSION_COOKIE)
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_NOT_AUTHENTICATED)
+    with Session(engine_for(request)) as db:
+        row = auth_service.get_valid_session(db, token)
+        if row is None:
+            response.delete_cookie(SESSION_COOKIE, path="/")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_NOT_AUTHENTICATED)
+        presented = request.headers.get(CSRF_HEADER)
+        if presented is None or not hmac.compare_digest(presented, row.csrf_token):
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_CSRF_FAILED)
+        auth_service.revoke_session(db, row)
+        db.commit()
+    response.delete_cookie(SESSION_COOKIE, path="/")
+    return LogoutResponse()

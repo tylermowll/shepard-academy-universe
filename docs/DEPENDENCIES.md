@@ -20,6 +20,10 @@ committed in `apps/api/uv.lock` and installed with `--locked`.
 | pre-commit-hooks | `>=6.0.0,<7` / 6.0.0 | Repository hygiene and private-key checks |
 | SQLAlchemy | `>=2,<3` / 2.0.52 | SQLite persistence, ORM, and transaction control (T01) |
 | Alembic | `>=1.16,<2` / 1.19.2 | Versioned SQLite migrations (T01) |
+| argon2-cffi | `>=25.1,<26` / 25.1.0 | Argon2id adult password hashing; `$argon2id$` default verified (T02) |
+| argon2-cffi-bindings | transitive / 26.1.0 | Native Argon2 backend for argon2-cffi (T02) |
+| cffi | transitive / 2.1.1 | Foreign-function interface for the bindings (T02) |
+| pycparser | transitive / 3.0 | C parser for cffi (T02) |
 | greenlet | transitive / 3.5.5 | SQLAlchemy optional concurrency support (T01) |
 | Mako | transitive / 1.4.1 | Alembic migration templating (T01) |
 | MarkupSafe | transitive / 3.0.3 | Mako escaping dependency (T01) |

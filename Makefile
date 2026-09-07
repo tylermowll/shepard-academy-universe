@@ -3,7 +3,7 @@ PNPM ?= pnpm
 API_PROJECT := apps/api
 UV_PROJECT_ARGS := --directory $(API_PROJECT)
 
-.PHONY: bootstrap toolchain-check lock lock-check db migrate dev-api dev-web test \
+.PHONY: bootstrap toolchain-check lock lock-check db migrate admin dev-api dev-web test \
 	test-integration lint format format-check typecheck build check hooks-install \
 	hooks-check pre-commit-check smoke
 
@@ -35,6 +35,9 @@ db:
 migrate:
 	@echo "Stop API/worker writes before migrating."
 	$(UV) run $(UV_PROJECT_ARGS) --locked alembic -c alembic.ini upgrade head
+
+admin:
+	$(UV) run $(UV_PROJECT_ARGS) --locked python -m math_tutor.cli admin
 
 dev-api:
 	$(UV) run $(UV_PROJECT_ARGS) --locked uvicorn math_tutor.api.app:app --reload

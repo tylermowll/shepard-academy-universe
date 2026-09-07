@@ -1,9 +1,10 @@
-"""Local SQLite configuration for the Math Practice Tutor.
+"""Local configuration for the Math Practice Tutor.
 
-T01 owns the database-path portion of the configuration contract. Secrets and
-provider settings belong to later tasks; this module resolves exactly one
-absolute on-disk SQLite path so the API, worker, migrations, and commands agree
-regardless of working directory when an absolute ``DATABASE_URL`` is set.
+T01 owns the database-path portion of the configuration contract; T02 owns
+the session-secret and public-origin portion. Provider settings belong to
+later tasks. This module resolves exactly one absolute on-disk SQLite path
+so the API, worker, migrations, and commands agree regardless of working
+directory when an absolute ``DATABASE_URL`` is set.
 
 Only SQLite is supported (see D004). Any other database scheme is rejected
 rather than silently mapped to a second engine.
@@ -18,6 +19,29 @@ from pathlib import Path
 DEFAULT_DB_FILENAME = "math_tutor.sqlite3"
 DATA_DIR_ENV_VAR = "MATH_TUTOR_DATA_DIR"
 DATABASE_URL_ENV_VAR = "DATABASE_URL"
+SESSION_SECRET_ENV_VAR = "SESSION_SECRET"
+APP_PUBLIC_ORIGIN_ENV_VAR = "APP_PUBLIC_ORIGIN"
+
+DEFAULT_PUBLIC_ORIGIN = "http://localhost:8080"
+
+#: Session secrets must be operator-generated randomness, not a committed
+#: placeholder. Values in this set (compared case-insensitively after
+#: stripping) and anything shorter than the minimum are rejected wherever
+#: authentication runs, so startup with an unconfigured secret fails loudly
+#: instead of signing sessions with a guessable key.
+PLACEHOLDER_SECRETS = frozenset(
+    {
+        "",
+        "generate_at_setup",
+        "changeme",
+        "change_me",
+        "placeholder",
+        "secret",
+        "password",
+        "test",
+    }
+)
+MIN_SESSION_SECRET_LENGTH = 32
 
 #: Lowest embedded SQLite accepted by setup and CI. Python 3.14.7 loads 3.53.1
 #: while current stable is 3.53.4; the justified exception is recorded under
@@ -74,6 +98,31 @@ def database_path(url: str | None = None) -> Path:
     if not candidate.is_absolute():
         candidate = data_dir() / candidate
     return candidate.absolute()
+
+
+def session_secret() -> str:
+    """Return the configured session secret, rejecting placeholders.
+
+    Raises ``ValueError`` when the secret is missing, matches a known
+    placeholder, or is shorter than :data:`MIN_SESSION_SECRET_LENGTH`.
+    Authentication endpoints and the admin CLI call this before touching
+    credentials or sessions; the liveness probe stays exempt.
+    """
+
+    raw = os.environ.get(SESSION_SECRET_ENV_VAR, "")
+    if raw.strip().lower() in PLACEHOLDER_SECRETS or len(raw) < MIN_SESSION_SECRET_LENGTH:
+        raise ValueError(
+            f"{SESSION_SECRET_ENV_VAR} is missing or a placeholder: generate a random "
+            f"secret of at least {MIN_SESSION_SECRET_LENGTH} characters (see .env.example). "
+            "Startup with an unconfigured secret is rejected."
+        )
+    return raw
+
+
+def app_public_origin() -> str:
+    """Return the configured same-origin public address for cookie/Origin checks."""
+
+    return os.environ.get(APP_PUBLIC_ORIGIN_ENV_VAR, DEFAULT_PUBLIC_ORIGIN)
 
 
 def sqlite_version() -> tuple[int, int, int]:

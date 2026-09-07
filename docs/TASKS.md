@@ -9,7 +9,7 @@ specification gates pass.
 |---|---|---|
 | T00 | Complete locally | Fresh locked installs, backend/frontend checks/builds, commit hooks, and 4 browser smoke tests pass. Initial push authorized; hosted CI evidence pending (D002). |
 | T01 | Complete locally | SQLite/SQLAlchemy/Alembic foundation with migration 0001, public/private schemas, and on-disk integration gates pass. Hosted CI evidence pending; no push beyond the authorized one. |
-| T02 | Not started | Blocked by its roadmap dependency. |
+| T02 | Complete locally | Adult bootstrap/login and session/CSRF foundation with migration 0002, Argon2id hashes, opaque sessions, and `make admin`. Unit/integration gates pass. Hosted CI evidence pending; no push beyond the authorized one. |
 | T03 | Not started | Blocked by its roadmap dependency. |
 | T04 | Not started | Blocked by its roadmap dependency. |
 | T05 | Not started | Blocked by its roadmap dependencies. |
@@ -335,3 +335,87 @@ unchanged. CI runs the real wrappers after push; no hosted result is claimed.
 
 Next bounded task: T02 adult bootstrap/login per HANDOFF.md. No push beyond
 the authorized one; later task pushes need their own authorization.
+
+### 2026-09-06 — T02 adult bootstrap/login (local completion)
+
+T02 implements the SPEC section 12 authentication slice for the adult
+administrator: Argon2id password hashes, opaque server sessions, login/logout
+with CSRF and expiry, an interactive bootstrap CLI, and placeholder-secret
+rejection. Learner pairing/ownership stays in T03; no provider, job, or
+frontend-login work is claimed.
+
+Changed files and requirements:
+
+- `apps/api/pyproject.toml` + `uv.lock`: added `argon2-cffi>=25.1,<26`
+  (resolved 25.1.0 with bindings 26.1.0, cffi 2.1.1, pycparser 3.0; 51
+  packages). The hasher's default output was verified to be `$argon2id$`.
+- `apps/api/src/math_tutor/settings.py`: `SESSION_SECRET` (missing,
+  placeholder, or under 32 characters raises; the liveness probe stays
+  exempt) and `APP_PUBLIC_ORIGIN` (default `http://localhost:8080`, selects
+  the Secure cookie flag and accepted Origin).
+- `apps/api/src/math_tutor/adapters/db/models.py` + migration
+  `0002_auth_sessions`: `administrator` (unique login name, Argon2id PHC
+  hash) and `device_session` (unique SHA-256 token hash, role, adult FK,
+  plain `learner_id` until T03 adds its FK, per-session CSRF token,
+  expiry, revocation). Downgrade drops both tables.
+- `apps/api/src/math_tutor/auth.py`: 24-hour session lifetime, HMAC-signed
+  anonymous CSRF bootstrap, salted password hashing, and 10 login
+  attempts per minute per client address (over-budget attempts extend the
+  wait; `Retry-After` is returned). Task-level parameters, not D-decisions:
+  24 h lifetime, 10/min/IP limit, 12-character admin minimum.
+- `apps/api/src/math_tutor/api/auth.py` + `api/app.py`: `GET
+  /api/v1/auth/session` (minimal status plus CSRF bootstrap, no learner
+  list), `POST /api/v1/auth/login` (double-submit CSRF + Origin + rate
+  limit, one identical 401 for unknown/wrong credentials), `POST
+  /api/v1/auth/logout` (session-bound CSRF, immediate revocation, cookie
+  cleared). Session cookies are `HttpOnly`, `SameSite=Lax`, `Secure` on
+  https origins, `Path=/`. Responses carry no password/token hashes.
+- `apps/api/src/math_tutor/cli.py` + `Makefile` + `.env.example`: real
+  `make admin` that prompts for the login name and reads the password twice
+  via `getpass` (no `--password` flag, nothing in history/logs), creates or
+  resets the administrator with a 12-character minimum, rejects a
+  placeholder secret before prompting, and points at `make migrate` when
+  tables are missing.
+- Tests: 8 unit (`tests/unit/test_auth_secrets.py`: secret accept/reject,
+  origin default/override, Argon2id format/verify/salts, anon-CSRF
+  round-trip/rejection, token hashing, rate-limit counting) and 18
+  integration (`tests/integration/test_auth_sessions.py`: empty-file
+  migration with constraint checks, login-name uniqueness, password policy
+  and reset, placeholder-secret 500s, cookie flags incl. Secure-on-https,
+  response-shape leak checks, shared 401s, CSRF double-submit/forgery,
+  Origin rejection, logout CSRF/revocation scoping to the presenting
+  session, expired/tampered rejection, HTTP 429 with `Retry-After`, and five
+  CLI paths). `test_db_foundation.py` now targets head `0002` with the four
+  tables; its drift test covers the new models unchanged.
+
+Actual verification (backend via the venv interpreter directly; the sandbox
+denies spawning workspace console scripts, so bare `make` targets were not
+used — every underlying gate ran explicitly):
+
+- `.venv/bin/python -m pytest tests/unit tests/integration`: 45 passed
+  (11 unit, 34 integration) on Python 3.14.7 / SQLite 3.53.1.
+- `.venv/bin/python -m ruff check .`, `ruff format --check .`,
+  `.venv/bin/python -m mypy src tests` (strict, 19 files): all pass.
+- `uv lock --directory apps/api --check`: fresh (51 packages). `uv build
+  --directory apps/api`: sdist/wheel pass.
+- Frontend (untouched, re-verified with the provisioned Node 24.20.0):
+  ESLint, Prettier check, root and web `tsc --noEmit`, Vitest (1 passed),
+  Vite build — all pass. pnpm itself is unavailable in this shell, so the
+  exact underlying binaries ran via `node ...` instead of `pnpm` scripts.
+- `DATABASE_URL=<tmp> .venv/bin/python -m math_tutor.cli db`: prints the
+  absolute path, `sqlite: 3.53.1 (floor 3.53.1)`, and all four PRAGMAs.
+- `alembic -c alembic.ini upgrade head` against a temp `DATABASE_URL`:
+  succeeds with all four tables plus `alembic_version`.
+- Findings fixed, none waived: Pydantic `None` fields excluded from auth
+  payloads, detached-instance read moved inside the CLI session, lowercase
+  `SameSite=lax` assertion, https base URL for the Secure-cookie test
+  (Secure cookies only return over https, matching browsers), and a missing
+  settings fixture in the unmigrated-DB CLI test.
+
+Not run: `make check`/`make smoke` wrappers and hosted CI. Chrome SIGTRAPs
+in this sandbox so no browser process can launch; the smoke-covered paths
+(`GET /health`, static preview) are untouched and the Vite output rebuilds
+cleanly. CI runs the real wrappers after push; no hosted result is claimed.
+
+Next bounded task: T03 learners, device pairing, and ownership boundaries
+per HANDOFF.md. The maintainer authorized this task's push to `main`.
