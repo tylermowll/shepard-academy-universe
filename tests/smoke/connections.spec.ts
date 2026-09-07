@@ -407,6 +407,11 @@ for (const adapter of ["vllm", "ollama", "compatible"] as const) {
       await page
         .getByRole("button", { name: "Save connection", exact: true })
         .click();
+      const savedToast = page
+        .getByRole("status")
+        .filter({ hasText: `${id} saved` });
+      await expect(savedToast).toBeVisible();
+      await savedToast.getByRole("button", { name: "Dismiss" }).click();
       const card = page
         .getByRole("article")
         .filter({ has: page.getByRole("heading", { name: id, exact: true }) });
@@ -447,7 +452,7 @@ for (const adapter of ["vllm", "ollama", "compatible"] as const) {
           "Edit this connection and replace the key",
         );
         await expect(page.getByRole("alert")).not.toContainText(syntheticKey);
-        await expect(tutorStatus).toContainText("Not run");
+        await expect(tutorStatus).toContainText("Not passed yet");
         expect(fixture.calls()).toBe(1);
         fixture.rejectAuthentication(false);
       }
@@ -539,17 +544,23 @@ for (const adapter of ["vllm", "ollama", "compatible"] as const) {
       await page
         .getByRole("combobox", { name: "API key action", exact: true })
         .selectOption("remove");
+      const reviewedTerms = page.getByLabel(
+        "I reviewed the model and provider terms for the users selected above.",
+        { exact: true },
+      );
+      await reviewedTerms.check();
       await page
-        .getByLabel(
-          "I reviewed the model and provider terms for the users selected above.",
-          { exact: true },
-        )
-        .check();
+        .getByText("Advanced connection options", { exact: true })
+        .click();
+      await page
+        .getByLabel("Model context limit", { exact: true })
+        .fill("1000001");
+      await expect(reviewedTerms).toBeChecked();
       await page
         .getByRole("button", { name: "Save connection", exact: true })
         .click();
-      await expect(tutorStatus).toContainText("Not run");
-      await expect(photoReaderStatus).toContainText("Not run");
+      await expect(tutorStatus).toContainText("Not passed yet");
+      await expect(photoReaderStatus).toContainText("Not passed yet");
       expect(fixture.calls()).toBe(4 + failedCalls);
       // Editing persisted settings doesn't redisplay the saved secret.
       const edited = await page.request.get("/api/v1/admin/providers");

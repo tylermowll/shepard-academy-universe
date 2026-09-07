@@ -1,14 +1,23 @@
 # Current handoff
 
-The current task is **T31: visible connection repair and current Meta defaults**.
-The saved connection name `spark` is valid. A test error now names its connection
-and stays on Connection tests instead of following the operator across Settings.
-Edit connection is visible on saved connection and test cards, and opens the
-populated editor directly. New Meta connections prefill the official direct-API
-model `muse-spark-1.3`, 1,048,576-token context and photo input. Existing model IDs
-remain editable and receive a one-click canonical repair. Repository hooks, build,
-contract/secret checks, 162 unit, 115 component and 10 affected desktop/mobile
-browser tests passed. No live provider call or private configuration was used.
+The current task is **T32: tutor probe compatibility and clear save feedback**.
+A photo pass proves the model can satisfy the image-reading contract; the tutor
+test separately requires activity and feedback schemas. OpenAI-style native
+structured requests now require all declared properties and omit schema defaults,
+repairing the nullable tutor feedback field that could trigger the observed HTTP
+400 while the already strict photo schema passed. Settings explains partial
+readiness, uses **Not passed yet**, shows a dismissible save toast, and keeps the
+terms review across technical edits while still resetting it for provider/model/
+server/audience changes. Repository gates passed 163 unit, 120 component, 217
+integration and 10 affected desktop/mobile browser tests. No live provider call
+or private configuration was used; the maintainer must retest their exact Spark
+account/model after restarting.
+
+T31 completed **visible connection repair and current Meta defaults**. The saved
+connection name `spark` is valid. Test errors name their connection and stay on
+Connection tests. Edit connection is visible on saved connection and test cards.
+New Meta connections prefill official direct-API defaults; existing model IDs
+remain editable and receive a one-click canonical repair.
 
 T30 completed **guided AI setup and truthful context windows**. Settings
 now has separate Connections, App permissions, Connection tests, and Assign active

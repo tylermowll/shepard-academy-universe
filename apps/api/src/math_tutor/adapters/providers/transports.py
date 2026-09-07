@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import copy
 import hashlib
 import ipaddress
 import json
@@ -98,6 +99,34 @@ class BedrockResponse(WireObject):
     output: BedrockOutput | None = None
     usage: BedrockUsage = Field(default_factory=BedrockUsage)
     metrics: BedrockMetrics = Field(default_factory=BedrockMetrics)
+
+
+def strict_response_schema(schema: dict[str, Any]) -> dict[str, Any]:
+    """Produce the closed, fully-required schema expected by strict decoders.
+
+    Pydantic represents a nullable field with a Python default as optional in
+    JSON Schema. OpenAI-style strict structured-output APIs instead require
+    every declared property and express optional values with ``null``. They may
+    also reject the ``default`` annotation. Keep local validation permissive,
+    but normalize the provider wire copy recursively.
+    """
+    normalized = copy.deepcopy(schema)
+
+    def close(value: object) -> None:
+        if isinstance(value, dict):
+            value.pop("default", None)
+            properties = value.get("properties")
+            if isinstance(properties, dict):
+                value["required"] = list(properties)
+                value["additionalProperties"] = False
+            for child in value.values():
+                close(child)
+        elif isinstance(value, list):
+            for child in value:
+                close(child)
+
+    close(normalized)
+    return normalized
 
 
 def pinned_endpoints(url: httpx.URL, *, local_only: bool = False) -> list[httpx.URL]:
@@ -276,7 +305,7 @@ class HTTPProvider:
                 "json_schema": {
                     "name": "tutor_response",
                     "strict": True,
-                    "schema": request.response_schema,
+                    "schema": strict_response_schema(request.response_schema),
                 },
             }
         return "/chat/completions", body

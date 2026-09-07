@@ -197,7 +197,47 @@ describe("adult connection setup", () => {
     expect(onChanged).toHaveBeenCalledOnce();
     expect(onSectionChange).toHaveBeenCalledWith("tests", true);
     expect(screen.queryByLabelText("Model name")).toBeNull();
+    const savedToast = screen.getByRole("status");
+    expect(savedToast).toHaveClass("settings-toast");
+    fireEvent.click(screen.getByRole("button", { name: "Dismiss" }));
+    expect(screen.queryByRole("status")).toBeNull();
   });
+
+  it("keeps the terms review while technical settings change", () => {
+    show();
+    fillNew();
+    fireEvent.click(terms());
+    fireEvent.click(screen.getByText("Advanced connection options"));
+    fireEvent.change(screen.getByLabelText("Model context limit"), {
+      target: { value: "1000000" },
+    });
+    fireEvent.change(screen.getByLabelText("Structured output"), {
+      target: { value: "json_prompt" },
+    });
+    fireEvent.click(screen.getByLabelText("Connection enabled"));
+    fireEvent.click(screen.getByLabelText("This model supports photo input"));
+    expect(terms()).toBeChecked();
+  });
+
+  it.each(["Model name", "Server address", "Allowed users"])(
+    "requires a fresh terms review when %s changes",
+    (label) => {
+      show();
+      fillNew();
+      fireEvent.click(terms());
+      fireEvent.change(screen.getByLabelText(label), {
+        target: {
+          value:
+            label === "Allowed users"
+              ? "adult_only"
+              : label === "Server address"
+                ? "http://127.0.0.1:11435"
+                : "different-model",
+        },
+      });
+      expect(terms()).not.toBeChecked();
+    },
+  );
 
   it("accepts a one-million-token model context limit", async () => {
     show();
@@ -355,7 +395,7 @@ describe("adult connection setup", () => {
     fireEvent.change(screen.getByLabelText("API key action"), {
       target: { value: "remove" },
     });
-    fireEvent.click(terms());
+    expect(terms()).toBeChecked();
     fireEvent.click(screen.getByRole("button", { name: "Save connection" }));
     await screen.findByText(/home-vision saved/);
     const body: unknown = JSON.parse(
@@ -560,6 +600,21 @@ describe("adult connection setup", () => {
       expect(fetch).not.toHaveBeenCalled();
     },
   );
+
+  it("explains why a photo-only pass does not prove tutor readiness", () => {
+    show(
+      {
+        ...configuration,
+        providers: [{ ...saved, tutor_probed: false, vision_probed: true }],
+      },
+      "tests",
+    );
+    expect(
+      screen.getByText(/Photo reading passed, so this connection can accept/),
+    ).toHaveTextContent(
+      /Tutoring is a separate test: it must create an activity and return feedback in two structured text responses/,
+    );
+  });
 
   it.each([
     ["ollama", "cloud", "https://ollama.example.invalid"],

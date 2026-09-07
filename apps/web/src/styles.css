@@ -367,6 +367,23 @@ h4 {
   padding: 14px 18px;
   margin: 16px 0;
 }
+.settings-toast {
+  position: fixed;
+  z-index: 20;
+  right: clamp(16px, 4vw, 48px);
+  bottom: 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  width: min(520px, calc(100vw - 32px));
+  margin: 0;
+  border: 1px solid #9bac8f;
+  box-shadow: 0 12px 30px rgb(23 61 52 / 18%);
+}
+.settings-toast p {
+  flex: 1;
+  margin: 0;
+}
 .verdict {
   padding: 12px;
   background: #edf0e5;

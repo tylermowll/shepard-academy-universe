@@ -168,9 +168,13 @@ export function ProviderConnections({
         editing?.key_configured &&
         !editing.key_needs_replacement),
   );
-  const change = <K extends keyof Draft>(field: K, value: Draft[K]) => {
+  const change = <K extends keyof Draft>(
+    field: K,
+    value: Draft[K],
+    termsChanged = false,
+  ) => {
     setDraft((current) => (current ? { ...current, [field]: value } : null));
-    setTerms(false);
+    if (termsChanged) setTerms(false);
     setError("");
   };
   const cancel = () => {
@@ -414,7 +418,9 @@ export function ProviderConnections({
                   <input
                     type="url"
                     value={draft.base_url}
-                    onChange={(event) => change("base_url", event.target.value)}
+                    onChange={(event) =>
+                      change("base_url", event.target.value, true)
+                    }
                     required
                     maxLength={2048}
                     autoComplete="off"
@@ -437,7 +443,9 @@ export function ProviderConnections({
                   <input
                     value={draft.model}
                     name="model"
-                    onChange={(event) => change("model", event.target.value)}
+                    onChange={(event) =>
+                      change("model", event.target.value, true)
+                    }
                     required
                     maxLength={256}
                     autoComplete="off"
@@ -460,7 +468,7 @@ export function ProviderConnections({
                     {draft.model !== "muse-spark-1.3" && (
                       <button
                         type="button"
-                        onClick={() => change("model", "muse-spark-1.3")}
+                        onClick={() => change("model", "muse-spark-1.3", true)}
                       >
                         Use muse-spark-1.3
                       </button>
@@ -607,6 +615,7 @@ export function ProviderConnections({
                         change(
                           "audience",
                           event.target.value as Draft["audience"],
+                          true,
                         )
                       }
                     >
@@ -649,6 +658,11 @@ export function ProviderConnections({
                   I reviewed the model and provider terms for the users selected
                   above.
                 </label>
+                <p className="fine">
+                  This stays checked while you adjust technical options.
+                  Changing the model, server, connection type, or allowed users
+                  requires a fresh review.
+                </p>
               </fieldset>
               <details>
                 <summary>Advanced connection options</summary>
@@ -893,9 +907,16 @@ export function ProviderConnections({
         </p>
       )}
       {message && (
-        <p role="status" className="notice">
-          {message}
-        </p>
+        <aside
+          role="status"
+          className="notice settings-toast"
+          aria-live="polite"
+        >
+          <p>{message}</p>
+          <button type="button" onClick={() => setMessage("")}>
+            Dismiss
+          </button>
+        </aside>
       )}
       {section === "tests" && (
         <section aria-labelledby="settings-tests-heading">
@@ -928,10 +949,20 @@ export function ProviderConnections({
                     {!provider.enabled && " (disabled)"}
                   </h3>
                   <p>{provider.model}</p>
+                  {provider.vision_probed && !provider.tutor_probed && (
+                    <p className="fine">
+                      Photo reading passed, so this connection can accept the
+                      image request. Tutoring is a separate test: it must create
+                      an activity and return feedback in two structured text
+                      responses.
+                    </p>
+                  )}
                   <dl className="readiness-list">
                     <div>
                       <dt>Tutor test</dt>
-                      <dd>{provider.tutor_probed ? "Passed" : "Not run"}</dd>
+                      <dd>
+                        {provider.tutor_probed ? "Passed" : "Not passed yet"}
+                      </dd>
                     </div>
                     <div>
                       <dt>Photo-reader test</dt>
@@ -940,7 +971,7 @@ export function ProviderConnections({
                           ? "Not supported"
                           : provider.vision_probed
                             ? "Passed"
-                            : "Not run"}
+                            : "Not passed yet"}
                       </dd>
                     </div>
                   </dl>

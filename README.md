@@ -71,6 +71,9 @@ explicitly approved synthetic checks, and **Assign active connections** chooses
 what future learner work actually uses. A saved connection is not automatically
 tested or activated. If a connection is not ready, its assignment shows the exact
 missing step and links directly to it. Tests may incur your provider's charges.
+The photo-reader test is one image-reading response; the tutor test separately
+checks activity creation and feedback in two structured text responses. Passing
+one role does not imply that the other response format works.
 For Meta-hosted inference, the cloud location is fixed but the allowed audience
 is your explicit choice. The app shows a provider-terms disclaimer and records
 your required acknowledgment; it does not certify that an account or agreement

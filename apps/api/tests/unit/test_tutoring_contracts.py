@@ -24,6 +24,7 @@ from math_tutor.adapters.providers.transports import (
     HTTPProvider,
     MockProvider,
     check_request,
+    strict_response_schema,
     validate_payload,
 )
 from math_tutor.tutoring import bounded_messages, can_read, copied_reference
@@ -139,7 +140,10 @@ def test_new_task_schemas_use_all_http_transports(
                     "message": {"content": payload.model_dump_json()},
                 },
             )
-        assert body["response_format"]["json_schema"]["schema"] == request.response_schema
+        wire_schema = body["response_format"]["json_schema"]["schema"]
+        assert wire_schema == strict_response_schema(request.response_schema)
+        assert set(wire_schema["required"]) == set(wire_schema["properties"])
+        assert all("default" not in field for field in wire_schema["properties"].values())
         return httpx.Response(
             200,
             json={
@@ -154,6 +158,19 @@ def test_new_task_schemas_use_all_http_transports(
     assert result.validated_payload == payload
     with pytest.raises(ProviderError, match="malformed_output"):
         validate_payload(request, '{"status":"completed","verdict":"correct"}')
+
+
+def test_strict_response_schema_requires_nullable_defaults_without_mutating_contract() -> None:
+    schema = FeedbackPayload.model_json_schema()
+    assert "uncertainty_note" not in schema["required"]
+    assert schema["properties"]["uncertainty_note"]["default"] is None
+
+    wire_schema = strict_response_schema(schema)
+
+    assert "uncertainty_note" in wire_schema["required"]
+    assert "default" not in wire_schema["properties"]["uncertainty_note"]
+    assert "uncertainty_note" not in schema["required"]
+    assert schema["properties"]["uncertainty_note"]["default"] is None
 
 
 def test_mock_vision_only_recognizes_exact_original_public_fixture() -> None:

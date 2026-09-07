@@ -39,6 +39,56 @@ specification gates pass.
 | T29  | Implemented; automated gates passed                            | Shepard Academy Universe branding; fixed Meta cloud location, editable audience and disclaimer; project hooks/check, 216 integration and 4 affected browser tests passed.                                                      |
 | T30  | Implemented; automated gates passed                            | Guided AI setup, visible blockers, selectable pending connections and million-token context windows; 162 unit, 113 component, 217 integration and 18 affected browser tests passed.                                            |
 | T31  | Implemented; automated gates passed                            | Visible connection repair, tab-scoped named failures, and current Meta direct-API defaults; 162 unit, 115 component and 10 affected browser tests passed.                                                                      |
+| T32  | Implemented; automated gates passed                            | Strict tutor schemas, separate role-test guidance, save toast and stable terms review; 163 unit, 120 component, 217 integration and 10 affected browser tests passed.                                                           |
+
+### T32 — Tutor probe compatibility and clear save feedback (2026-09-07)
+
+The maintainer observed a saved Spark connection whose photo-reader test passed
+while its tutor test received an HTTP 400, and reported that connection saves
+lacked an obvious confirmation while unrelated form changes repeatedly cleared
+the provider-terms checkbox. The two roles deliberately have independent
+capability evidence, but the screen did not explain their different contracts.
+
+Bounded implementation and acceptance:
+
+- Keep separate tutor and photo-reader probes: a photo pass must not silently
+  certify tutoring. Explain that photo reading is one image response while the
+  tutor probe checks activity creation and feedback in two text responses.
+- Correct OpenAI-style native structured-output schemas so every declared field
+  is required, nullable values remain nullable, defaults are removed from the
+  wire copy, objects remain closed, and the local typed schema is not mutated.
+- Show a visible, dismissible, accessible confirmation after saving a connection.
+  Replace the inaccurate post-failure label **Not run** with **Not passed yet**.
+- Preserve the terms review across key, capability, enabled, context-window and
+  structured-output changes. Continue to require a fresh review when the provider
+  identity or covered users change: connection type, model, server or audience.
+- Add focused provider-wire, component and desktop/mobile workflow regressions;
+  make no live provider call and do not inspect private configuration.
+
+Implemented and verified:
+
+- OpenAI-compatible native requests now recursively close a copied response
+  schema, require every declared property and remove `default` annotations. This
+  repairs the tutor feedback schema's nullable `uncertainty_note`; the already
+  fully-required photo schema explains why the observed photo probe could pass
+  while the tutor's second request was rejected. Local validation is unchanged.
+- Connection tests now explain partial role readiness and say **Not passed yet**.
+  Connection saves display a fixed, dismissible `role=status` toast after moving
+  to the next setup step.
+- Technical edits no longer clear the provider-terms checkbox. Provider/model/
+  server/audience changes still clear it, preserving T29's audience-review rule.
+- `make test` passed **163 backend unit tests** and **120 frontend component
+  tests**. `make test-integration` passed **217/217**. The affected
+  `tests/smoke/connections.spec.ts` passed **10/10** desktop/mobile Chromium
+  cases, including the save toast and retained acknowledgment. The first
+  restricted test attempts could not open loopback fixture sockets/processes;
+  the identical gates passed with loopback access.
+- Production build, formatting, lint, typing, generated-contract drift and tracked
+  secret checks passed through the repository gates. The build retains the
+  existing non-fatal bundle-size warning. No live provider request, private
+  configuration access, model download, migration, physical-phone test or cloud
+  deployment was performed. The maintainer's live tutor retest remains the final
+  confirmation for their exact Spark account/model ID.
 
 ### T31 — Visible connection repair and current Meta defaults (2026-09-07)
 

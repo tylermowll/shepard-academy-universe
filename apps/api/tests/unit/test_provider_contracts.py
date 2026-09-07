@@ -26,6 +26,7 @@ from math_tutor.adapters.providers.transports import (
     BedrockProvider,
     HTTPProvider,
     pinned_endpoints,
+    strict_response_schema,
     validate_payload,
 )
 
@@ -98,7 +99,9 @@ def test_transport_maps_roles_schema_and_private_image(adapter: str) -> None:
         assert body["messages"][-1]["content"][1]["image_url"]["url"].startswith(
             "data:image/png;base64,"
         )
-        assert body["response_format"]["json_schema"]["schema"] == request(True).response_schema
+        assert body["response_format"]["json_schema"]["schema"] == strict_response_schema(
+            request(True).response_schema
+        )
         return httpx.Response(
             200,
             json={
