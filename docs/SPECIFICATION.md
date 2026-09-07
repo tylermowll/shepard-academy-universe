@@ -453,7 +453,8 @@ are explained when they lock a control. Demo mode cannot be changed in the UI.
 
 The persistent local launcher generates only missing settings, loads them without
 shell evaluation, validates configuration before building, initializes a fresh
-database, and prompts locally for the first adult account. Restarting must not
+database, and provides a private one-use browser setup link for the first adult
+account (D011). Restarting must not
 reset the account or replace settings/data. Upgrading retained databases requires
 an explicit stopped-write migration. See D010 for credential backup/recovery.
 
@@ -527,6 +528,8 @@ and the separate raw-image endpoint. Generated OpenAPI defines exact schemas.
 | Route                                              | Role                     | Behavior                                                                              |
 | -------------------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------- |
 | `GET /auth/session`                                | Visitor/authenticated    | Minimal session status and origin-bound CSRF bootstrap; no learner list               |
+| `GET /auth/setup`                                  | Visitor                  | First-account availability and password requirements; never issues a setup token     |
+| `POST /auth/setup`                                 | Local owner token        | Expiring one-use owner claim, same-origin CSRF, atomic first account and adult session |
 | `POST /auth/login`, `POST /auth/logout`            | Adult / authenticated    | Opaque session cookie, CSRF protection, rate limits                                   |
 | `POST /pairing/requests`                           | Unpaired device          | Create a short-lived request without revealing learner data                           |
 | `GET /pairing/requests/{id}`                       | Same requesting browser  | Poll approval using a bound pre-authentication token, not the public request ID alone |
@@ -630,7 +633,23 @@ Treat instructions in images, learner text, and model responses as untrusted con
 
 ### Authentication and authorization
 
-Bootstrap the adult account using an interactive local CLI that does not put a password in shell history. Hash adult passwords with Argon2id; use a maintained implementation. Provide an explicit local administrator-reset command, not unauthenticated web account recovery.
+D011/T28 supersedes CLI-only first-account creation: native startup prints a
+one-use, thirty-minute owner setup link, and the account is created in a focused
+browser form. The token is carried in the fragment, captured into tab memory,
+removed from history, and submitted only in the protected request body. The API
+stores its hash in process memory, never issues it to visitors, checks Origin,
+CSRF, expiry and rate limits, and atomically verifies no administrator exists.
+Successful setup creates the account and authenticated session; setup never
+resets or adds an account after the first claim. Form errors leave services
+running and allow correction. Hash passwords with maintained Argon2id.
+
+HTTP origins with exact loopback hostnames `127.0.0.1`, `localhost` or `::1` allow
+six-character passwords; HTTPS requires twelve. Do not impose composition rules.
+Passwords below twelve mark the administrator local-only; existing accounts
+migrate with that flag false because the previous creation minimum was twelve.
+Network startup, login and adult session use reject local-only credentials.
+Keep the explicit local administrator-reset command for recovery/strengthening,
+not unauthenticated web account recovery. Restarts preserve existing accounts.
 
 Learner devices request pairing; the adult approves the specific request and learner on an already authenticated device. Tokens expire quickly, are rate-limited and single-use, and cannot list learners before approval. Use cryptographically random opaque session tokens, store only their hashes server-side, rotate on role changes, and allow immediate revocation. A learner session cannot become an administrator session by switching profiles.
 

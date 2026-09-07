@@ -119,6 +119,18 @@ legend {
 .connection-setup .provider-list {
   margin-top: 16px;
 }
+.setup-page {
+  max-width: 680px;
+}
+.setup-page .card {
+  margin-block: 24px;
+}
+.setup-page label {
+  margin-bottom: 5px;
+}
+.setup-page .actions {
+  margin-top: 20px;
+}
 h1,
 h2,
 h3,

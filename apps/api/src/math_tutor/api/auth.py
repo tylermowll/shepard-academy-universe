@@ -68,6 +68,7 @@ class SessionStatus(BaseModel):
     login_name: str | None = None
     learner_id: UUID | None = None
     csrf_token: str
+    setup_required: bool = False
 
 
 class LogoutResponse(BaseModel):
@@ -186,7 +187,12 @@ def login_csrf_valid(request: Request, secret: str) -> bool:
     )
 
 
-@router.get("/session", response_model=SessionStatus, response_model_exclude_none=True)
+@router.get(
+    "/session",
+    response_model=SessionStatus,
+    response_model_exclude_none=True,
+    response_model_exclude_defaults=True,
+)
 def get_session(request: Request, response: Response) -> SessionStatus:
     """Report minimal session state and bootstrap a CSRF token."""
 
@@ -207,10 +213,17 @@ def get_session(request: Request, response: Response) -> SessionStatus:
         response.delete_cookie(SESSION_COOKIE, path="/")
     anon = mint_anon_csrf(secret)
     set_anon_csrf_cookie(response, anon)
-    return SessionStatus(authenticated=False, csrf_token=anon)
+    with Session(engine_for(request)) as db:
+        needs_setup = auth_service.setup_required(db)
+    return SessionStatus(authenticated=False, csrf_token=anon, setup_required=needs_setup)
 
 
-@router.post("/login", response_model=SessionStatus, response_model_exclude_none=True)
+@router.post(
+    "/login",
+    response_model=SessionStatus,
+    response_model_exclude_none=True,
+    response_model_exclude_defaults=True,
+)
 def login(credentials: LoginRequest, request: Request, response: Response) -> SessionStatus:
     """Authenticate the adult and start an opaque-cookie session."""
 
@@ -230,6 +243,11 @@ def login(credentials: LoginRequest, request: Request, response: Response) -> Se
         admin = auth_service.authenticate_admin(db, credentials.login_name, credentials.password)
         if admin is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_BAD_CREDENTIALS)
+        if not auth_service.administrator_access_allowed(admin):
+            raise HTTPException(
+                403,
+                "This account has a local-only password. On the app computer, run make admin and set at least 12 characters before using HTTPS or phone access.",
+            )
         # End the read snapshot after password verification. The short write
         # transaction rechecks the hash so a concurrent reset cannot be bypassed.
         admin_id, password_hash = admin.id, admin.password_hash
@@ -238,6 +256,11 @@ def login(credentials: LoginRequest, request: Request, response: Response) -> Se
         admin = db.get(Administrator, admin_id, populate_existing=True)
         if admin is None or admin.password_hash != password_hash:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_BAD_CREDENTIALS)
+        if not auth_service.administrator_access_allowed(admin):
+            raise HTTPException(
+                403,
+                "This account needs a password reset on the app computer before network access.",
+            )
         previous = request.cookies.get(SESSION_COOKIE)
         if previous:
             old_session = auth_service.get_valid_session(db, previous)

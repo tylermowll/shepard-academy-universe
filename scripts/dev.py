@@ -32,6 +32,11 @@ if not args.gateway and (
     )
 root = Path(__file__).resolve().parents[1]
 children = []
+setup_token = os.environ.pop("SHEPARD_SETUP_TOKEN", None)
+api_environment = os.environ.copy()
+if setup_token and os.getenv("APP_MODE", "private") != "demo":
+    api_environment["SHEPARD_SETUP_TOKEN"] = setup_token
+worker_environment = os.environ.copy()
 
 
 def stop(_signum: int, _frame: object) -> None:
@@ -40,22 +45,25 @@ def stop(_signum: int, _frame: object) -> None:
 
 signal.signal(signal.SIGTERM, stop)
 try:
-    for command in (
-        [
-            sys.executable,
-            "-m",
-            "uvicorn",
-            "math_tutor.api.app:app",
-            "--host",
-            "127.0.0.1" if args.gateway else origin.hostname,
-            "--port",
-            "8000" if args.gateway else str(origin.port or 80),
-            "--no-proxy-headers",
-            "--no-access-log",
-        ],
-        [sys.executable, "-m", "math_tutor.worker"],
+    for command, environment in (
+        (
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "math_tutor.api.app:app",
+                "--host",
+                "127.0.0.1" if args.gateway else origin.hostname,
+                "--port",
+                "8000" if args.gateway else str(origin.port or 80),
+                "--no-proxy-headers",
+                "--no-access-log",
+            ],
+            api_environment,
+        ),
+        ([sys.executable, "-m", "math_tutor.worker"], worker_environment),
     ):
-        children.append(subprocess.Popen(command, cwd=root, env=os.environ.copy()))
+        children.append(subprocess.Popen(command, cwd=root, env=environment))
     print(
         f"Shepard Tutor: {origin.geturl()} (Ctrl+C stops API and worker)",
         flush=True,

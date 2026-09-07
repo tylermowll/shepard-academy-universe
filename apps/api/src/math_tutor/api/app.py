@@ -31,7 +31,9 @@ from math_tutor.api.practice import router as practice_router
 from math_tutor.api.profiles import router as profile_router
 from math_tutor.api.providers import router as provider_router
 from math_tutor.api.review import router as review_router
+from math_tutor.api.setup import router as setup_router
 from math_tutor.api.tutoring import router as tutoring_router
+from math_tutor.setup_gate import SetupError, SetupGate
 
 
 class HealthResponse(BaseModel):
@@ -67,8 +69,10 @@ def create_app(engine: Engine | None = None) -> FastAPI:
 
     application = FastAPI(title="Math Practice Tutor API", version="0.1.0", lifespan=lifespan)
     application.add_middleware(BoundedBodies)
+    application.state.setup_gate = SetupGate.from_environment()
     application.state.engine = engine if engine is not None else create_default_engine()
     application.include_router(auth_router)
+    application.include_router(setup_router)
     application.include_router(learner_router)
     application.include_router(practice_router)
     application.include_router(tutoring_router)
@@ -112,6 +116,15 @@ def create_app(engine: Engine | None = None) -> FastAPI:
     async def invalid_request(_request: Request, _error: RequestValidationError) -> Response:
         # FastAPI's default validation details can echo password inputs.
         return JSONResponse({"detail": "Invalid request."}, status_code=422)
+
+    @application.exception_handler(SetupError)
+    async def setup_error(_request: Request, error: SetupError) -> Response:
+        headers = {"Retry-After": str(error.retry_after)} if error.retry_after is not None else None
+        return JSONResponse(
+            {"detail": error.safe_message, "code": error.code},
+            status_code=error.status_code,
+            headers=headers,
+        )
 
     @application.exception_handler(OperationalError)
     async def database_failure(_request: Request, error: OperationalError) -> Response:

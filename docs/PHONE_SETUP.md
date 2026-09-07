@@ -21,15 +21,17 @@ make bootstrap
 make start
 ```
 
-The launcher creates missing private settings and a fresh database, asks for your
-first adult login/password locally, and starts the persistent app. Existing
-settings, accounts and data are preserved; no shell-export sequence is needed.
-Open http://127.0.0.1:8000 and sign in.
+The launcher creates missing private settings and a fresh database and starts the
+persistent app. On first run, open the **Create administrator account** link
+printed in the terminal and choose your login/password in the browser. The link
+expires after 30 minutes; restart `make start` for a fresh one if needed. Keep it
+private. Existing accounts simply sign in at http://127.0.0.1:8000. Settings,
+accounts and data are preserved; no shell-export sequence is needed.
 
 For an existing installation, stop all app/worker writes and back up retained
 data before upgrading. If startup reports an old database schema, run
-`make migrate start`. T27 adds persisted AI connection settings; it does not
-replace earlier migrations or recreate retained data.
+`make migrate start`. T27 adds persisted AI connection settings; T28 adds the
+local-password policy flag. Neither recreates retained data or resets accounts.
 
 Configuration/key entry below is for you to perform in your trusted local app,
 not for a coding agent to read. Never paste private files or keys into chat.
@@ -38,6 +40,13 @@ not for a coding agent to read. Never paste private files or keys into chat.
 
 The computer must stay awake. `localhost` on an iPhone means the iPhone itself.
 Both desktop and phone must open the **same configured HTTPS address**.
+
+HTTP localhost permits passwords of six characters; HTTPS requires twelve. If
+you chose a shorter local password, after setting the HTTPS origin and stopping
+the app, run `make admin` with your **existing login name** and a password of at
+least twelve characters. This explicit reset signs out old adult sessions; it
+does not delete learners or work. `make serve` refuses to start with a local-only
+password, rather than silently making that account network-accessible.
 
 ### Convenient private access: Tailscale
 

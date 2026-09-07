@@ -35,6 +35,110 @@ specification gates pass.
 | T25  | Implemented; automated gates passed; live quality unverified   | AI-only multi-subject tutoring, reference-only homework intake, contextual guidance, adjustable initiative and automatic clear photo reading; 125 unit, 33 component, 128 integration and 28 browser tests passed.             |
 | T26  | Implemented; automated gates passed                            | Purposeful tabs, plain wording, in-context Help, parent-as-student profiles and guided phone setup; 125 unit, 51 component, 146 integration and 36 browser tests passed.                                                           |
 | T27  | Implemented; automated gates passed                            | Browser-managed AI connections/keys, current-schema tests, persistent startup and safe backup settings; 145 unit, 80 component, 188 integration and 42 browser tests passed.                                                         |
+| T28  | Implemented; automated gates passed                            | Browser-first owner setup, inline recovery, six-character loopback passwords with network safeguards; 159 unit, 103 component, 215 integration and 46 browser tests passed.                                                        |
+
+### T28 — Browser-first administrator setup (2026-09-07)
+
+The maintainer requested browser-based account creation and less restrictive
+local passwords after the terminal rejected a short password and stopped startup.
+They authorized sensible refinements, verification, and a push to `main` before
+providing updated local commands. This supersedes D010/specification section 12's
+CLI-only first-account rule, not local ownership proof or authenticated access.
+
+Contracts and bounded plan:
+
+- Start an unclaimed private app without asking for credentials in the terminal.
+  Print a short-lived, one-use owner setup link with its token in the fragment.
+  Keep the token out of request URLs, browser storage, API responses and logs.
+  First-account creation requires that token, same-origin CSRF and a transaction
+  proving no administrator exists; it can never reset an existing account.
+- A focused web setup page creates the adult account and signs it in. Explain
+  password requirements before entry, keep recoverable errors inline, and leave
+  the server running. Existing login, pairing and Help remain available.
+- Allow six-character passwords for HTTP loopback-only use; retain twelve for
+  HTTPS/phone/network deployment, with no composition rules. Store only a
+  local-only-password flag (not length/plaintext) so enabling network access
+  cannot silently expose an account created under the shorter policy. Existing
+  accounts retain their credentials. Explicit local reset remains a recovery tool.
+- Add typed setup/status APIs and a real migration for the password-policy flag;
+  regenerate OpenAPI/TypeScript. Cover expired/missing tokens, replay/races,
+  rollback, CSRF/origin, demo and network policy, and existing-account preservation.
+- Parallel backend, browser UI and native-launcher slices; run targeted checks,
+  full project/integration/browser gates sequentially where assets are shared,
+  mock evaluation, public-file hooks and diff review. Record real first-run/restart
+  evidence using isolated synthetic settings/data, then commit/push and observe CI.
+
+No live operator settings, credentials, database, uploads or private logs may be
+inspected or changed. No live inference, model download or deployment is in scope.
+
+Implemented:
+
+- `Setup.tsx`, `setup-authority.ts`, `main.tsx`, `App.tsx` and styles: focused
+  first-account form with requirements before entry, matching/length/blank/control
+  validation, automatic adult sign-in and Settings as the next page. The setup
+  token is removed from the URL before React renders, kept only in page memory,
+  and cleared after success/cancel or an existing account. Help preserves the
+  form; reload/reopened/expired links have explicit recovery. Lost success
+  receipts recover the committed session without issuing another setup claim.
+- `api/setup.py`, `setup_gate.py`, auth API/service and application factory:
+  typed setup/status routes; ephemeral hash-only thirty-minute owner authority;
+  fixed redacted errors; existing Origin/CSRF and bounded rate controls. Hashing
+  happens outside the short first-admin transaction, which rechecks the token
+  and absence of accounts before committing the administrator and session.
+  Replay/concurrent claims cannot reset an account; rollback leaves a valid link
+  retryable. Raw malformed Unicode cannot cause unhandled encoding errors.
+- `auth.py`, DB model and migration `0013_local_password_policy`: six-character
+  HTTP loopback creation, twelve-character HTTPS creation, and a local-only
+  flag for shorter passwords. Existing credentials remain untouched. Network
+  login/session use rejects flagged accounts even outside the native launcher.
+  Downgrade refuses to discard that protection until local-only passwords have
+  been replaced with twelve or more characters.
+- `local_start.py`, `scripts/dev.py` and CLI: normal startup no longer prompts
+  for account credentials. Unclaimed private startup prints a fresh owner link
+  after building; stale/inherited tokens are removed and the worker never gets
+  setup authority. Existing accounts receive no new link. HTTPS startup refuses
+  a local-only account with recovery instructions. Explicit `make admin` announces
+  bounds and allows interactive correction rather than exiting after one typo.
+- README, Help, PHONE_SETUP, RUNBOOK, specification, D011, THREAT_MODEL and HANDOFF
+  describe browser-first setup, later restarts, expired-link recovery and the
+  local/network password tradeoff. OpenAPI and TypeScript contracts regenerated.
+
+Targeted verification: backend setup/auth/migration 117 cases passed in 11.00 s;
+final auth units 28 passed in 0.44 s; startup/supervisor 46 cases passed in 0.88 s;
+Setup/App component cases 32 passed. Scoped Ruff, formatting, mypy, TypeScript,
+ESLint and diff checks passed. The first full gate caught a test-only unused
+`async`; it was corrected, not suppressed. All runtime tests use isolated synthetic
+state.
+
+Final local evidence before the authorized commit/push:
+
+- `make hooks-check check` passed: public-file pre-commit hooks; lock/toolchain
+  checks; Ruff/formatting; mypy (64 source files); TypeScript; 159 API unit tests
+  (9.02 s); 103 component tests; API/web builds; generated-contract drift; public
+  credential scan; and CloudFormation lint. Node 24.20.0, pnpm 12.3.4 and Python
+  3.14.7 were used. The existing Vite large-chunk warning remains non-fatal; its
+  threshold was not raised or hidden.
+- `make test-integration smoke eval-mock` passed sequentially: 215 integration
+  cases (25.82 s), all 46 desktop/mobile browser cases (3.6 min), and 33 rational
+  plus 30 mock-vision fixtures with a passing report. Chrome was the installed
+  `/usr/bin/google-chrome`; no browser or model download was performed.
+- The four new native-browser cases execute the real `make start ENV_FILE=...`
+  against temporary synthetic settings and SQLite with no terminal input. They
+  cover visitor denial without the owner link, fragment removal, inline short
+  password/mismatch correction while the service stays healthy, successful
+  six-character creation, lost-success-response recovery, stale-link rejection,
+  no token in request URLs/storage, and restart/session/login persistence on
+  desktop and mobile. The two setup screenshots were inspected for layout only;
+  they are not correctness evidence or physical-phone verification.
+- Independent slice review led to malformed-Unicode protection, downgrade refusal
+  while local-only accounts exist, reopened-link status refresh, and committed
+  setup-session recovery. The affected regression cases pass. Staged whitespace
+  and public credential checks passed; generated files were regenerated, not
+  hand-edited.
+- Operator settings, database and credentials were not inspected or changed.
+  No live-provider inference, physical-phone check, model download, cloud
+  provisioning or public deployment was run. Hosted CI is checked after pushing;
+  it is not counted as local evidence here.
 
 ### T27 — Complete local setup and browser-managed AI connections (2026-09-07)
 

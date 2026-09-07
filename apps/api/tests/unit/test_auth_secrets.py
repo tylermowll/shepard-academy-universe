@@ -7,6 +7,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
+from sqlalchemy.orm import Session
 
 from math_tutor import auth as auth_service
 from math_tutor import settings
@@ -63,6 +64,52 @@ def test_password_hashes_use_fresh_salts() -> None:
     assert first != second
     assert auth_service.verify_password(first, "same-password-0123456789") is True
     assert auth_service.verify_password(second, "same-password-0123456789") is True
+
+
+@pytest.mark.parametrize(
+    ("origin", "minimum"),
+    [
+        ("http://localhost:8000", 6),
+        ("http://127.0.0.1:8000", 6),
+        ("http://[::1]:8000", 6),
+        ("https://localhost", 12),
+        ("https://127.0.0.1:8000", 12),
+        ("https://tutor.example", 12),
+        ("http://192.168.0.2:8000", 12),
+    ],
+)
+def test_password_policy_uses_only_configured_exact_loopback_origin(
+    monkeypatch: pytest.MonkeyPatch, origin: str, minimum: int
+) -> None:
+    monkeypatch.setenv(settings.APP_PUBLIC_ORIGIN_ENV_VAR, origin)
+    assert auth_service.minimum_admin_password_length() == minimum
+    assert auth_service.local_passwords_allowed() is (minimum == 6)
+    assert auth_service.validate_admin_credentials("Owner", "a" * minimum) == "Owner"
+    with pytest.raises(ValueError, match="at least"):
+        auth_service.validate_admin_credentials("Owner", "a" * (minimum - 1))
+
+
+def test_password_verifier_rejects_malformed_unicode() -> None:
+    hashed = auth_service.hash_password("synthetic-valid-password")
+    assert not auth_service.verify_password(hashed, "\ud800")
+
+
+def test_malformed_login_performs_dummy_check_without_querying_database(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checked: list[str] = []
+
+    def verify(_hashed: str, password: str) -> bool:
+        checked.append(password)
+        return False
+
+    monkeypatch.setattr(auth_service, "verify_password", verify)
+    with Session() as unbound:
+        assert auth_service.authenticate_admin(unbound, "name\ud800", "password") is None
+        assert not unbound.in_transaction()
+        assert auth_service.authenticate_admin(unbound, "name", "password\ud800") is None
+        assert not unbound.in_transaction()
+    assert checked == ["invalid-credentials", "invalid-credentials"]
 
 
 def test_anon_csrf_round_trip_and_rejection() -> None:

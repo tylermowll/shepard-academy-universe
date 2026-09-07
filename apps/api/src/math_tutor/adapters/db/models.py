@@ -159,6 +159,9 @@ class Administrator(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUIDType, primary_key=True, default=uuid.uuid4)
     login_name: Mapped[str] = mapped_column(String(64), nullable=False)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    local_only_password: Mapped[bool] = mapped_column(
+        nullable=False, default=False, server_default="0"
+    )
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(
         UTCDateTime, nullable=False, default=utcnow, onupdate=utcnow

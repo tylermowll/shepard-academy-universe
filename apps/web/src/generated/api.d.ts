@@ -305,6 +305,24 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/auth/setup": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Setup Status */
+    get: operations["setup_status_api_v1_auth_setup_get"];
+    put?: never;
+    /** Create First Administrator */
+    post: operations["create_first_administrator_api_v1_auth_setup_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/catalog": {
     parameters: {
       query?: never;
@@ -1671,6 +1689,11 @@ export interface components {
       login_name?: string | null;
       /** Role */
       role?: ("adult" | "learner") | null;
+      /**
+       * Setup Required
+       * @default false
+       */
+      setup_required: boolean;
     };
     /** SessionSummary */
     SessionSummary: {
@@ -1691,6 +1714,39 @@ export interface components {
       learner_id: string;
       /** Status */
       status: string;
+    };
+    /** SetupRequest */
+    SetupRequest: {
+      /** Login Name */
+      login_name: string;
+      /**
+       * Password
+       * Format: password
+       */
+      password: string;
+      /**
+       * Password Confirmation
+       * Format: password
+       */
+      password_confirmation: string;
+      /**
+       * Setup Token
+       * Format: password
+       */
+      setup_token: string;
+    };
+    /** SetupStatus */
+    SetupStatus: {
+      /** Available */
+      available: boolean;
+      /** Local Passwords Allowed */
+      local_passwords_allowed: boolean;
+      /** Maximum Password Length */
+      maximum_password_length: number;
+      /** Minimum Password Length */
+      minimum_password_length: number;
+      /** Required */
+      required: boolean;
     };
     /** SubmissionInput */
     SubmissionInput: {
@@ -2407,6 +2463,59 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["SessionStatus"];
+        };
+      };
+    };
+  };
+  setup_status_api_v1_auth_setup_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SetupStatus"];
+        };
+      };
+    };
+  };
+  create_first_administrator_api_v1_auth_setup_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["SetupRequest"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["SessionStatus"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
         };
       };
     };

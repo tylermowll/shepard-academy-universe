@@ -33,7 +33,7 @@ from math_tutor.api.app import create_app
 from math_tutor.api.auth import ANON_CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
-HEAD_REVISION = "0012_provider_connections"
+HEAD_REVISION = "0013_local_password_policy"
 
 TEST_SECRET = "t02-synthetic-session-secret-0123456789abcdef"
 TEST_ORIGIN = "http://127.0.0.1:8000"
@@ -109,7 +109,12 @@ async def bootstrap_csrf(client: AsyncClient) -> str:
     response = await client.get("/api/v1/auth/session")
     assert response.status_code == 200
     body = response.json()
-    assert body == {"authenticated": False, "csrf_token": body["csrf_token"]}
+    setup = (await client.get("/api/v1/auth/setup")).json()
+    assert body == {
+        "authenticated": False,
+        "csrf_token": body["csrf_token"],
+        **({"setup_required": True} if setup["required"] else {}),
+    }
     assert response.cookies.get(ANON_CSRF_COOKIE) == body["csrf_token"]
     return str(body["csrf_token"])
 
@@ -185,7 +190,14 @@ def test_auth_tables_migrate_from_empty_file(engine: Engine) -> None:
         session_uniques = inspect(connection).get_unique_constraints("device_session")
         version = connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar()
     assert version == HEAD_REVISION
-    assert admin_columns >= {"id", "login_name", "password_hash", "created_at", "updated_at"}
+    assert admin_columns >= {
+        "id",
+        "login_name",
+        "password_hash",
+        "local_only_password",
+        "created_at",
+        "updated_at",
+    }
     assert session_columns >= {
         "id",
         "token_hash",

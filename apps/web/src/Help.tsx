@@ -271,11 +271,20 @@ export function HelpPage({
                 <code>{"make bootstrap\nmake start"}</code>
               </pre>
               <p>
-                The first start creates missing private settings and asks for
-                your adult sign-in name and password in the terminal. Open{" "}
-                <code>http://127.0.0.1:8000</code>, sign in, and add a learner.
-                Future starts load your saved settings and keep your account and
-                practice history.
+                The first start prints a{" "}
+                <strong>Create administrator account</strong> link. Open that
+                link and choose your login and password here in the browser.
+                Localhost needs at least six characters; phone or HTTPS access
+                needs twelve. No uppercase or symbol rules apply. Invalid input
+                stays on the form so you can correct it.
+              </p>
+              <p>
+                The private setup link expires after thirty minutes. If it
+                expires, stop with Ctrl+C and run <code>make start</code> for a
+                new one. If you reload the form, reopen the unexpired link from
+                the terminal. Existing accounts simply sign in at{" "}
+                <code>http://127.0.0.1:8000</code>. Restarts keep your settings,
+                account, and practice history.
               </p>
               <p>
                 If you already have a private setup, keep your existing
@@ -434,9 +443,20 @@ export function HelpPage({
               <ContextHelp topic="I forgot the adult password">
                 <p>
                   The person running the app can run <code>make admin</code> in
-                  the terminal with the private environment exported to reset
-                  the account password. This signs that adult out on their other
-                  browsers.
+                  the terminal and enter the existing login name to reset its
+                  password. Saved settings load automatically. This signs that
+                  adult out on other browsers without deleting learners or work.
+                  This recovery step is separate from first-time browser setup.
+                </p>
+              </ContextHelp>
+              <ContextHelp topic="My local password stops phone access">
+                <p>
+                  Passwords shorter than twelve characters are for HTTP
+                  localhost only. After setting your HTTPS address and stopping
+                  the app, run <code>make admin</code> with your existing login
+                  name and a password of at least twelve characters, then
+                  restart. Do not delete your database or change the session
+                  secret.
                 </p>
               </ContextHelp>
             </>

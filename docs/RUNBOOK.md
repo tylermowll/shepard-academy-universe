@@ -4,8 +4,10 @@
 
 Follow the README setup. `make start` loads private `.env`
 settings through uv without executing shell content, creates only missing setup,
-and runs one API and one worker. First start asks locally for an adult account
-only if none exists; subsequent starts never reset credentials. An old retained
+and runs one API and one worker. With no adult account, first start prints a
+thirty-minute, one-use setup link; the account is created in the browser, not a
+terminal prompt. Invalid form input does not stop the app. Subsequent starts
+never reset credentials or reopen first-account creation. An old retained
 database stops startup before building: stop all API/worker writes, back up data,
 then explicitly run `make migrate start`. Ctrl+C stops both services and preserves
 the persistent data. `make demo` is different: its temporary data is deleted when
@@ -16,6 +18,27 @@ gateway; `make dev` is loopback-only, and `make serve` requires the gateway.
 application for end-to-end practice. `/health/live` reports process liveness;
 `/health/ready` returns unavailable if the database or recent worker heartbeat is
 missing. It never makes paid health-check calls.
+
+The setup link is owner authority: keep it private and do not redirect native
+startup output into shared logs. Its fragment is stripped from browser history
+and retained only in tab memory. Reloading before submission requires reopening
+the original unexpired link; Ctrl+C/start issues a new one. No public API issues
+these tokens. Container/service-manager installations retain explicit local
+`python -m math_tutor.cli admin` bootstrap unless their operator supplies the
+ephemeral setup authority; never add that token to a persistent environment file.
+
+Passwords of 6–11 characters are accepted only with an HTTP loopback origin;
+the administrator is then flagged local-only. HTTPS needs at least twelve
+characters, with no composition rules. Before enabling the gateway, use the
+existing login name with `make admin` to replace a short password. Startup and
+backend session/login checks reject local-only credentials in network mode,
+even if a service bypasses the native launcher. Recovery never requires deleting
+the database or changing the session secret.
+
+Migration `0013_local_password_policy` preserves existing accounts and marks newly
+accepted short passwords. Downgrade refuses while any local-only password remains;
+replace those passwords with at least twelve characters first. Otherwise dropping
+the flag could allow older code to expose a short password over the network.
 
 For unattended use, supervise the two commands independently with the host service
 manager, with the same private settings and local data directory. Use a dedicated

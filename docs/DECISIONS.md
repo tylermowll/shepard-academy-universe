@@ -1,5 +1,34 @@
 # Implementation decisions
 
+## D011 — Browser-first owner setup and loopback password policy (2026-09-07)
+
+The maintainer supersedes D010's CLI-only first-account decision. `make start`
+starts a private unclaimed app and prints a one-use, thirty-minute owner link.
+The token stays in the URL fragment until captured in browser memory, is removed
+from browser history, and is submitted only in the CSRF-protected setup body.
+No public endpoint issues setup authority. Each fresh launcher run replaces it;
+successful account creation permanently closes setup for that database. Concurrent
+claims are serialized and cannot reset or create an additional administrator.
+
+Password creation accepts six characters on HTTP loopback and twelve on HTTPS;
+neither requires mixed character classes. This is a deliberate local convenience
+tradeoff, not a claim that a six-character password is strong. Saved API usage
+and administrative actions still require authentication and remain rate-limited.
+A boolean on the administrator records when the password is local-only. Network
+startup/login/session access must not accept such an account unchanged. The
+existing explicit local reset can replace it with a network-eligible password;
+there is no anonymous web reset or silent relaxation for phone access.
+
+The setup page validates in context without terminating services. Existing
+accounts and settings are never overwritten on restart. Deployment secrets,
+provider-key encryption, learner access and non-loopback HTTPS rules are unchanged.
+
+Design references: [MDN fragment behavior](https://developer.mozilla.org/en-US/docs/Web/URI/Reference/Fragment)
+explains why the token is not part of the initial HTTP request. Expiry, one-use
+claims and random owner tokens apply the bearer-token principles in
+[OWASP's token guidance](https://cheatsheetseries.owasp.org/cheatsheets/Forgot_Password_Cheat_Sheet.html)
+by analogy to initial ownership, not as a password-recovery endpoint.
+
 ## D010 — Browser-managed AI connections and persistent local startup (2026-09-07)
 
 The maintainer explicitly requires entering an API key or connecting Ollama/vLLM

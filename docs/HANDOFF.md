@@ -1,6 +1,24 @@
 # Current handoff
 
-The current task is **T27: complete local setup and browser-managed AI connections**,
+The current task is **T28: browser-first administrator setup**,
+building on T27's in-app provider configuration and persistent startup. The
+maintainer rejected terminal account creation and the uniform twelve-character
+password requirement, then authorized wise refinements and another push to main.
+See [D011](DECISIONS.md#d011--browser-first-owner-setup-and-loopback-password-policy-2026-09-07)
+and the T28 entry in [TASKS](TASKS.md) for the current contracts and evidence.
+
+T28 local gates passed: 159 unit, 103 component, 215 integration and 46 browser
+tests, all hooks/check gates, and 63 mock-evaluation fixtures. Native browser tests
+exercise first-account creation, inline correction, lost-response recovery and
+restart with isolated synthetic state. Routine `make start` no longer prompts for
+credentials: an unclaimed private app prints a thirty-minute owner link for web
+setup; existing accounts just sign in. Six-character passwords are permitted only
+on HTTP loopback. Before HTTPS/phone access, any local-only account must be reset
+through `make admin` to twelve or more characters. With the app stopped, existing
+installations upgrade with `make migrate start`; no operator data was touched by
+the agent. Live-provider and physical-phone verification remain unrun.
+
+T27 completed local setup and browser-managed AI connections,
 building on the T26 navigation and T25 multi-subject AI tutoring loop. The
 maintainer found that Settings could not accept API keys or configure Ollama/vLLM
 and authorized closing that gap and related setup blockers, then pushing `main`

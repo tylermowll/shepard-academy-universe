@@ -34,7 +34,7 @@ from math_tutor.adapters.db.engine import (
 from math_tutor.adapters.db.models import Learner, PracticeSession, ProblemInstance
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
-HEAD_REVISION = "0012_provider_connections"
+HEAD_REVISION = "0013_local_password_policy"
 
 
 @pytest.fixture

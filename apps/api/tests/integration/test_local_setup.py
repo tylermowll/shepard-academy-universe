@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import Any
 from unittest.mock import Mock
+from urllib.parse import urlsplit
 
 import pytest
 from alembic import command
@@ -29,21 +30,20 @@ def synthetic_database(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> str:
     monkeypatch.setenv("DATABASE_URL", url)
     monkeypatch.setenv("SESSION_SECRET", "synthetic-startup-secret-" * 3)
     monkeypatch.setenv("APP_PUBLIC_ORIGIN", "http://127.0.0.1:8000")
+    monkeypatch.setenv("APP_MODE", "private")
+    monkeypatch.delenv(local_start.SETUP_TOKEN_ENV, raising=False)
     return url
 
 
-def test_first_start_initializes_database_and_creates_only_one_admin(
+def test_startup_keeps_existing_admin_credentials_and_sessions(
     synthetic_database: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     local_start.prepare_database(ROOT)
-    monkeypatch.setattr("builtins.input", lambda _: "synthetic-adult")
-    monkeypatch.setattr(getpass, "getpass", lambda _: PASSWORD)
-    assert cli.run_admin(only_if_missing=True) == 0
     engine = create_engine_for_url(synthetic_database)
     try:
         with Session(engine) as db:
-            admin = db.scalar(select(Administrator))
-            assert admin is not None
+            admin = auth.create_or_reset_admin(db, "synthetic-adult", PASSWORD)
+            db.commit()
             identifier, hashed = admin.id, admin.password_hash
             _, token = auth.create_device_session(db, admin)
             db.commit()
@@ -53,7 +53,7 @@ def test_first_start_initializes_database_and_creates_only_one_admin(
         monkeypatch.setattr("builtins.input", prompt)
         monkeypatch.setattr(command, "upgrade", migrate)
         local_start.prepare_database(ROOT)
-        assert cli.run_admin(only_if_missing=True) == 0
+        assert local_start.owner_setup_token(urlsplit(settings.app_public_origin())) is None
         prompt.assert_not_called()
         migrate.assert_not_called()
         with Session(engine) as db:
@@ -109,43 +109,126 @@ def test_old_schema_requires_explicit_stopped_write_migration(synthetic_database
         engine.dispose()
 
 
-def test_admin_created_during_prompt_is_never_reset(
+def test_unclaimed_start_prepares_fresh_owner_tokens_without_creating_admin(
     synthetic_database: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     local_start.prepare_database(ROOT)
     engine = create_engine_for_url(synthetic_database)
-
-    def create_while_prompting(_: str) -> str:
-        with Session(engine) as db:
-            auth.create_or_reset_admin(db, "synthetic-adult", PASSWORD)
-            db.commit()
-        return "synthetic-adult"
-
-    monkeypatch.setattr("builtins.input", create_while_prompting)
-    monkeypatch.setattr(getpass, "getpass", lambda _: "synthetic-different-password-only")
+    prompt = Mock(
+        side_effect=AssertionError("Setup must not prompt for a password in the terminal")
+    )
+    monkeypatch.setattr("builtins.input", prompt)
     try:
-        assert cli.run_admin(only_if_missing=True) == 0
+        first = local_start.owner_setup_token(urlsplit(settings.app_public_origin()))
+        second = local_start.owner_setup_token(urlsplit(settings.app_public_origin()))
+        assert first is not None and second is not None
+        assert len(first) >= 43 and first != second
+        assert local_start.SETUP_TOKEN_ENV not in os.environ
         with Session(engine) as db:
-            assert auth.authenticate_admin(db, "synthetic-adult", PASSWORD) is not None
-            assert (
-                auth.authenticate_admin(db, "synthetic-adult", "synthetic-different-password-only")
-                is None
-            )
+            assert db.scalar(select(Administrator)) is None
+        prompt.assert_not_called()
     finally:
         engine.dispose()
 
 
-def test_cancelled_first_admin_can_be_retried_without_reinitializing_database(
+def test_cancelled_explicit_admin_can_be_retried_without_reinitializing_database(
     synthetic_database: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     local_start.prepare_database(ROOT)
     monkeypatch.setattr("builtins.input", Mock(side_effect=EOFError))
-    assert cli.run_admin(only_if_missing=True) == 1
+    assert cli.run_admin() == 1
     local_start.prepare_database(ROOT)
     monkeypatch.setattr("builtins.input", lambda _: "synthetic-adult")
     monkeypatch.setattr(getpass, "getpass", lambda _: PASSWORD)
-    assert cli.run_admin(only_if_missing=True) == 0
+    assert cli.run_admin() == 0
     assert settings.database_path().exists()
+
+
+def test_demo_never_issues_an_owner_setup_token(
+    synthetic_database: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    local_start.prepare_database(ROOT)
+    monkeypatch.setenv("APP_MODE", "demo")
+    assert local_start.owner_setup_token(urlsplit(settings.app_public_origin())) is None
+
+
+def test_https_rejects_local_only_password_until_explicit_network_eligible_reset(
+    synthetic_database: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    local_start.prepare_database(ROOT)
+    engine = create_engine_for_url(synthetic_database)
+    try:
+        with Session(engine) as db:
+            admin = auth.create_or_reset_admin(db, "synthetic-adult", "local6")
+            db.commit()
+            identifier, hashed = admin.id, admin.password_hash
+            assert admin.local_only_password
+        monkeypatch.setenv("APP_PUBLIC_ORIGIN", "https://tutor.example")
+        with pytest.raises(ValueError, match="make admin"):
+            local_start.owner_setup_token(urlsplit(settings.app_public_origin()))
+        with Session(engine) as db:
+            stored = db.get(Administrator, identifier)
+            assert stored is not None and stored.password_hash == hashed
+            assert stored.local_only_password
+        monkeypatch.setattr("builtins.input", lambda _: "synthetic-adult")
+        monkeypatch.setattr(getpass, "getpass", lambda _: PASSWORD)
+        assert cli.run_admin() == 0
+        assert "12–256" in capsys.readouterr().out
+        assert local_start.owner_setup_token(urlsplit(settings.app_public_origin())) is None
+        with Session(engine) as db:
+            stored = db.get(Administrator, identifier)
+            assert stored is not None and not stored.local_only_password
+            assert auth.authenticate_admin(db, "synthetic-adult", PASSWORD) is not None
+    finally:
+        engine.dispose()
+
+
+def test_interactive_admin_announces_policy_and_retries_short_or_mismatched_passwords(
+    synthetic_database: str, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    local_start.prepare_database(ROOT)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    prompts: list[str] = []
+    announcements: list[str] = []
+
+    def name(prompt: str) -> str:
+        if not prompts:
+            announcements.append(capsys.readouterr().out)
+        prompts.append(prompt)
+        return "synthetic-adult"
+
+    passwords = iter(["short", "short", "local6", "other6", "local6", "local6"])
+    monkeypatch.setattr("builtins.input", name)
+    monkeypatch.setattr(getpass, "getpass", lambda _: next(passwords))
+    assert cli.run_admin() == 0
+    assert len(prompts) == 3
+    assert "6–256" in announcements[0]
+    captured = capsys.readouterr()
+    assert "at least 6" in captured.err and "do not match" in captured.err
+    assert "local6" not in captured.out + captured.err + announcements[0]
+    engine = create_engine_for_url(synthetic_database)
+    try:
+        with Session(engine) as db:
+            admin = auth.authenticate_admin(db, "synthetic-adult", "local6")
+            assert admin is not None and admin.local_only_password
+    finally:
+        engine.dispose()
+
+
+def test_interactive_admin_retries_validation_until_cancelled(
+    synthetic_database: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    local_start.prepare_database(ROOT)
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr("builtins.input", Mock(side_effect=["synthetic-adult", EOFError]))
+    monkeypatch.setattr(getpass, "getpass", lambda _: "short")
+    assert cli.run_admin() == 1
+    engine = create_engine_for_url(synthetic_database)
+    try:
+        with Session(engine) as db:
+            assert db.scalar(select(Administrator)) is None
+    finally:
+        engine.dispose()
 
 
 def test_uv_loads_synthetic_settings_without_shell_evaluation_or_value_output(

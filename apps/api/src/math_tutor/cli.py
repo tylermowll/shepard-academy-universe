@@ -15,14 +15,12 @@ import sys
 import warnings
 from pathlib import Path
 
-from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from math_tutor import auth as auth_service
 from math_tutor import settings
 from math_tutor.adapters.db.engine import create_engine_for_url, verify_connection_settings
-from math_tutor.adapters.db.models import Administrator
 
 
 def run_db() -> int:
@@ -93,7 +91,7 @@ def run_setup(destination: Path) -> int:
     return 0
 
 
-def run_admin(*, only_if_missing: bool = False) -> int:
+def run_admin() -> int:
     """Interactively create (or reset) the adult administrator.
 
     The password is read with :func:`getpass.getpass` so it never appears in
@@ -104,6 +102,7 @@ def run_admin(*, only_if_missing: bool = False) -> int:
 
     try:
         settings.session_secret()
+        minimum = auth_service.minimum_admin_password_length()
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
@@ -115,71 +114,55 @@ def run_admin(*, only_if_missing: bool = False) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 
-    if only_if_missing:
-        engine = create_engine_for_url(url)
-        try:
-            with Session(engine) as db:
-                if db.scalar(select(Administrator.id).limit(1)) is not None:
-                    print("Administrator already set up; keeping the existing login.")
-                    return 0
-        except SQLAlchemyError, OSError:
-            print(
-                "error: cannot check administrator setup; run `make migrate` first.",
-                file=sys.stderr,
-            )
-            return 1
-        finally:
-            engine.dispose()
+    interactive = sys.stdin.isatty()
+    print(
+        f"Password: {minimum}–{auth_service.MAX_ADMIN_PASSWORD_LENGTH} characters. No mixed-character rules."
+    )
+    if auth_service.local_passwords_allowed():
         print(
-            "Create your adult administrator login. This account can also have a learner profile."
+            "Passwords under 12 characters work only on this computer, not over HTTPS or a phone."
         )
-
-    try:
-        login_name = input("Administrator login name: ")
-    except EOFError, KeyboardInterrupt:
-        print("\nerror: administrator bootstrap cancelled.", file=sys.stderr)
-        return 1
-    try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("error", getpass.GetPassWarning)
-            password = getpass.getpass("New password: ")
-            confirm = getpass.getpass("Confirm password: ")
-    except getpass.GetPassWarning:
-        print("error: a terminal with hidden password input is required.", file=sys.stderr)
-        return 1
-    except EOFError, KeyboardInterrupt:
-        print("\nerror: administrator bootstrap cancelled.", file=sys.stderr)
-        return 1
-    if password != confirm:
-        print("error: passwords do not match.", file=sys.stderr)
-        return 1
-
     engine = create_engine_for_url(url)
     try:
-        with Session(engine) as db:
+        while True:
             try:
-                if only_if_missing:
-                    db.connection(execution_options={"sqlite_begin_immediate": True})
-                    if db.scalar(select(Administrator.id).limit(1)) is not None:
-                        print("Administrator was already created; keeping the existing login.")
-                        return 0
-                admin = auth_service.create_or_reset_admin(db, login_name, password)
-                db.commit()
-                login_label = admin.login_name
-            except ValueError as exc:
-                db.rollback()
-                print(f"error: {exc}", file=sys.stderr)
+                login_name = input("Administrator login name: ")
+                with warnings.catch_warnings():
+                    warnings.simplefilter("error", getpass.GetPassWarning)
+                    password = getpass.getpass("New password: ")
+                    confirm = getpass.getpass("Confirm password: ")
+            except getpass.GetPassWarning:
+                print("error: a terminal with hidden password input is required.", file=sys.stderr)
                 return 1
-            except SQLAlchemyError, OSError:
-                db.rollback()
-                print("error: cannot write administrator record.", file=sys.stderr)
-                print("Run `make migrate` with application writes stopped first.", file=sys.stderr)
+            except EOFError, KeyboardInterrupt:
+                print("\nerror: administrator setup cancelled.", file=sys.stderr)
                 return 1
+            if password != confirm:
+                print("error: passwords do not match. Try again.", file=sys.stderr)
+                if interactive:
+                    continue
+                return 1
+            with Session(engine) as db:
+                try:
+                    admin = auth_service.create_or_reset_admin(db, login_name, password)
+                    db.commit()
+                    print(f"Administrator '{admin.login_name}' is ready.")
+                    return 0
+                except ValueError as exc:
+                    db.rollback()
+                    print(f"error: {exc}", file=sys.stderr)
+                    if interactive:
+                        continue
+                    return 1
+                except SQLAlchemyError, OSError:
+                    db.rollback()
+                    print("error: cannot write administrator record.", file=sys.stderr)
+                    print(
+                        "Run `make migrate` with application writes stopped first.", file=sys.stderr
+                    )
+                    return 1
     finally:
         engine.dispose()
-
-    print(f"Administrator '{login_label}' is ready.")
-    return 0
 
 
 def main(argv: list[str] | None = None) -> int:

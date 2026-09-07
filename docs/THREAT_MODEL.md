@@ -8,6 +8,8 @@ multi-tenant service or a claim of regulatory certification.
 | Boundary             | Enforcement and evidence                                                                                                                                                                               |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Browser identity     | Argon2id adult login, hashed opaque cookies, expiry/revocation, CSRF and exact configured Origin/Host; no tokens in localStorage                                                                       |
+| First-account owner  | Launcher-only expiring fragment token, hash-only gate, CSRF/origin/rate checks and atomic first claim; no public issuance or web reset                                                                  |
+| Local password policy | Six-character minimum on HTTP loopback only; short passwords flagged and rejected for network startup, login and adult sessions; HTTPS creation retains twelve-character minimum                       |
 | Pairing              | Five-minute browser-bound token, explicit adult approval, single claim, rate limits; guessed request ID reveals no learner                                                                             |
 | Learner ownership    | Backend principal and joins on every practice/photo/operation route; two-learner isolation tests                                                                                                       |
 | Private answers      | Separate public DTOs omit hidden answers, seeds and private parameters; AI generation returns an activity, not a solution key                                                                          |
@@ -23,6 +25,11 @@ multi-tenant service or a claim of regulatory certification.
 | Repository           | Private-path/key/token checks, locked dependency audits, no credentials or live learner fixtures                                                                                                       |
 
 Host files use private permissions and should reside on an encrypted local volume.
+The shorter local password is an explicit convenience tradeoff, not strong
+password guidance. Keep native setup links private: terminal output is owner
+authority until the link expires or an account is created. First-run links
+never authorize recovery of an existing account. The current launcher's token
+is revoked when that unclaimed launcher stops; a new run creates new authority.
 SQLite does not encrypt itself. Backups use authenticated encryption with a
 separate passphrase; losing the passphrase loses recovery. Preserve the current
 deletion ledger separately from old archives. Operator settings/secrets require

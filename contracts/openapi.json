@@ -1705,6 +1705,11 @@
               }
             ],
             "title": "Role"
+          },
+          "setup_required": {
+            "default": false,
+            "title": "Setup Required",
+            "type": "boolean"
           }
         },
         "required": [
@@ -1743,6 +1748,82 @@
           "created_at"
         ],
         "title": "SessionSummary",
+        "type": "object"
+      },
+      "SetupRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "login_name": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Login Name",
+            "type": "string"
+          },
+          "password": {
+            "format": "password",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string",
+            "writeOnly": true
+          },
+          "password_confirmation": {
+            "format": "password",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Password Confirmation",
+            "type": "string",
+            "writeOnly": true
+          },
+          "setup_token": {
+            "format": "password",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Setup Token",
+            "type": "string",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "setup_token",
+          "login_name",
+          "password",
+          "password_confirmation"
+        ],
+        "title": "SetupRequest",
+        "type": "object"
+      },
+      "SetupStatus": {
+        "properties": {
+          "available": {
+            "title": "Available",
+            "type": "boolean"
+          },
+          "local_passwords_allowed": {
+            "title": "Local Passwords Allowed",
+            "type": "boolean"
+          },
+          "maximum_password_length": {
+            "title": "Maximum Password Length",
+            "type": "integer"
+          },
+          "minimum_password_length": {
+            "title": "Minimum Password Length",
+            "type": "integer"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "required",
+          "available",
+          "minimum_password_length",
+          "maximum_password_length",
+          "local_passwords_allowed"
+        ],
+        "title": "SetupStatus",
         "type": "object"
       },
       "SubmissionInput": {
@@ -2781,6 +2862,66 @@
           }
         },
         "summary": "Get Session",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/setup": {
+      "get": {
+        "operationId": "setup_status_api_v1_auth_setup_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Setup Status",
+        "tags": [
+          "auth"
+        ]
+      },
+      "post": {
+        "operationId": "create_first_administrator_api_v1_auth_setup_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create First Administrator",
         "tags": [
           "auth"
         ]

@@ -1,5 +1,6 @@
 """Native gateway launch contract, without starting services or reading private config."""
 
+import os
 import runpy
 import signal
 import subprocess
@@ -70,3 +71,28 @@ def test_launcher_binds_loopback_supervises_worker_and_cleans_up(
     for process in (api, worker):
         process.terminate.assert_called_once_with()
         process.wait.assert_called_once_with(timeout=10)
+
+
+@pytest.mark.parametrize("mode", ["private", "demo"])
+def test_supervisor_passes_owner_token_only_to_private_api(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], mode: str
+) -> None:
+    token = "synthetic-owner-setup-token-only"
+    monkeypatch.setenv("SESSION_SECRET", "synthetic-launcher-session-secret-" * 2)
+    monkeypatch.setenv("APP_PUBLIC_ORIGIN", "http://127.0.0.1:8000")
+    monkeypatch.setenv("APP_MODE", mode)
+    monkeypatch.setenv("SHEPARD_SETUP_TOKEN", token)
+    monkeypatch.setattr(sys, "argv", [str(LAUNCHER)])
+    monkeypatch.setattr(signal, "signal", Mock())
+    api, worker = Mock(), Mock()
+    api.poll.return_value = 0
+    start = Mock(side_effect=[api, worker])
+    monkeypatch.setattr(subprocess, "Popen", start)
+    with pytest.raises(SystemExit, match="A service exited"):
+        runpy.run_path(str(LAUNCHER), run_name="__main__")
+    assert start.call_args_list[0].kwargs["env"].get("SHEPARD_SETUP_TOKEN") == (
+        token if mode == "private" else None
+    )
+    assert "SHEPARD_SETUP_TOKEN" not in start.call_args_list[1].kwargs["env"]
+    assert "SHEPARD_SETUP_TOKEN" not in os.environ
+    assert token not in capsys.readouterr().out

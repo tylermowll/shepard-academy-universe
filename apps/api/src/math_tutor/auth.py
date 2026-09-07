@@ -14,16 +14,20 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import os
 import secrets
 import time
+import unicodedata
 from datetime import UTC, datetime, timedelta
 from threading import Lock
+from urllib.parse import urlsplit
 
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHash, VerificationError
 from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
+from math_tutor import settings
 from math_tutor.adapters.db.models import Administrator, DeviceSession
 
 #: How long a browser session stays valid after login.
@@ -32,8 +36,9 @@ SESSION_LIFETIME = timedelta(hours=24)
 #: Anonymous (pre-login) CSRF bootstrap tokens live one hour.
 ANON_CSRF_LIFETIME_SECONDS = 3600
 
-#: Minimum administrator password accepted by the bootstrap CLI.
+#: Network-eligible minimum; HTTP loopback permits the explicit local-only policy.
 MIN_ADMIN_PASSWORD_LENGTH = 12
+LOCAL_MIN_ADMIN_PASSWORD_LENGTH = 6
 MAX_ADMIN_PASSWORD_LENGTH = 256
 
 #: Maximum administrator login name length (matches the column width).
@@ -60,7 +65,7 @@ def verify_password(password_hash: str, password: str) -> bool:
 
     try:
         return _password_hasher.verify(password_hash, password)
-    except VerificationError, InvalidHash:
+    except VerificationError, InvalidHash, UnicodeError:
         return False
 
 
@@ -123,21 +128,66 @@ def normalize_login_name(login_name: str) -> str:
     return login_name.strip()
 
 
-def create_or_reset_admin(db: Session, login_name: str, password: str) -> Administrator:
-    """Create an administrator, or reset the password when the name exists.
+def local_passwords_allowed() -> bool:
+    """Shorter passwords apply only to the configured exact HTTP loopback origin.
 
-    Raises ``ValueError`` for an empty/oversized login name or a password
-    shorter than :data:`MIN_ADMIN_PASSWORD_LENGTH`. Callers must obtain the
-    password interactively (never from argv or logs).
+    Request Host, forwarded headers, and DNS resolution cannot relax this policy.
+    Invalid configuration is never considered local.
     """
+
+    try:
+        origin = urlsplit(settings.app_public_origin())
+    except ValueError:
+        return False
+    return origin.scheme == "http" and origin.hostname in {"localhost", "127.0.0.1", "::1"}
+
+
+def minimum_admin_password_length() -> int:
+    return (
+        LOCAL_MIN_ADMIN_PASSWORD_LENGTH if local_passwords_allowed() else MIN_ADMIN_PASSWORD_LENGTH
+    )
+
+
+def validate_admin_credentials(login_name: str, password: str) -> str:
+    """Validate creation/reset input without hashing, persisting, or echoing it."""
 
     name = normalize_login_name(login_name)
     if not name or len(name) > MAX_LOGIN_NAME_LENGTH:
         raise ValueError("Login name must be 1-64 characters.")
-    if len(password) < MIN_ADMIN_PASSWORD_LENGTH:
-        raise ValueError(f"Password must be at least {MIN_ADMIN_PASSWORD_LENGTH} characters.")
+    if any(unicodedata.category(char).startswith("C") for char in login_name):
+        raise ValueError("Login name cannot contain control characters.")
+    minimum = minimum_admin_password_length()
+    if len(password) < minimum:
+        raise ValueError(f"Password must be at least {minimum} characters.")
     if len(password) > MAX_ADMIN_PASSWORD_LENGTH:
         raise ValueError(f"Password must be at most {MAX_ADMIN_PASSWORD_LENGTH} characters.")
+    if not password.strip() or any(unicodedata.category(char).startswith("C") for char in password):
+        raise ValueError("Password cannot be blank or contain control characters.")
+    return name
+
+
+def setup_required(db: Session) -> bool:
+    """Only an unclaimed private database can accept its first administrator."""
+
+    return (
+        os.getenv("APP_MODE", "private") != "demo"
+        and db.scalar(select(Administrator.id).limit(1)) is None
+    )
+
+
+def administrator_access_allowed(admin: Administrator) -> bool:
+    return not admin.local_only_password or local_passwords_allowed()
+
+
+def create_or_reset_admin(db: Session, login_name: str, password: str) -> Administrator:
+    """Create an administrator, or reset the password when the name exists.
+
+    Raises ``ValueError`` for invalid names or a password outside the configured
+    local/network policy. Callers must obtain the
+    password interactively (never from argv or logs).
+    """
+
+    name = validate_admin_credentials(login_name, password)
     # Do expensive hashing before starting a database transaction.
     password_hash = hash_password(password)
     if not db.in_transaction():
@@ -145,6 +195,7 @@ def create_or_reset_admin(db: Session, login_name: str, password: str) -> Admini
     existing = db.scalar(select(Administrator).where(Administrator.login_name == name))
     if existing is not None:
         existing.password_hash = password_hash
+        existing.local_only_password = len(password) < MIN_ADMIN_PASSWORD_LENGTH
         existing.updated_at = utcnow()
         db.execute(
             update(DeviceSession)
@@ -158,6 +209,7 @@ def create_or_reset_admin(db: Session, login_name: str, password: str) -> Admini
     admin = Administrator(
         login_name=name,
         password_hash=password_hash,
+        local_only_password=len(password) < MIN_ADMIN_PASSWORD_LENGTH,
         created_at=utcnow(),
         updated_at=utcnow(),
     )
@@ -174,6 +226,9 @@ def authenticate_admin(db: Session, login_name: str, password: str) -> Administr
     """
 
     name = normalize_login_name(login_name)
+    if any(unicodedata.category(char).startswith("C") for char in name + password):
+        verify_password(_dummy_password_hash, "invalid-credentials")
+        return None
     admin = db.scalar(select(Administrator).where(Administrator.login_name == name))
     valid = verify_password(admin.password_hash if admin else _dummy_password_hash, password)
     if admin is None or not valid:
@@ -216,6 +271,10 @@ def get_valid_session(db: Session, token: str) -> DeviceSession | None:
     if row.revoked_at is not None:
         return None
     if row.expires_at <= utcnow():
+        return None
+    if row.role == "adult" and (
+        row.administrator is None or not administrator_access_allowed(row.administrator)
+    ):
         return None
     return row
 

@@ -18,6 +18,8 @@ import { Tutor } from "./Tutor";
 import { UpdateNotice } from "./UpdateNotice";
 import { ContextHelp, HelpPage } from "./Help";
 import { followPage, pageUrl, type Page, type Navigate } from "./navigation";
+import { Setup } from "./Setup";
+import { captureSetupAuthority, type SetupAuthority } from "./setup-authority";
 
 const Research = lazy(() => import("./Research"));
 const pageNames: Record<Page, string> = {
@@ -38,7 +40,13 @@ function readLocation() {
   };
 }
 
-export function App() {
+export function App({ setupAuthority }: { setupAuthority?: SetupAuthority }) {
+  const setupHolder = useRef(setupAuthority ?? { token: "" });
+  const [setupToken, setSetupToken] = useState(setupAuthority?.token ?? "");
+  const clearSetupToken = useCallback(() => {
+    setupHolder.current.token = "";
+    setSetupToken("");
+  }, []);
   const [identity, setSession] = useState<Schema<"SessionStatus"> | null>(null);
   const [error, setError] = useState("");
   const [offline, setOffline] = useState(!navigator.onLine);
@@ -62,6 +70,8 @@ export function App() {
   }, []);
   const isAdult = identity?.authenticated === true && identity.role === "adult";
   const authenticated = identity?.authenticated === true;
+  const setupRequired = !authenticated && identity?.setup_required === true;
+  const checkingSetup = !identity && !!setupToken;
   const page: Page =
     location.page === "help"
       ? "help"
@@ -73,12 +83,27 @@ export function App() {
           : location.page;
   const tutorVisible = page === "practice" || page === "history";
   useEffect(() => {
-    const changed = () => setLocation(readLocation());
+    const changed = () => {
+      const authority = captureSetupAuthority();
+      if (
+        authority.token &&
+        !authenticated &&
+        (!identity || identity.setup_required)
+      ) {
+        setupHolder.current.token = authority.token;
+        setSetupToken(authority.token);
+      }
+      setLocation(readLocation());
+    };
     window.addEventListener("popstate", changed);
-    return () => window.removeEventListener("popstate", changed);
-  }, []);
+    window.addEventListener("hashchange", changed);
+    return () => {
+      window.removeEventListener("popstate", changed);
+      window.removeEventListener("hashchange", changed);
+    };
+  }, [authenticated, identity]);
   useEffect(() => {
-    document.title = `${authenticated || page === "help" ? pageNames[page] : "Sign in"} · Shepard Tutor`;
+    document.title = `${authenticated || page === "help" ? pageNames[page] : setupRequired || checkingSetup ? "Create administrator account" : "Sign in"} · Shepard Tutor`;
     workspace.current
       ?.querySelector<HTMLElement>("h1")
       ?.focus({ preventScroll: true });
@@ -86,7 +111,7 @@ export function App() {
       window.scrollTo({ top: 0, left: 0, behavior: "instant" });
       scrollToTop.current = false;
     }
-  }, [page, location, authenticated]);
+  }, [page, location, authenticated, setupRequired, checkingSetup]);
   const refreshLearners = useCallback(async () => {
     const sequence = ++learnerSequence.current;
     const rows = await api<Schema<"LearnerPublic">[]>("/admin/learners");
@@ -116,6 +141,7 @@ export function App() {
   };
   const refresh = useCallback(async () => {
     const session = await api<Schema<"SessionStatus">>("/auth/session");
+    if (session.authenticated || !session.setup_required) clearSetupToken();
     setIdentity(session.csrf_token, session.authenticated);
     setSession(session);
     setLearner((current) =>
@@ -123,10 +149,37 @@ export function App() {
     );
     if (session.authenticated && session.role === "adult")
       await refreshLearners();
-  }, [refreshLearners]);
+  }, [refreshLearners, clearSetupToken]);
+  const setupComplete = useCallback(
+    (session: Schema<"SessionStatus">) => {
+      clearSetupToken();
+      setIdentity(session.csrf_token, session.authenticated);
+      setSession(session);
+      setLearner(session.learner_id ?? "");
+      navigate("settings");
+      void refresh().catch(() => {
+        setError(
+          "Your account was created, but settings could not be refreshed. Reconnect to continue.",
+        );
+      });
+    },
+    [clearSetupToken, navigate, refresh],
+  );
+  const setupAlreadyClaimed = useCallback(() => {
+    clearSetupToken();
+    setSession((current) =>
+      current ? { ...current, setup_required: false } : current,
+    );
+    void refresh().catch(() => {
+      setError(
+        "An administrator account already exists. Reconnect, then sign in with that account.",
+      );
+    });
+  }, [clearSetupToken, refresh]);
   useEffect(
     () =>
       onAuthenticationLost(() => {
+        clearSetupToken();
         setSession(null);
         setLearner("");
         setPair(null);
@@ -146,7 +199,7 @@ export function App() {
           );
         });
       }),
-    [refresh],
+    [refresh, clearSetupToken],
   );
   const act = useCallback(async (action: () => Promise<void>) => {
     setBusy(true);
@@ -184,6 +237,7 @@ export function App() {
     void api<Schema<"SessionStatus">>("/auth/session")
       .then((session) => {
         if (canceled) return;
+        if (session.authenticated || !session.setup_required) clearSetupToken();
         setIdentity(session.csrf_token, session.authenticated);
         setSession(session);
         setLearner(session.learner_id ?? "");
@@ -197,7 +251,7 @@ export function App() {
     return () => {
       canceled = true;
     };
-  }, []);
+  }, [clearSetupToken]);
   useEffect(() => {
     const online = () => setOffline(false);
     const lost = () => setOffline(true);
@@ -268,7 +322,9 @@ export function App() {
             onClick={(event) => followPage(event, navigate, item)}
           >
             {!authenticated && item === "practice"
-              ? "Sign in"
+              ? setupRequired || checkingSetup
+                ? "Set up account"
+                : "Sign in"
               : pageNames[item]}
           </a>
         ))}
@@ -291,140 +347,161 @@ export function App() {
         )}
         {!authenticated && (
           <div hidden={page === "help"}>
-            <section className="welcome">
-              <h1 tabIndex={-1}>Sign in</h1>
-              <p>Sign in as an adult, or connect this browser to a learner.</p>
-              <div className="grid">
-                <form
-                  className="card"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    const data = new FormData(event.currentTarget);
-                    void act(async () => {
-                      const session = await api<Schema<"SessionStatus">>(
-                        "/auth/login",
-                        "POST",
-                        {
-                          login_name: data.get("login"),
-                          password: data.get("password"),
-                        },
-                      );
-                      setIdentity(session.csrf_token, session.authenticated);
-                      setSession(session);
-                      setLearner(session.learner_id ?? "");
-                    });
-                  }}
-                >
-                  <h2>Adult sign in</h2>
-                  <p>For parents and adults who want to study.</p>
-                  <label>
-                    Login name
-                    <input
-                      name="login"
-                      autoComplete="username"
-                      required
-                      maxLength={64}
-                    />
-                  </label>
-                  <label>
-                    Password
-                    <input
-                      name="password"
-                      type="password"
-                      autoComplete="current-password"
-                      required
-                      maxLength={256}
-                    />
-                  </label>
-                  <button className="primary" disabled={busy || !identity}>
-                    Sign in
-                  </button>
-                  <p className="fine">
-                    Use the account created when this app was set up.
-                  </p>
-                  <ContextHelp topic="Can I manage the app and study too?">
-                    <p>
-                      Yes. Add yourself as a learner, then select your profile
-                      in Practice. Use the same adult sign-in for both.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => navigate("help", "accounts")}
-                    >
-                      Accounts and learners
+            {setupRequired ? (
+              <Setup
+                token={setupToken}
+                onClearToken={clearSetupToken}
+                onComplete={setupComplete}
+                onExistingAccount={setupAlreadyClaimed}
+                onNavigate={navigate}
+              />
+            ) : checkingSetup ? (
+              <section className="welcome">
+                <h1 tabIndex={-1}>Create administrator account</h1>
+                <p role="status">Checking account setup…</p>
+              </section>
+            ) : (
+              <section className="welcome">
+                <h1 tabIndex={-1}>Sign in</h1>
+                <p>
+                  Sign in as an adult, or connect this browser to a learner.
+                </p>
+                <div className="grid">
+                  <form
+                    className="card"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      const data = new FormData(event.currentTarget);
+                      void act(async () => {
+                        const session = await api<Schema<"SessionStatus">>(
+                          "/auth/login",
+                          "POST",
+                          {
+                            login_name: data.get("login"),
+                            password: data.get("password"),
+                          },
+                        );
+                        clearSetupToken();
+                        setIdentity(session.csrf_token, session.authenticated);
+                        setSession(session);
+                        setLearner(session.learner_id ?? "");
+                      });
+                    }}
+                  >
+                    <h2>Adult sign in</h2>
+                    <p>For parents and adults who want to study.</p>
+                    <label>
+                      Login name
+                      <input
+                        name="login"
+                        autoComplete="username"
+                        required
+                        maxLength={64}
+                      />
+                    </label>
+                    <label>
+                      Password
+                      <input
+                        name="password"
+                        type="password"
+                        autoComplete="current-password"
+                        required
+                        maxLength={256}
+                      />
+                    </label>
+                    <button className="primary" disabled={busy || !identity}>
+                      Sign in
                     </button>
-                  </ContextHelp>
-                  <ContextHelp topic="Need an account or a password reset?">
-                    <p>
-                      The person running the app creates adult accounts in the
-                      terminal with <code>make admin</code>.
+                    <p className="fine">
+                      Use the account created when this app was set up.
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => navigate("help", "setup")}
-                    >
-                      Setup instructions
-                    </button>
-                  </ContextHelp>
-                </form>
-                <section className="card">
-                  <h2>Connect a learner</h2>
-                  <p>
-                    Request access here, then ask an adult to approve it on
-                    their signed-in computer.
-                  </p>
-                  {pair ? (
-                    <>
-                      <label>
-                        Pairing request ID
-                        <input readOnly value={pair.id} />
-                      </label>
-                      <p role="status">
-                        Waiting for approval. Expires at{" "}
-                        {new Date(pair.expires_at).toLocaleTimeString()}.
-                      </p>
+                    <ContextHelp topic="Can I manage the app and study too?">
                       <p>
-                        On the adult’s computer: open{" "}
-                        <strong>Learners & devices</strong>, select your
-                        learner, paste this ID, and choose{" "}
-                        <strong>Approve device</strong>.
+                        Yes. Add yourself as a learner, then select your profile
+                        in Practice. Use the same adult sign-in for both.
                       </p>
-                    </>
-                  ) : (
-                    <button
-                      disabled={busy || !identity}
-                      onClick={() =>
-                        void act(async () =>
-                          setPair(
-                            await api<Schema<"PairPublic">>(
-                              "/pairing/requests",
-                              "POST",
-                              {},
-                              newKey(),
-                            ),
-                          ),
-                        )
-                      }
-                    >
-                      Pair this device
-                    </button>
-                  )}
-                  <ContextHelp topic="Only using your phone to take a photo?">
+                      <button
+                        type="button"
+                        onClick={() => navigate("help", "accounts")}
+                      >
+                        Accounts and learners
+                      </button>
+                    </ContextHelp>
+                    <ContextHelp topic="Need an account or a password reset?">
+                      <p>
+                        The first account is created with the private setup link
+                        printed by <code>make start</code>. If an account
+                        already exists, only the person running the app can
+                        reset its password with <code>make admin</code> on that
+                        computer.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => navigate("help", "setup")}
+                      >
+                        Setup instructions
+                      </button>
+                    </ContextHelp>
+                  </form>
+                  <section className="card">
+                    <h2>Connect a learner</h2>
                     <p>
-                      Use Take photo with phone inside a practice activity on
-                      the computer. Scan that QR code; you do not need to pair
-                      or sign in for a photo.
+                      Request access here, then ask an adult to approve it on
+                      their signed-in computer.
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => navigate("help", "phone")}
-                    >
-                      Phone setup
-                    </button>
-                  </ContextHelp>
-                </section>
-              </div>
-            </section>
+                    {pair ? (
+                      <>
+                        <label>
+                          Pairing request ID
+                          <input readOnly value={pair.id} />
+                        </label>
+                        <p role="status">
+                          Waiting for approval. Expires at{" "}
+                          {new Date(pair.expires_at).toLocaleTimeString()}.
+                        </p>
+                        <p>
+                          On the adult’s computer: open{" "}
+                          <strong>Learners & devices</strong>, select your
+                          learner, paste this ID, and choose{" "}
+                          <strong>Approve device</strong>.
+                        </p>
+                      </>
+                    ) : (
+                      <button
+                        disabled={busy || !identity}
+                        onClick={() =>
+                          void act(async () =>
+                            setPair(
+                              await api<Schema<"PairPublic">>(
+                                "/pairing/requests",
+                                "POST",
+                                {},
+                                newKey(),
+                              ),
+                            ),
+                          )
+                        }
+                      >
+                        Pair this device
+                      </button>
+                    )}
+                    <ContextHelp topic="Only using your phone to take a photo?">
+                      <p>
+                        Use Take photo with phone inside a practice activity on
+                        the computer. Scan that QR code; you do not need to pair
+                        or sign in for a photo.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => navigate("help", "phone")}
+                      >
+                        Phone setup
+                      </button>
+                    </ContextHelp>
+                  </section>
+                </div>
+              </section>
+            )}
           </div>
         )}
         {authenticated && (

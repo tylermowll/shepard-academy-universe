@@ -1,6 +1,7 @@
 """Local startup routing without operator settings, databases, builds, or services."""
 
 import json
+import os
 import subprocess
 import sys
 from contextlib import nullcontext
@@ -20,6 +21,7 @@ def synthetic_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     monkeypatch.setenv("SESSION_SECRET", "synthetic-startup-session-secret-" * 2)
     monkeypatch.setenv("APP_PUBLIC_ORIGIN", "http://127.0.0.1:8000")
     monkeypatch.setattr(local_start, "load_environment", Mock(return_value={}))
+    monkeypatch.setattr(local_start, "owner_setup_token", Mock(return_value=None))
     return tmp_path
 
 
@@ -130,18 +132,19 @@ def test_setup_then_build_then_https_supervisor_order(
     monkeypatch.setattr(local_start, "check_port", lambda _: calls.append("port"))
     monkeypatch.setattr(local_start, "prepare_database", lambda _: calls.append("database"))
 
-    def admin(*, only_if_missing: bool) -> int:
-        assert only_if_missing
-        calls.append("admin")
-        return 0
+    def owner(_origin: object) -> None:
+        calls.append("owner-check")
 
-    monkeypatch.setattr(cli, "run_admin", admin)
+    monkeypatch.setattr(local_start, "owner_setup_token", owner)
+    monkeypatch.setattr(
+        "builtins.input", Mock(side_effect=AssertionError("No native signup prompt"))
+    )
     launch = Mock(return_value=Mock(returncode=0))
     monkeypatch.setattr(subprocess, "run", launch)
     assert (
         local_start.start_services(synthetic_root, urlsplit("https://tutor.example"), "make") == 0
     )
-    assert calls == ["port", "database", "admin"]
+    assert calls == ["port", "database", "owner-check"]
     assert launch.call_args_list[0].args[0] == ["make", "toolchain-check"]
     assert launch.call_args_list[1].args[0] == ["make", "build"]
     assert launch.call_args_list[2].args[0] == [
@@ -151,28 +154,33 @@ def test_setup_then_build_then_https_supervisor_order(
     ]
 
 
-def test_cancelled_admin_never_builds_or_starts_services(
+def test_owner_policy_rejection_never_builds_or_starts_services(
     synthetic_root: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(local_start, "native_lock", lambda _: nullcontext())
     monkeypatch.setattr(local_start, "check_port", Mock())
     monkeypatch.setattr(local_start, "prepare_database", Mock())
-    monkeypatch.setattr(cli, "run_admin", Mock(return_value=1))
+    monkeypatch.setattr(
+        local_start,
+        "owner_setup_token",
+        Mock(side_effect=ValueError("Use make admin before HTTPS")),
+    )
     launch = Mock(return_value=Mock(returncode=0))
     monkeypatch.setattr(subprocess, "run", launch)
-    assert (
-        local_start.start_services(synthetic_root, urlsplit("http://127.0.0.1:8000"), "make") == 1
-    )
+    with pytest.raises(ValueError, match="make admin"):
+        local_start.start_services(synthetic_root, urlsplit("https://tutor.example"), "make")
     launch.assert_called_once_with(["make", "toolchain-check"], cwd=synthetic_root, check=False)
 
 
-def test_failed_build_never_starts_services(
-    synthetic_root: Path, monkeypatch: pytest.MonkeyPatch
+def test_failed_build_never_starts_services_or_prints_owner_token(
+    synthetic_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(local_start, "native_lock", lambda _: nullcontext())
     monkeypatch.setattr(local_start, "check_port", Mock())
     monkeypatch.setattr(local_start, "prepare_database", Mock())
-    monkeypatch.setattr(cli, "run_admin", Mock(return_value=0))
+    monkeypatch.setattr(
+        local_start, "owner_setup_token", Mock(return_value="synthetic-unprinted-owner-token")
+    )
     launch = Mock(side_effect=[Mock(returncode=0), Mock(returncode=2)])
     monkeypatch.setattr(subprocess, "run", launch)
     assert (
@@ -180,6 +188,7 @@ def test_failed_build_never_starts_services(
     )
     assert launch.call_count == 2
     assert launch.call_args.args[0] == ["make", "build"]
+    assert "synthetic-unprinted-owner-token" not in capsys.readouterr().out
 
 
 def test_failed_toolchain_never_touches_database_or_password_prompt(
@@ -188,7 +197,7 @@ def test_failed_toolchain_never_touches_database_or_password_prompt(
     prepare = Mock()
     admin = Mock()
     monkeypatch.setattr(local_start, "prepare_database", prepare)
-    monkeypatch.setattr(cli, "run_admin", admin)
+    monkeypatch.setattr(local_start, "owner_setup_token", admin)
     launch = Mock(return_value=Mock(returncode=1))
     monkeypatch.setattr(subprocess, "run", launch)
     assert (
@@ -200,6 +209,50 @@ def test_failed_toolchain_never_touches_database_or_password_prompt(
     launch.assert_called_once_with(["make", "toolchain-check"], cwd=synthetic_root, check=False)
 
 
+def test_unclaimed_native_start_prints_fragment_link_and_never_prompts(
+    synthetic_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    token = "synthetic-owner-token-" * 3
+    monkeypatch.setenv(local_start.SETUP_TOKEN_ENV, "stale-inherited-token")
+    monkeypatch.setattr(local_start, "native_lock", lambda _: nullcontext())
+    monkeypatch.setattr(local_start, "check_port", Mock())
+    monkeypatch.setattr(local_start, "prepare_database", Mock())
+    monkeypatch.setattr(local_start, "owner_setup_token", Mock(return_value=token))
+    prompt = Mock(side_effect=AssertionError("Account setup belongs in the browser"))
+    monkeypatch.setattr("builtins.input", prompt)
+    launch = Mock(return_value=Mock(returncode=0))
+    monkeypatch.setattr(subprocess, "run", launch)
+    assert (
+        local_start.start_services(synthetic_root, urlsplit("http://127.0.0.1:8000"), "make") == 0
+    )
+    prompt.assert_not_called()
+    assert local_start.SETUP_TOKEN_ENV not in os.environ
+    assert launch.call_args.kwargs["env"][local_start.SETUP_TOKEN_ENV] == token
+    for call in launch.call_args_list:
+        assert token not in " ".join(call.args[0])
+    output = capsys.readouterr().out
+    assert output.count(token) == 1
+    assert f"http://127.0.0.1:8000/#setup={token}" in output
+    assert "30 minutes" in output
+    assert "stale-inherited-token" not in output
+
+
+def test_claimed_native_start_drops_stale_token_and_omits_setup_link(
+    synthetic_root: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setenv(local_start.SETUP_TOKEN_ENV, "stale-inherited-token")
+    monkeypatch.setattr(local_start, "native_lock", lambda _: nullcontext())
+    monkeypatch.setattr(local_start, "check_port", Mock())
+    monkeypatch.setattr(local_start, "prepare_database", Mock())
+    launch = Mock(return_value=Mock(returncode=0))
+    monkeypatch.setattr(subprocess, "run", launch)
+    assert (
+        local_start.start_services(synthetic_root, urlsplit("http://127.0.0.1:8000"), "make") == 0
+    )
+    assert local_start.SETUP_TOKEN_ENV not in launch.call_args.kwargs["env"]
+    assert "#setup=" not in capsys.readouterr().out
+
+
 def test_loader_uses_private_captured_pipes_and_relative_filename(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -208,6 +261,7 @@ def test_loader_uses_private_captured_pipes_and_relative_filename(
     destination = directory / ".env"
     destination.write_text("SYNTHETIC_KEY=not-printed\n")
     destination.chmod(0o600)
+    monkeypatch.setenv(local_start.SETUP_TOKEN_ENV, "stale-owner-token")
     parse = Mock(
         return_value=Mock(
             returncode=0, stdout=json.dumps({"SYNTHETIC_KEY": "not-printed"}), stderr=""
@@ -222,6 +276,28 @@ def test_loader_uses_private_captured_pipes_and_relative_filename(
     assert parse.call_args.kwargs["cwd"] == directory
     assert parse.call_args.kwargs["capture_output"] is True
     assert "shell" not in parse.call_args.kwargs
+    assert local_start.SETUP_TOKEN_ENV not in parse.call_args.kwargs["env"]
+
+
+def test_worker_command_drops_inherited_and_settings_file_owner_tokens(
+    synthetic_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    destination = synthetic_root / ".env"
+    destination.write_text("SYNTHETIC_SETTING=fixture\n")
+    destination.chmod(0o600)
+    monkeypatch.setenv(local_start.SETUP_TOKEN_ENV, "stale-inherited-token")
+    monkeypatch.setattr(
+        local_start,
+        "load_environment",
+        Mock(return_value={local_start.SETUP_TOKEN_ENV: "stale-dotenv-token"}),
+    )
+
+    def launch(arguments: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        assert local_start.SETUP_TOKEN_ENV not in os.environ
+        return subprocess.CompletedProcess(arguments, 0)
+
+    monkeypatch.setattr(subprocess, "run", launch)
+    assert local_start.main(["--command", "worker"]) == 0
 
 
 def test_loader_rejects_unsupported_basename_whitespace_before_parsing(

@@ -11,6 +11,7 @@ import argparse
 import fcntl
 import json
 import os
+import secrets
 import socket
 import stat
 import subprocess
@@ -24,11 +25,15 @@ from alembic import command
 from alembic.config import Config
 from alembic.runtime.migration import MigrationContext
 from alembic.script import ScriptDirectory
-from sqlalchemy import inspect
+from sqlalchemy import inspect, select
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
 from math_tutor import cli, settings
 from math_tutor.adapters.db.engine import create_engine_for_url
+from math_tutor.adapters.db.models import Administrator
+
+SETUP_TOKEN_ENV = "SHEPARD_SETUP_TOKEN"
 
 
 def load_environment(destination: Path, root: Path, uv: str) -> dict[str, str]:
@@ -48,6 +53,7 @@ def load_environment(destination: Path, root: Path, uv: str) -> dict[str, str]:
     environment = os.environ.copy()
     environment.pop("UV_NO_ENV_FILE", None)
     environment.pop("UV_ENV_FILE", None)
+    environment.pop(SETUP_TOKEN_ENV, None)
     try:
         loaded = subprocess.run(
             [
@@ -176,14 +182,14 @@ def prepare_database(root: Path) -> None:
 def start_services(root: Path, origin: SplitResult, make: str) -> int:
     """Hold the native lock while bootstrapping, building, and supervising services."""
 
+    os.environ.pop(SETUP_TOKEN_ENV, None)
     checked = subprocess.run([make, "toolchain-check"], cwd=root, check=False)
     if checked.returncode:
         return checked.returncode
     with native_lock(settings.database_path()):
         check_port(origin)
         prepare_database(root)
-        if cli.run_admin(only_if_missing=True):
-            return 1
+        token = owner_setup_token(origin)
         print("Building the app…", flush=True)
         built = subprocess.run([make, "build"], cwd=root, check=False)
         if built.returncode:
@@ -192,7 +198,44 @@ def start_services(root: Path, origin: SplitResult, make: str) -> int:
         arguments = [sys.executable, str(root / "scripts/dev.py")]
         if origin.scheme == "https":
             arguments.append("--gateway")
-        return subprocess.run(arguments, cwd=root, check=False).returncode
+        environment = os.environ.copy()
+        if token:
+            environment[SETUP_TOKEN_ENV] = token
+            print(
+                "Create your adult account in the browser. This private owner link "
+                "works once and expires in 30 minutes; do not share it:",
+                flush=True,
+            )
+            print(f"{origin.geturl()}/#setup={token}", flush=True)
+        return subprocess.run(arguments, cwd=root, env=environment, check=False).returncode
+
+
+def owner_setup_token(origin: SplitResult) -> str | None:
+    """Prepare one owner claim; never modify an administrator or store a token."""
+
+    engine = create_engine_for_url(settings.database_url())
+    try:
+        with Session(engine) as db:
+            claimed = db.scalar(select(Administrator.id).limit(1)) is not None
+            if (
+                origin.scheme == "https"
+                and db.scalar(
+                    select(Administrator.id)
+                    .where(Administrator.local_only_password.is_(True))
+                    .limit(1)
+                )
+                is not None
+            ):
+                raise ValueError(
+                    "An administrator has a computer-only password. Before enabling HTTPS "
+                    "or phone access, run `make admin` and replace that account's password "
+                    "with at least 12 characters. No credentials have been changed."
+                )
+    finally:
+        engine.dispose()
+    if not claimed and os.getenv("APP_MODE", "private") != "demo":
+        return secrets.token_urlsafe(32)
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -221,6 +264,7 @@ def main(argv: list[str] | None = None) -> int:
     root = settings.repository_root()
     destination = (args.env_file or root / ".env").absolute()
     try:
+        os.environ.pop(SETUP_TOKEN_ENV, None)
         if args.command == "start" and not destination.exists() and cli.run_setup(destination):
             return 1
         if destination.exists():
@@ -229,6 +273,7 @@ def main(argv: list[str] | None = None) -> int:
         # reopen a private file or print an unredacted dotenv diagnostic.
         os.environ.pop("UV_ENV_FILE", None)
         os.environ.pop("UV_NO_ENV_FILE", None)
+        os.environ.pop(SETUP_TOKEN_ENV, None)
         if args.command == "db":
             return cli.run_db()
         if args.command == "admin":

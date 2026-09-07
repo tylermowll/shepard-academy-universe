@@ -41,10 +41,21 @@ make start
 ```
 
 `make start` creates missing private settings, initializes a fresh database, and
-asks for your first adult login name and password locally. It loads `.env`
-without executing it as a shell script, validates setup before building, and
-starts the UI, API, and worker at <http://127.0.0.1:8000> by default. Existing
-settings, accounts and data are preserved. Never share `.env` with coding agents.
+starts the UI, API, and worker at <http://127.0.0.1:8000> by default. On first run,
+click the **Create administrator account** link printed in the terminal. Choose
+your login and password in the browser; validation errors stay on that page.
+The link expires after 30 minutes and cannot reset an existing account. If it
+expires, stop with Ctrl+C and use `make start` for a fresh link. Keep it private.
+
+Localhost passwords need **6 characters**; phone/HTTPS passwords need **12**.
+There are no uppercase/symbol rules. Short local passwords trade strength for
+convenience and cannot be used unchanged after enabling network access. If you
+later enable HTTPS, startup explains how to replace a local-only password with
+`make admin`. That recovery command is not needed for browser-first setup.
+
+The launcher loads `.env` without executing it as a shell script and validates
+setup before building. Existing settings, accounts and data are preserved.
+Never share `.env` with coding agents.
 
 Use `make start` again after Ctrl+C. It also supports a configured private HTTPS
 gateway; `make dev` restricts the same persistent workflow to loopback HTTP.
@@ -112,8 +123,8 @@ An unavailable model produces a visible error, not an authored-hint substitute.
 
 The historical D005 hard cutover applies only to databases from before that
 initial-schema correction; recreate those disposable development databases.
-Current-schema databases use normal migrations, including `0011` → `0012` for
-saved AI connections. [RUNBOOK](docs/RUNBOOK.md) covers private HTTPS, containers, EC2/EBS,
+Current-schema databases use normal migrations, including `0012` for saved AI
+connections and `0013` for local-password policy. [RUNBOOK](docs/RUNBOOK.md) covers private HTTPS, containers, EC2/EBS,
 retention, encrypted backups, and restore rehearsals.
 
 ## Behavior and boundaries
