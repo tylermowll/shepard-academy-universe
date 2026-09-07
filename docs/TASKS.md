@@ -38,6 +38,47 @@ specification gates pass.
 | T28  | Implemented; automated gates passed                            | Browser-first owner setup, inline recovery, six-character loopback passwords with network safeguards; 159 unit, 103 component, 215 integration and 46 browser tests passed.                                                    |
 | T29  | Implemented; automated gates passed                            | Shepard Academy Universe branding; fixed Meta cloud location, editable audience and disclaimer; project hooks/check, 216 integration and 4 affected browser tests passed.                                                      |
 | T30  | Implemented; automated gates passed                            | Guided AI setup, visible blockers, selectable pending connections and million-token context windows; 162 unit, 113 component, 217 integration and 18 affected browser tests passed.                                            |
+| T31  | Implemented; automated gates passed                            | Visible connection repair, tab-scoped named failures, and current Meta direct-API defaults; 162 unit, 115 component and 10 affected browser tests passed.                                                                      |
+
+### T31 — Visible connection repair and current Meta defaults (2026-09-07)
+
+The maintainer found that a failed Spark test warning followed them across every
+Settings tab and that connection editing was hidden under technical details. The
+saved connection name `spark` is valid. Meta's current official direct Model API
+cookbook uses `https://api.meta.ai/v1`, model `muse-spark-1.3`, a 1,048,576-token
+context window, image input, and Chat Completions structured output.
+
+Bounded implementation and acceptance:
+
+- Show Edit connection without requiring a technical-details disclosure, including
+  directly beside failed connection tests.
+- Keep a test failure on the Connection tests tab and identify which connection
+  failed. Do not carry that warning into another Settings step.
+- Prefill new Meta connections with the current official direct-API model ID,
+  context window and photo capability. Keep the model editable for IDs explicitly
+  listed by the operator's Meta account, and offer a one-click canonical repair for
+  existing entries.
+- Add focused component coverage, run applicable repository gates, inspect the
+  public diff, and make no live provider call or private-configuration access.
+
+Implemented and verified:
+
+- Edit connection is visible on every browser-managed saved-connection card and
+  beside its Connection tests; it no longer requires opening technical details.
+- Test failures name the affected connection and render only in Connection tests.
+  Editing from the test card opens the populated Connections editor directly.
+- New Meta connections prefill `muse-spark-1.3`, a 1,048,576-token context and
+  photo support. Existing Meta entries keep their saved model ID and show a
+  one-click `muse-spark-1.3` repair while remaining editable.
+- `make hooks-check build contracts-check secret-check` passed: **162 backend unit
+  tests**, **115 component tests**, locked dependency, lint, formatting, type,
+  contract drift, production build and tracked-secret gates. The build retains the
+  existing non-fatal bundle-size warning.
+- The affected `tests/smoke/connections.spec.ts` passed **10/10** desktop/mobile
+  Chromium cases using only synthetic fixtures. No integration suite was rerun
+  because this task changes only frontend display/defaults and documentation. No
+  live provider call, private configuration access, model download, physical-phone
+  test or cloud deployment was performed.
 
 ### T30 — Guided AI setup and truthful context windows (2026-09-07)
 

@@ -526,12 +526,12 @@ for (const adapter of ["vllm", "ollama", "compatible"] as const) {
       await restoreDemoRoutes(page);
       await navigate(page, "Settings");
       await page.getByRole("tab", { name: /Connections/ }).click();
-      await card
-        .getByText("Technical details and actions", { exact: true })
-        .click();
-      await card
-        .getByRole("button", { name: "Edit connection", exact: true })
-        .click();
+      const editConnection = card.getByRole("button", {
+        name: "Edit connection",
+        exact: true,
+      });
+      await expect(editConnection).toBeVisible();
+      await editConnection.click();
       await expect(
         page.getByRole("combobox", { name: "API key action", exact: true }),
       ).toHaveValue("keep");

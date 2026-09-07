@@ -131,6 +131,8 @@ export function ProviderConnections({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [errorSection, setErrorSection] =
+    useState<ProviderSettingsSection | null>(null);
   const editor = useRef<HTMLFormElement>(null);
   const editorOpen = draft !== null;
   useEffect(() => {
@@ -232,6 +234,7 @@ export function ProviderConnections({
             : `${provider.id} ${provider.enabled ? "disabled" : "enabled"}. Test it before selecting it for practice.`,
         );
       } catch (cause) {
+        setErrorSection("connections");
         setError(saveError(cause));
       } finally {
         setBusy(false);
@@ -328,6 +331,7 @@ export function ProviderConnections({
                     );
                     openSection(needsPolicy ? "policy" : "tests");
                   } catch (cause) {
+                    setErrorSection("connections");
                     setError(
                       saved
                         ? "The connection was saved, but the list could not refresh. Refresh connections to continue."
@@ -375,7 +379,7 @@ export function ProviderConnections({
                           ...draft,
                           adapter,
                           base_url: addresses[adapter],
-                          model: "",
+                          model: adapter === "meta" ? "muse-spark-1.3" : "",
                           boundary:
                             adapter === "meta" || adapter === "compatible"
                               ? "cloud"
@@ -386,7 +390,9 @@ export function ProviderConnections({
                               ? "replace"
                               : "keep",
                           api_key: "",
-                          image_input: false,
+                          image_input: adapter === "meta",
+                          configured_context_limit:
+                            adapter === "meta" ? 1_048_576 : 32768,
                         });
                         setTerms(false);
                       }}
@@ -444,6 +450,23 @@ export function ProviderConnections({
                   Copy the installed or served model name exactly. Saving a
                   connection does not download or start a model.
                 </p>
+                {draft.adapter === "meta" && (
+                  <div className="inline-help">
+                    <p>
+                      Meta&apos;s current direct API model is{" "}
+                      <code>muse-spark-1.3</code>. Use a different ID only when
+                      it appears in your Meta Model API account.
+                    </p>
+                    {draft.model !== "muse-spark-1.3" && (
+                      <button
+                        type="button"
+                        onClick={() => change("model", "muse-spark-1.3")}
+                      >
+                        Use muse-spark-1.3
+                      </button>
+                    )}
+                  </div>
+                )}
                 <label className="check">
                   <input
                     type="checkbox"
@@ -739,10 +762,20 @@ export function ProviderConnections({
                 );
                 return (
                   <article className="card" key={provider.id}>
-                    <h4>
-                      {provider.id}
-                      {!provider.enabled && " (disabled)"}
-                    </h4>
+                    <div className="provider-card-heading">
+                      <h4>
+                        {provider.id}
+                        {!provider.enabled && " (disabled)"}
+                      </h4>
+                      {provider.managed && (
+                        <button
+                          disabled={busy || policy.demo_mode}
+                          onClick={() => start(provider)}
+                        >
+                          Edit connection
+                        </button>
+                      )}
+                    </div>
                     <p>
                       {provider.model} ·{" "}
                       {provider.boundary === "local_network"
@@ -814,12 +847,6 @@ export function ProviderConnections({
                         <>
                           <div className="actions">
                             <button
-                              disabled={busy || policy.demo_mode}
-                              onClick={() => start(provider)}
-                            >
-                              Edit connection
-                            </button>
-                            <button
                               disabled={
                                 busy ||
                                 policy.demo_mode ||
@@ -860,7 +887,7 @@ export function ProviderConnections({
           </section>
         </>
       )}
-      {error && (
+      {error && errorSection === section && (
         <p role="alert" className="error">
           {error}
         </p>
@@ -996,10 +1023,11 @@ export function ProviderConnections({
                                 `${provider.id}: ${stage === "tutor" ? "tutor" : "photo reader"} test passed.`,
                               );
                             } catch (cause) {
+                              setErrorSection("tests");
                               setError(
                                 tested
                                   ? "The test completed, but its results could not be refreshed. Refresh status before assigning active connections."
-                                  : probeError(cause),
+                                  : `${provider.id} test failed. ${probeError(cause)}`,
                               );
                             } finally {
                               setBusy(false);
@@ -1010,6 +1038,17 @@ export function ProviderConnections({
                         Test {stage === "tutor" ? "tutor" : "photo reader"}
                       </button>
                     ))}
+                    {provider.managed && (
+                      <button
+                        disabled={busy || policy.demo_mode}
+                        onClick={() => {
+                          start(provider);
+                          openSection("connections");
+                        }}
+                      >
+                        Edit connection
+                      </button>
+                    )}
                   </div>
                 </article>
               );

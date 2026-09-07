@@ -311,7 +311,6 @@ describe("adult connection setup", () => {
 
   it("edits a stored connection without fetching or resubmitting its key", async () => {
     show();
-    openDetails();
     fireEvent.click(screen.getByRole("button", { name: "Edit connection" }));
     expect(screen.getByLabelText("Connection name")).toHaveAttribute(
       "readonly",
@@ -342,7 +341,6 @@ describe("adult connection setup", () => {
 
   it("requires replacing or removing the key when changing its destination", async () => {
     show();
-    openDetails();
     fireEvent.click(screen.getByRole("button", { name: "Edit connection" }));
     fireEvent.change(screen.getByLabelText("Server address"), {
       target: { value: "http://127.0.0.1:8082/v1" },
@@ -490,6 +488,47 @@ describe("adult connection setup", () => {
     expect(
       screen.getByText(/It does not choose a model or send any requests/i),
     ).toBeVisible();
+  });
+
+  it("prefills Meta's direct API model and million-token context", () => {
+    show();
+    fireEvent.click(screen.getByRole("button", { name: "Add AI connection" }));
+    fireEvent.change(screen.getByLabelText("Connection type"), {
+      target: { value: "meta" },
+    });
+    expect(screen.getByLabelText("Model name")).toHaveValue("muse-spark-1.3");
+    expect(screen.getByLabelText("Model context limit")).toHaveValue(1048576);
+    expect(
+      screen.getByLabelText("This model supports photo input"),
+    ).toBeChecked();
+    expect(screen.getByText(/Meta's current direct API model/)).toBeVisible();
+  });
+
+  it("scopes a failed test to its tab and offers a visible edit action", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    vi.mocked(fetch).mockImplementationOnce(() =>
+      response(
+        {
+          detail: {
+            code: "invalid_request",
+            message: "Synthetic rejected request.",
+          },
+        },
+        400,
+      ),
+    );
+    const view = show(configuration, "tests");
+    fireEvent.click(screen.getByRole("button", { name: "Test tutor" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "home-vision test failed",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Edit connection" }));
+    expect(view.onSectionChange).toHaveBeenLastCalledWith("connections", true);
+    view.showSection("connections");
+    expect(await screen.findByLabelText("Model name")).toHaveValue(
+      "installed-vision-model",
+    );
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 
   it.each(["tutor", "photo reader"])(

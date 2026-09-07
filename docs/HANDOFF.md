@@ -1,6 +1,16 @@
 # Current handoff
 
-The current task is **T30: guided AI setup and truthful context windows**. Settings
+The current task is **T31: visible connection repair and current Meta defaults**.
+The saved connection name `spark` is valid. A test error now names its connection
+and stays on Connection tests instead of following the operator across Settings.
+Edit connection is visible on saved connection and test cards, and opens the
+populated editor directly. New Meta connections prefill the official direct-API
+model `muse-spark-1.3`, 1,048,576-token context and photo input. Existing model IDs
+remain editable and receive a one-click canonical repair. Repository hooks, build,
+contract/secret checks, 162 unit, 115 component and 10 affected desktop/mobile
+browser tests passed. No live provider call or private configuration was used.
+
+T30 completed **guided AI setup and truthful context windows**. Settings
 now has separate Connections, App permissions, Connection tests, and Assign active
 connections tabs. A saved model remains selectable while its exact setup blockers
 are shown beside the selected role. Readiness is independent for tutoring and photo

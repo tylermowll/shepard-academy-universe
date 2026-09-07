@@ -119,6 +119,15 @@ legend {
 .connection-setup .provider-list {
   margin-top: 16px;
 }
+.provider-card-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.provider-card-heading h4 {
+  margin: 0;
+}
 .settings-workflow {
   margin-top: 24px;
 }
