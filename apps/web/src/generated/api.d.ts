@@ -423,6 +423,91 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/phone-upload": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Info */
+    get: operations["info_api_v1_phone_upload_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/phone-upload/photos": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Upload */
+    post: operations["upload_api_v1_phone_upload_photos_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/phone-upload/preview": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Preview */
+    post: operations["preview_api_v1_phone_upload_preview_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/phone-uploads/{identifier}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Revoke Link */
+    delete: operations["revoke_link_api_v1_phone_uploads__identifier__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/problems/{problem_id}/phone-uploads": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create Link */
+    post: operations["create_link_api_v1_problems__problem_id__phone_uploads_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/problems/{problem_id}/photos": {
     parameters: {
       query?: never;
@@ -611,6 +696,75 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/tutor/sessions": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Sessions */
+    get: operations["sessions_api_v1_tutor_sessions_get"];
+    put?: never;
+    /** Create Session */
+    post: operations["create_session_api_v1_tutor_sessions_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/tutor/sessions/{session_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read Session */
+    get: operations["read_session_api_v1_tutor_sessions__session_id__get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/tutor/sessions/{session_id}/activities": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Activity */
+    post: operations["activity_api_v1_tutor_sessions__session_id__activities_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/tutor/sessions/{session_id}/settings": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Settings */
+    post: operations["settings_api_v1_tutor_sessions__session_id__settings_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/health": {
     parameters: {
       query?: never;
@@ -699,6 +853,28 @@ export interface components {
       photo_status: string;
       /** Photos Available */
       photos_available: boolean;
+      /** Text Processing */
+      text_processing: string;
+      /** Tutor Status */
+      tutor_status: string;
+      /** Tutoring Available */
+      tutoring_available: boolean;
+    };
+    /**
+     * FeedbackPayload
+     * @description Teaching observations are not grades, tools, or completion commands.
+     */
+    FeedbackPayload: {
+      /** Concepts */
+      concepts: string[];
+      /** Guidance */
+      guidance: string[];
+      /** Next Step */
+      next_step: string;
+      /** Strengths */
+      strengths: string[];
+      /** Uncertainty Note */
+      uncertainty_note?: string | null;
     };
     /** HTTPValidationError */
     HTTPValidationError: {
@@ -716,8 +892,13 @@ export interface components {
     /** LearnerExport */
     LearnerExport: {
       learner: components["schemas"]["LearnerPublic"];
+      /** Reference Material */
+      reference_material: components["schemas"]["ReferenceMaterialPublic"][];
       /** Sessions */
-      sessions: components["schemas"]["SessionPublic"][];
+      sessions: (
+        | components["schemas"]["SessionPublic"]
+        | components["schemas"]["TutoringSessionPublic"]
+      )[];
     };
     /** LearnerInput */
     LearnerInput: {
@@ -783,6 +964,7 @@ export interface components {
        * Format: date-time
        */
       created_at: string;
+      feedback?: components["schemas"]["FeedbackPayload"] | null;
       /**
        * Id
        * Format: uuid
@@ -803,6 +985,7 @@ export interface components {
        * Format: uuid
        */
       problem_id: string;
+      reading?: components["schemas"]["ReadingPublic"] | null;
       /** Safe Error */
       safe_error: string | null;
       /** Source */
@@ -829,6 +1012,43 @@ export interface components {
        * Format: uuid
        */
       id: string;
+    };
+    /** PhoneReceipt */
+    PhoneReceipt: {
+      /**
+       * Received
+       * @default true
+       */
+      received: boolean;
+    };
+    /** PhoneUploadInfo */
+    PhoneUploadInfo: {
+      /**
+       * Expires At
+       * Format: date-time
+       */
+      expires_at: string;
+      /** Problem Text */
+      problem_text: string;
+      /** Processing */
+      processing: string;
+      /** Received */
+      received: boolean;
+    };
+    /** PhoneUploadLink */
+    PhoneUploadLink: {
+      /**
+       * Expires At
+       * Format: date-time
+       */
+      expires_at: string;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /** Url */
+      url: string;
     };
     /** Presentation */
     Presentation: {
@@ -883,8 +1103,16 @@ export interface components {
     };
     /** ProblemPublic */
     ProblemPublic: {
+      /**
+       * Activity State
+       * @default ready
+       * @enum {string}
+       */
+      activity_state: "generating" | "reference_capture" | "ready";
       /** Assistance Level */
       assistance_level: number;
+      /** Concept Focus */
+      concept_focus?: string | null;
       /**
        * Created At
        * Format: date-time
@@ -903,6 +1131,9 @@ export interface components {
       operations: components["schemas"]["OperationPublic"][];
       /** Problem Text */
       problem_text: string;
+      /** Reference Source */
+      reference_source?:
+        ("topic" | "reference_text" | "reference_photo") | null;
       /**
        * Session Id
        * Format: uuid
@@ -1105,6 +1336,41 @@ export interface components {
       providers: components["schemas"]["ProviderPublic"][];
       routes: components["schemas"]["Routes"];
     };
+    /** ReadingPublic */
+    ReadingPublic: {
+      /** Ambiguities */
+      ambiguities: string[];
+      /** Can Continue */
+      can_continue: boolean;
+      /** Confidence */
+      confidence: number;
+      /** Organization Feedback */
+      organization_feedback: string[];
+      /**
+       * Quality
+       * @enum {string}
+       */
+      quality: "clear" | "uncertain" | "unreadable";
+      /** Rejection Reason */
+      rejection_reason: string | null;
+      /** Transcription */
+      transcription: string;
+    };
+    /** ReferenceMaterialPublic */
+    ReferenceMaterialPublic: {
+      /**
+       * Problem Id
+       * Format: uuid
+       */
+      problem_id: string;
+      /**
+       * Source
+       * @enum {string}
+       */
+      source: "reference_text" | "reference_photo";
+      /** Text */
+      text: string;
+    };
     /** Routes */
     Routes: {
       /**
@@ -1224,6 +1490,65 @@ export interface components {
        * @default
        */
       work_text: string;
+    };
+    /** TutorActivityInput */
+    TutorActivityInput: {
+      /** Reference Text */
+      reference_text?: string | null;
+      /**
+       * Source
+       * @default topic
+       * @enum {string}
+       */
+      source: "topic" | "reference_text" | "reference_photo";
+    };
+    /** TutorSettingsInput */
+    TutorSettingsInput: {
+      /**
+       * Initiative
+       * @enum {string}
+       */
+      initiative: "tutor_led" | "balanced" | "learner_led";
+    };
+    /** TutoringSessionInput */
+    TutoringSessionInput: {
+      /**
+       * Initiative
+       * @default balanced
+       * @enum {string}
+       */
+      initiative: "tutor_led" | "balanced" | "learner_led";
+      /**
+       * Learner Id
+       * Format: uuid
+       */
+      learner_id: string;
+      /** Topic */
+      topic: string;
+    };
+    /** TutoringSessionPublic */
+    TutoringSessionPublic: {
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+      /**
+       * Initiative
+       * @enum {string}
+       */
+      initiative: "tutor_led" | "balanced" | "learner_led";
+      /**
+       * Learner Id
+       * Format: uuid
+       */
+      learner_id: string;
+      /** Problems */
+      problems: components["schemas"]["ProblemPublic"][];
+      /** Status */
+      status: string;
+      /** Topic */
+      topic: string;
     };
     /** UsagePublic */
     UsagePublic: {
@@ -2004,6 +2329,132 @@ export interface operations {
       };
     };
   };
+  info_api_v1_phone_upload_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PhoneUploadInfo"];
+        };
+      };
+    };
+  };
+  upload_api_v1_phone_upload_photos_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      202: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PhoneReceipt"];
+        };
+      };
+    };
+  };
+  preview_api_v1_phone_upload_preview_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": unknown;
+        };
+      };
+    };
+  };
+  revoke_link_api_v1_phone_uploads__identifier__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        identifier: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PhoneReceipt"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  create_link_api_v1_problems__problem_id__phone_uploads_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        problem_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["VersionInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["PhoneUploadLink"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   upload_photo_api_v1_problems__problem_id__photos_post: {
     parameters: {
       query: {
@@ -2371,6 +2822,160 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ProfilePublic"][];
+        };
+      };
+    };
+  };
+  sessions_api_v1_tutor_sessions_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TutoringSessionPublic"][];
+        };
+      };
+    };
+  };
+  create_session_api_v1_tutor_sessions_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["TutoringSessionInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TutoringSessionPublic"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  read_session_api_v1_tutor_sessions__session_id__get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TutoringSessionPublic"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  activity_api_v1_tutor_sessions__session_id__activities_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["TutorActivityInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["ProblemPublic"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  settings_api_v1_tutor_sessions__session_id__settings_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        session_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["TutorSettingsInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["TutoringSessionPublic"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
         };
       };
     };

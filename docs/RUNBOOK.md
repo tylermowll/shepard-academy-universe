@@ -18,6 +18,10 @@ run multiple API workers or put SQLite on a network/cloud-sync filesystem.
 
 ## Private HTTPS and phones
 
+For the iPhone QR camera workflow and a step-by-step Spark/vLLM setup, see
+[PHONE_SETUP](PHONE_SETUP.md). `make serve` supervises the API/worker behind the
+separately configured HTTPS gateway and preserves data on exit.
+
 Set `APP_PUBLIC_ORIGIN=https://your-reviewed-hostname` to the exact browser origin.
 The backend selects Secure cookies automatically and rejects other Host/Origin
 values. Run Caddy on the host using `infra/gateway/Caddyfile` and set `TUTOR_HOST`
@@ -31,7 +35,9 @@ that allows only 443 needs TLS-ALPN validation or a separately configured DNS
 challenge; HTTP-01 requires a deliberate port-80 exception. Do not expose model,
 worker, database, or administration service ports as a workaround.
 
-Pair each phone browser from the adult workspace. Record actual Safari/Chrome
+For full learner practice on a phone, pair its browser from the adult workspace.
+The camera-only QR companion instead delegates one upload without a learner login.
+Record actual Safari/Chrome
 camera, HEIC, background/reconnect, install/update, zoom, keyboard and screen-reader
 results using ACCEPTANCE. An emulator does not replace these checks.
 
@@ -80,7 +86,7 @@ not container evidence; see TASKS for observed CI results.
 
 Confirmed photos become inaccessible when processing completes and are then
 deleted. A crash or storage failure leaves a durable cleanup reference for the
-next sweep. Failed/unconfirmed photos default to 24 hours and are capped at 24;
+next sweep. Failed/unprocessed photos default to 24 hours and are capped at 24;
 `PHOTO_RETENTION_HOURS` permits shorter retention. History defaults to 30 days;
 `HISTORY_RETENTION_DAYS` is bounded 1–365. The worker sweeps every 60 seconds while
 running. Monitor readiness and restart a failed worker; downtime delays physical

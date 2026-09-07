@@ -5,14 +5,14 @@ provider credential, or model weights were accessed during implementation.
 Adapter contract tests are evidence of software behavior, not model quality or
 eligibility for a particular audience.
 
-| Adapter | Implemented protocol | Automated evidence | Live status |
-|---|---|---|---|
-| Mock | Deterministic text and explicit blank/ambiguous vision result | Worker, schema, photo-confirmation and fixture tests | No model; not an OCR or quality result |
-| Meta Spark | Bounded Chat Completions messages/image data URI, structured JSON | Wire shape, errors, adult-only/cloud policy | Pending exact approved model/account and current provider contract check |
-| Ollama | Native `/api/chat`, separate system message, base64 image, `format` schema | Text/image mapping and typed error contracts | Pending exact installed model/runtime |
-| vLLM | `/chat/completions`, content image blocks and JSON schema response format | Capability and compatible transport contracts | Pending exact served model/runtime/template |
-| Compatible | Bounded Chat Completions endpoint, explicit native or JSON-prompt mode | Strict payload, malformed/refusal/429/timeout handling | Pending exact endpoint semantics |
-| Bedrock | boto3 Converse content blocks, system, image bytes, output schema | SDK Stubber with locked boto3 schema; no static keys | Pending approved region/model/profile and IAM access |
+| Adapter    | Implemented protocol                                                                                  | Automated evidence                                                   | Live status                                                              |
+| ---------- | ----------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Mock       | Explicit synthetic generation/guidance and one recognized public image fixture; other images rejected | Worker, schema, automatic clear reading, rejection and fixture tests | No model; not an OCR or quality result                                   |
+| Meta Spark | Bounded Chat Completions messages/image data URI, structured JSON                                     | Wire shape, errors, adult-only/cloud policy                          | Pending exact approved model/account and current provider contract check |
+| Ollama     | Native `/api/chat`, separate system message, base64 image, `format` schema                            | Text/image mapping and typed error contracts                         | Pending exact installed model/runtime                                    |
+| vLLM       | `/chat/completions`, content image blocks and JSON schema response format                             | Capability and compatible transport contracts                        | Pending exact served model/runtime/template                              |
+| Compatible | Bounded Chat Completions endpoint, explicit native or JSON-prompt mode                                | Strict payload, malformed/refusal/429/timeout handling               | Pending exact endpoint semantics                                         |
+| Bedrock    | boto3 Converse content blocks, system, image bytes, output schema                                     | SDK Stubber with locked boto3 schema; no static keys                 | Pending approved region/model/profile and IAM access                     |
 
 The implementation uses documented
 [Ollama chat](https://docs.ollama.com/api/chat),
@@ -44,6 +44,15 @@ endpoint/model from the disabled example.
    versions, date, sample counts, failures, latency, token usage and human review.
    A failed local route never invokes an alternate provider.
 
+Select both **tutor** and **vision** for the T25 experience. They may point to the
+same model or to separate local/API models. The basic probes establish transport
+and modality only. T25 also uses typed activity-generation, full-work reading,
+and conceptual-guidance schemas. Exercise the actual application loop using
+[TUTOR_EVALUATION](TUTOR_EVALUATION.md) before claiming those tasks work well on
+your model. Increase the explicitly configured context budget to match your
+actual server when needed; the app rejects over-budget work rather than silently
+clipping a paragraph or switching providers.
+
 The fixed request budget is six calls per operation, with no hidden SDK retries
 and no automatic schema repair. Live calls have a 90-second total deadline in a
 short-lived child process, plus up to 2.1 seconds to stop/reap it (D008). This cannot
@@ -74,7 +83,10 @@ schema failures/refusals, answer rejection, and latency separately. Reserve the
 six held-out images for final review, not prompt tuning. The images are rendered
 synthetic typeset exercises, not a representative handwriting benchmark; add
 original consenting adult handwriting before claiming handwriting performance.
-Every photo still requires confirmation even after successful evaluation.
+The primary tutor has no photo approval step. It displays the reading and
+automatically continues clear work. Unclear readings stop with concrete
+handwriting/organization advice. The historical exact-math fixture evaluator
+does not certify this new multi-subject tutoring loop.
 
 The optional browser research uses WebLLM 0.2.84 and the exact model/runtime hashes
 in `apps/web/src/research-manifest.json`. Only public metadata was fetched during

@@ -73,14 +73,86 @@
           "photos_available": {
             "title": "Photos Available",
             "type": "boolean"
+          },
+          "text_processing": {
+            "title": "Text Processing",
+            "type": "string"
+          },
+          "tutor_status": {
+            "title": "Tutor Status",
+            "type": "string"
+          },
+          "tutoring_available": {
+            "title": "Tutoring Available",
+            "type": "boolean"
           }
         },
         "required": [
           "photos_available",
           "photo_status",
-          "external_problems"
+          "external_problems",
+          "tutoring_available",
+          "tutor_status",
+          "text_processing"
         ],
         "title": "Features",
+        "type": "object"
+      },
+      "FeedbackPayload": {
+        "additionalProperties": false,
+        "description": "Teaching observations are not grades, tools, or completion commands.",
+        "properties": {
+          "concepts": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5,
+            "title": "Concepts",
+            "type": "array"
+          },
+          "guidance": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5,
+            "minItems": 1,
+            "title": "Guidance",
+            "type": "array"
+          },
+          "next_step": {
+            "maxLength": 1000,
+            "minLength": 1,
+            "title": "Next Step",
+            "type": "string"
+          },
+          "strengths": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 5,
+            "title": "Strengths",
+            "type": "array"
+          },
+          "uncertainty_note": {
+            "anyOf": [
+              {
+                "maxLength": 500,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Uncertainty Note"
+          }
+        },
+        "required": [
+          "strengths",
+          "guidance",
+          "next_step",
+          "concepts"
+        ],
+        "title": "FeedbackPayload",
         "type": "object"
       },
       "HTTPValidationError": {
@@ -115,9 +187,23 @@
           "learner": {
             "$ref": "#/components/schemas/LearnerPublic"
           },
+          "reference_material": {
+            "items": {
+              "$ref": "#/components/schemas/ReferenceMaterialPublic"
+            },
+            "title": "Reference Material",
+            "type": "array"
+          },
           "sessions": {
             "items": {
-              "$ref": "#/components/schemas/SessionPublic"
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SessionPublic"
+                },
+                {
+                  "$ref": "#/components/schemas/TutoringSessionPublic"
+                }
+              ]
             },
             "title": "Sessions",
             "type": "array"
@@ -125,7 +211,8 @@
         },
         "required": [
           "learner",
-          "sessions"
+          "sessions",
+          "reference_material"
         ],
         "title": "LearnerExport",
         "type": "object"
@@ -247,6 +334,16 @@
             "title": "Created At",
             "type": "string"
           },
+          "feedback": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FeedbackPayload"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -304,6 +401,16 @@
             "format": "uuid",
             "title": "Problem Id",
             "type": "string"
+          },
+          "reading": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ReadingPublic"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "safe_error": {
             "anyOf": [
@@ -386,6 +493,71 @@
           "approved"
         ],
         "title": "PairPublic",
+        "type": "object"
+      },
+      "PhoneReceipt": {
+        "properties": {
+          "received": {
+            "default": true,
+            "title": "Received",
+            "type": "boolean"
+          }
+        },
+        "title": "PhoneReceipt",
+        "type": "object"
+      },
+      "PhoneUploadInfo": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "problem_text": {
+            "title": "Problem Text",
+            "type": "string"
+          },
+          "processing": {
+            "title": "Processing",
+            "type": "string"
+          },
+          "received": {
+            "title": "Received",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "expires_at",
+          "received",
+          "problem_text",
+          "processing"
+        ],
+        "title": "PhoneUploadInfo",
+        "type": "object"
+      },
+      "PhoneUploadLink": {
+        "properties": {
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "url": {
+            "title": "Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "url",
+          "expires_at"
+        ],
+        "title": "PhoneUploadLink",
         "type": "object"
       },
       "Presentation": {
@@ -471,9 +643,30 @@
       },
       "ProblemPublic": {
         "properties": {
+          "activity_state": {
+            "default": "ready",
+            "enum": [
+              "generating",
+              "reference_capture",
+              "ready"
+            ],
+            "title": "Activity State",
+            "type": "string"
+          },
           "assistance_level": {
             "title": "Assistance Level",
             "type": "integer"
+          },
+          "concept_focus": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Concept Focus"
           },
           "created_at": {
             "format": "date-time",
@@ -507,6 +700,22 @@
           "problem_text": {
             "title": "Problem Text",
             "type": "string"
+          },
+          "reference_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "topic",
+                  "reference_text",
+                  "reference_photo"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Source"
           },
           "session_id": {
             "format": "uuid",
@@ -902,6 +1111,102 @@
         "title": "ProvidersPublic",
         "type": "object"
       },
+      "ReadingPublic": {
+        "additionalProperties": false,
+        "properties": {
+          "ambiguities": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Ambiguities",
+            "type": "array"
+          },
+          "can_continue": {
+            "title": "Can Continue",
+            "type": "boolean"
+          },
+          "confidence": {
+            "maximum": 1.0,
+            "minimum": 0.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "organization_feedback": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 8,
+            "title": "Organization Feedback",
+            "type": "array"
+          },
+          "quality": {
+            "enum": [
+              "clear",
+              "uncertain",
+              "unreadable"
+            ],
+            "title": "Quality",
+            "type": "string"
+          },
+          "rejection_reason": {
+            "anyOf": [
+              {
+                "maxLength": 1000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rejection Reason"
+          },
+          "transcription": {
+            "maxLength": 8000,
+            "title": "Transcription",
+            "type": "string"
+          }
+        },
+        "required": [
+          "transcription",
+          "quality",
+          "confidence",
+          "ambiguities",
+          "organization_feedback",
+          "rejection_reason",
+          "can_continue"
+        ],
+        "title": "ReadingPublic",
+        "type": "object"
+      },
+      "ReferenceMaterialPublic": {
+        "properties": {
+          "problem_id": {
+            "format": "uuid",
+            "title": "Problem Id",
+            "type": "string"
+          },
+          "source": {
+            "enum": [
+              "reference_text",
+              "reference_photo"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "problem_id",
+          "source",
+          "text"
+        ],
+        "title": "ReferenceMaterialPublic",
+        "type": "object"
+      },
       "Routes": {
         "additionalProperties": false,
         "properties": {
@@ -1117,7 +1422,7 @@
           },
           "text": {
             "default": "",
-            "maxLength": 4000,
+            "maxLength": 8000,
             "title": "Text",
             "type": "string"
           },
@@ -1128,7 +1433,7 @@
           },
           "work_text": {
             "default": "",
-            "maxLength": 4000,
+            "maxLength": 8000,
             "title": "Work Text",
             "type": "string"
           }
@@ -1137,6 +1442,134 @@
           "version"
         ],
         "title": "SubmissionInput",
+        "type": "object"
+      },
+      "TutorActivityInput": {
+        "additionalProperties": false,
+        "properties": {
+          "reference_text": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Text"
+          },
+          "source": {
+            "default": "topic",
+            "enum": [
+              "topic",
+              "reference_text",
+              "reference_photo"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "title": "TutorActivityInput",
+        "type": "object"
+      },
+      "TutorSettingsInput": {
+        "additionalProperties": false,
+        "properties": {
+          "initiative": {
+            "enum": [
+              "tutor_led",
+              "balanced",
+              "learner_led"
+            ],
+            "title": "Initiative",
+            "type": "string"
+          }
+        },
+        "required": [
+          "initiative"
+        ],
+        "title": "TutorSettingsInput",
+        "type": "object"
+      },
+      "TutoringSessionInput": {
+        "additionalProperties": false,
+        "properties": {
+          "initiative": {
+            "default": "balanced",
+            "enum": [
+              "tutor_led",
+              "balanced",
+              "learner_led"
+            ],
+            "title": "Initiative",
+            "type": "string"
+          },
+          "learner_id": {
+            "format": "uuid",
+            "title": "Learner Id",
+            "type": "string"
+          },
+          "topic": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "learner_id",
+          "topic"
+        ],
+        "title": "TutoringSessionInput",
+        "type": "object"
+      },
+      "TutoringSessionPublic": {
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "initiative": {
+            "enum": [
+              "tutor_led",
+              "balanced",
+              "learner_led"
+            ],
+            "title": "Initiative",
+            "type": "string"
+          },
+          "learner_id": {
+            "format": "uuid",
+            "title": "Learner Id",
+            "type": "string"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/ProblemPublic"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "topic": {
+            "title": "Topic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "learner_id",
+          "status",
+          "topic",
+          "initiative",
+          "problems"
+        ],
+        "title": "TutoringSessionPublic",
         "type": "object"
       },
       "UsagePublic": {
@@ -2200,6 +2633,163 @@
         ]
       }
     },
+    "/api/v1/phone-upload": {
+      "get": {
+        "operationId": "info_api_v1_phone_upload_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhoneUploadInfo"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Info",
+        "tags": [
+          "phone camera"
+        ]
+      }
+    },
+    "/api/v1/phone-upload/photos": {
+      "post": {
+        "operationId": "upload_api_v1_phone_upload_photos_post",
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhoneReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Upload",
+        "tags": [
+          "phone camera"
+        ]
+      }
+    },
+    "/api/v1/phone-upload/preview": {
+      "post": {
+        "operationId": "preview_api_v1_phone_upload_preview_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Preview",
+        "tags": [
+          "phone camera"
+        ]
+      }
+    },
+    "/api/v1/phone-uploads/{identifier}": {
+      "delete": {
+        "operationId": "revoke_link_api_v1_phone_uploads__identifier__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "identifier",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Identifier",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhoneReceipt"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Link",
+        "tags": [
+          "phone camera"
+        ]
+      }
+    },
+    "/api/v1/problems/{problem_id}/phone-uploads": {
+      "post": {
+        "operationId": "create_link_api_v1_problems__problem_id__phone_uploads_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "problem_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Problem Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VersionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhoneUploadLink"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Link",
+        "tags": [
+          "phone camera"
+        ]
+      }
+    },
     "/api/v1/problems/{problem_id}/photos": {
       "post": {
         "operationId": "upload_photo_api_v1_problems__problem_id__photos_post",
@@ -2734,6 +3324,219 @@
         "summary": "Profiles",
         "tags": [
           "profiles"
+        ]
+      }
+    },
+    "/api/v1/tutor/sessions": {
+      "get": {
+        "operationId": "sessions_api_v1_tutor_sessions_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TutoringSessionPublic"
+                  },
+                  "title": "Response Sessions Api V1 Tutor Sessions Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Sessions",
+        "tags": [
+          "AI tutoring"
+        ]
+      },
+      "post": {
+        "operationId": "create_session_api_v1_tutor_sessions_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TutoringSessionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TutoringSessionPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Session",
+        "tags": [
+          "AI tutoring"
+        ]
+      }
+    },
+    "/api/v1/tutor/sessions/{session_id}": {
+      "get": {
+        "operationId": "read_session_api_v1_tutor_sessions__session_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TutoringSessionPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Read Session",
+        "tags": [
+          "AI tutoring"
+        ]
+      }
+    },
+    "/api/v1/tutor/sessions/{session_id}/activities": {
+      "post": {
+        "operationId": "activity_api_v1_tutor_sessions__session_id__activities_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TutorActivityInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Activity",
+        "tags": [
+          "AI tutoring"
+        ]
+      }
+    },
+    "/api/v1/tutor/sessions/{session_id}/settings": {
+      "post": {
+        "operationId": "settings_api_v1_tutor_sessions__session_id__settings_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Session Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TutorSettingsInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TutoringSessionPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Settings",
+        "tags": [
+          "AI tutoring"
         ]
       }
     },

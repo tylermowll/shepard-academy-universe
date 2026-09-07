@@ -5,32 +5,273 @@ The normative scope, dependencies, deliverables, and exit evidence are in
 records implementation status; a task is complete only when all of its
 specification gates pass.
 
-| Task | Status | Current evidence / next boundary |
-|---|---|---|
-| T00 | Complete | Local gates and original hosted CI verified; review validation below. |
-| T01 | Reviewed; complete | Explicit transactional SQLite, stable/private storage, real rollback/migration/drift gates. Review commit ae3f135 passes local and hosted CI. |
-| T02 | Reviewed; complete | Startup/setup, strict origins, expiring CSRF, reset/rotation/revocation, bounded login limits, and session constraints in migration 0002. D005 removes the review's development-schema upgrade bridge; cutover evidence below. |
-| T03 | Implemented; automated gates passed | Browser-bound pairing, expiry/revoke and two-learner ownership. |
-| T04 | Implemented; automated gates passed | Exact parser/generators; Fraction/property and hostile-input tests. |
-| T05 | Implemented; automated gates passed | Persisted practice, answers/steps/help/history and browser completion. |
-| T06 | Implemented; automated gates passed | Durable leases, six-call budget, idempotency, crash/deletion recovery. |
-| T07 | Implemented; contract-tested | Mock and strict provider policy/errors; no cloud fallback. |
-| T08 | Implemented; automated gates passed | Versioned profiles, questions, authored assistance and preview. |
-| T09 | Implemented; live verification pending | Meta wire-contract/adult-policy tests; exact account contract must be verified. |
-| T10 | Implemented; automated gates passed | Private normalized photos, immutable confirmation and stale-write tests. |
-| T11 | Implemented; physical phone evidence pending | HEIF/metadata/bounds tests and browser preview/crop/rotation flow. |
-| T12 | Implemented; live unverified | Ollama native text/image contracts; operator setup documented. |
-| T13 | Implemented; live unverified | vLLM/compatible bounded wire/capability contracts; runtime/model pending. |
-| T14 | Implemented; live unverified | Bedrock Converse SDK Stubber tests; region/model/IAM pending. |
-| T15 | Implemented; automated gates passed | Linear equation generator, independent arithmetic properties and exact parser. |
-| T16 | Implemented; automated gates passed | Review/progress, authenticated export, deletion and restore tombstones. |
-| T17 | Implemented; physical accessibility/phone evidence pending | Public-only PWA caches, manual update, offline/reconnect browser tests. |
-| T18 | Implemented; live quality evaluation pending | 33 original rational and 30 rendered vision fixtures, four external fixtures; mock report and A01–A24 mapping. |
-| T19 | Implemented; final release acceptance pending | Hardened packaging/backup/restore/docs; local/hosted evidence below; maintainer gates remain. |
-| T20 | Implemented; IaC validation passed | Single-host EC2/EBS, private backup S3, IAM/budget runbook; no provisioning. |
-| T21 | Implemented; automated gates passed | Public offline pack, exact local answers, no sync or grading authority. |
-| T22 | Implemented; automated gates passed | Opt-in external-photo question confirmation; four fixtures remain unverifiable. |
-| T23 | Implemented experiment; device measurement pending | Pinned text-only WebLLM research with consent/hash validation/cancel/delete; no weights downloaded. |
+| Task | Status                                                         | Current evidence / next boundary                                                                                                                                                                                               |
+| ---- | -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| T00  | Complete                                                       | Local gates and original hosted CI verified; review validation below.                                                                                                                                                          |
+| T01  | Reviewed; complete                                             | Explicit transactional SQLite, stable/private storage, real rollback/migration/drift gates. Review commit ae3f135 passes local and hosted CI.                                                                                  |
+| T02  | Reviewed; complete                                             | Startup/setup, strict origins, expiring CSRF, reset/rotation/revocation, bounded login limits, and session constraints in migration 0002. D005 removes the review's development-schema upgrade bridge; cutover evidence below. |
+| T03  | Implemented; automated gates passed                            | Browser-bound pairing, expiry/revoke and two-learner ownership.                                                                                                                                                                |
+| T04  | Implemented; automated gates passed                            | Exact parser/generators; Fraction/property and hostile-input tests.                                                                                                                                                            |
+| T05  | Implemented; automated gates passed                            | Persisted practice, answers/steps/help/history and browser completion.                                                                                                                                                         |
+| T06  | Implemented; automated gates passed                            | Durable leases, six-call budget, idempotency, crash/deletion recovery.                                                                                                                                                         |
+| T07  | Implemented; contract-tested                                   | Mock and strict provider policy/errors; no cloud fallback.                                                                                                                                                                     |
+| T08  | Implemented; automated gates passed                            | Versioned profiles, questions, authored assistance and preview.                                                                                                                                                                |
+| T09  | Implemented; live verification pending                         | Meta wire-contract/adult-policy tests; exact account contract must be verified.                                                                                                                                                |
+| T10  | Implemented; automated gates passed                            | Private normalized photos, immutable confirmation and stale-write tests.                                                                                                                                                       |
+| T11  | Implemented; physical phone evidence pending                   | HEIF/metadata/bounds tests and browser preview/crop/rotation flow.                                                                                                                                                             |
+| T12  | Implemented; live unverified                                   | Ollama native text/image contracts; operator setup documented.                                                                                                                                                                 |
+| T13  | Implemented; live unverified                                   | vLLM/compatible bounded wire/capability contracts; runtime/model pending.                                                                                                                                                      |
+| T14  | Implemented; live unverified                                   | Bedrock Converse SDK Stubber tests; region/model/IAM pending.                                                                                                                                                                  |
+| T15  | Implemented; automated gates passed                            | Linear equation generator, independent arithmetic properties and exact parser.                                                                                                                                                 |
+| T16  | Implemented; automated gates passed                            | Review/progress, authenticated export, deletion and restore tombstones.                                                                                                                                                        |
+| T17  | Implemented; physical accessibility/phone evidence pending     | Public-only PWA caches, manual update, offline/reconnect browser tests.                                                                                                                                                        |
+| T18  | Implemented; live quality evaluation pending                   | 33 original rational and 30 rendered vision fixtures, four external fixtures; mock report and A01–A24 mapping.                                                                                                                 |
+| T19  | Implemented; final release acceptance pending                  | Hardened packaging/backup/restore/docs; local/hosted evidence below; maintainer gates remain.                                                                                                                                  |
+| T20  | Implemented; IaC validation passed                             | Single-host EC2/EBS, private backup S3, IAM/budget runbook; no provisioning.                                                                                                                                                   |
+| T21  | Implemented; automated gates passed                            | Public offline pack, exact local answers, no sync or grading authority.                                                                                                                                                        |
+| T22  | Implemented; automated gates passed                            | Opt-in external-photo question confirmation; four fixtures remain unverifiable.                                                                                                                                                |
+| T23  | Implemented experiment; device measurement pending             | Pinned text-only WebLLM research with consent/hash validation/cancel/delete; no weights downloaded.                                                                                                                            |
+| T24  | Implemented; physical phone/live provider verification pending | Expiring QR upload, computer confirmation, HTTPS launch/runbook; automated migration, authorization, retry and two-browser gates passed.                                                                                       |
+| T25  | Implemented; automated gates passed; live quality unverified   | AI-only multi-subject tutoring, reference-only homework intake, contextual guidance, adjustable initiative and automatic clear photo reading; 125 unit, 33 component, 128 integration and 28 browser tests passed.             |
+
+### T25 — Restore the central AI tutoring experience (2026-09-07)
+
+Approved workflow: **Choose a topic → receive a problem → photograph your
+solution → see the reading → receive specific guidance → revise or discuss
+→ get the next appropriate problem.** No required school level or finite subject
+catalog. Math, writing, reading, history, social studies, science, and other
+topics use the same tutoring workflow. A model's limitations must be disclosed,
+not turned into a hard-coded curriculum restriction.
+
+The maintainer clarified that uploaded/pasted assignments are reference-only:
+teach their concepts and generate distinct analogous practice, never solve the
+original homework. The tutor guides and explains with different examples rather
+than supplying the active task's answer. Tutor initiative is adjustable. Display
+the full reading of handwritten work and actionable organization advice; clear
+readings continue automatically, while uncertain/unreadable work
+stops tutoring and asks for a cleaner or clarified submission. D009 supersedes
+the old fixed-catalog and universal manual-confirmation product assumptions.
+
+Contracts to implement: typed tutoring session/activity/settings endpoints;
+generation, reading-quality and guidance provider schemas; existing durable
+worker extended for context-aware generation and review; ownership-bound reading
+quality routing without any approval endpoint; real database migration; primary multi-subject React workspace and
+generated OpenAPI/TypeScript. Reuse private image normalization, iPhone QR upload,
+provider routing, retention/export, retries and authentication. No fixed-template
+catalog, authored-hint fallback, or manual/hidden approval gate in the tutor.
+Historical math-domain test utilities do not constrain the learning experience.
+No new service, model download, or paid hosting is required.
+
+Acceptance: a non-math topic through generated activity, photograph, displayed
+reading, guidance, revision/discussion, and next activity; pasted/photo reference
+to distinct practice without original answers; low-quality photo stops before
+guidance and gives handwriting advice; setting changes affect subsequent model
+requests; bounded relevant history; duplicate/stale/wrong-owner/canceled/deleted
+work cannot trigger extra accepted results. Check no hidden answer/provider
+secret exposure, no local-to-cloud fallback, safe output rendering, migration
+rollback/integrity, and content retention. Synthetic model responses establish
+orchestration only, not actual accuracy or perfect resistance to answer leakage.
+
+The maintainer explicitly reiterated that neither templates nor approvals were
+ever desired; the proposed browser acknowledgement was also rejected. Persist the
+reading and automatically continue clear work as a durable worker stage. Render
+the reading before the feedback without waiting for a learner/client approval.
+
+Plan and evidence protocol: follow `implement-task`; implement backend and UI in
+separate owned files with an independent acceptance review, then run targeted
+checks and `make check`, `make test-integration`, `make smoke`, `make eval-mock`.
+Record exact observed outcomes here before completion. The maintainer authorized
+committing the reviewed public T24/T25 changes and pushing `main`; private data,
+unlicensed internet images, live inference, and public deployment remain outside
+that authorization. Live vision/pedagogy and physical iPhone checks remain open.
+
+Implementation:
+
+- `api/tutoring.py`, `tutoring.py`, `worker.py`, shared practice/photo/phone routes,
+  and provider contracts/transports now implement durable generation, full-work
+  reading and contextual guidance. The primary AI path never calls the exact
+  answer checker. Clear readings queue guidance automatically; uncertain readings
+  terminate without tutoring and carry concrete organization/retake advice.
+- Migration `0010_ai_tutoring.py` persists topic/mode/initiative with real SQLite
+  constraints, structured reading observations, and tutor feedback. Models return
+  neither verified grades nor completion commands. Moving on is an explicit
+  learner action; subsequent generation receives relevant recent work and guidance.
+- Source text/photo intake creates distinct practice. Original reference material
+  is absent from subsequent guidance/adaptation prompts and is included in the
+  authenticated adult export through an explicit typed reference list. Historical
+  catalog/external-photo endpoints reject attempts to inject tasks into AI sessions.
+- `Tutor.tsx` replaces the primary practice UI. Removed the obsolete `Practice.tsx`
+  and `OfflinePractice.tsx` components and fixed-math profile controls. Kept
+  authentication/provider/privacy controls, iPhone QR/crop/upload, and safe
+  rendering. The AI interface has no catalog, required level, approval control,
+  or authored fallback. Browser labels disclose separate text/photo processing.
+- Regenerated OpenAPI and TypeScript; updated brand, setup/operations/provider
+  instructions, AGENTS/SPECIFICATION/D009, threat model and acceptance criteria.
+  `docs/TUTOR_EVALUATION.md` adds original cross-subject human-review cases. The
+  earlier internet examples remain ignored, local-only and unlicensed for public
+  redistribution. The container smoke assertion now matches the new UI title.
+
+Observed verification (same explicit temporary toolchain environment recorded in
+T24 below; async tests run outside the restricted sandbox using only synthetic
+temporary data):
+
+- `make contracts`: passed; generated files not hand-edited.
+- `make check`: passed locks, Ruff/formatting, strict Python/TypeScript types
+  (**54** Python source/test files), **125 backend unit tests**, **33 frontend
+  component tests**, API/PWA builds, generated-contract drift, tracked credential
+  scan and IaC lint. Backend unit runtime: **13.69 s**. Existing Vite chunk-size
+  warning remains non-fatal (main JS approximately 504 kB; optional WebLLM bundle
+  remains separate). No warning threshold was raised.
+- Final root `make test-integration`: **128 passed in 35.96 s**, after the
+  history-context and strict-test-typing corrections.
+- Final targeted `pytest tests/integration/test_tutoring.py
+tests/unit/test_tutoring_contracts.py`: **43 passed** in **7.12 s**, covering the
+  **21** new AI integration and **22** new provider/quality/context contract cases.
+- `make smoke`: **28 passed** across desktop/mobile Chromium in **3.2 min**,
+  using the actual API, worker, SQLite and explicitly synthetic providers. A final
+  `pnpm smoke --grep 'phone photo'` rerun passed **2** strengthened cases in **42 s**,
+  asserting exact known-fixture reading, handwriting advice, reading-before-feedback
+  DOM order, no approval call/control, phone privacy, revisions/discussion and a
+  distinct next activity ID. No API success responses were invented by UI routes.
+- `make eval-mock`: passed the existing **63 original rational/vision fixtures**
+  with report `passed: true`; this is not a multi-subject model-quality score.
+- `sh -n scripts/container-smoke.sh` and `git diff --check`: passed.
+
+Review caught and fixed a photo-component remount losing lost-ack retry bytes, an
+old external-problem endpoint bypass, and orphaned assistant context after history
+trimming. Early full gates also caught new smoke/backend-test typing errors; they
+were fixed without ignores, weakened assertions or disabled checks. Old browser
+math/approval expectations were replaced because the maintainer explicitly
+removed that product behavior; their privacy/retry/isolation assertions remain.
+
+Not run: live vLLM/Spark/Ollama/Bedrock inference or quality evaluation, actual
+iPhone Safari/camera/HTTPS/background testing, private operator setup, model
+downloads, retained private-database migration, local container/security scan,
+or public deployment. Synthetic confidence/policy fixtures do not prove actual
+handwriting accuracy, teaching quality, factual correctness, or perfect resistance
+to giving homework answers. Configure real tutor and vision routes and use
+PHONE_SETUP/TUTOR_EVALUATION for the device/model trial.
+
+Publication: the remote `origin/main` was fetched and matched the local base
+before work was committed. The maintainer authorized a normal push to `main`;
+no force push, deployment, private data, or unlicensed examples are included.
+The final response records the resulting commit and remote/CI status.
+
+### T24 — iPhone camera companion (2026-09-07)
+
+Maintainer requested an end-to-end computer tutor with iPhone handwritten-photo
+submission, using local vLLM or an explicitly configured API. One vertical slice:
+an owner creates a five-minute upload permission for one assigned problem; an
+unpaired phone captures/previews/uploads once; the computer's existing worker
+and polling show an editable interpretation for confirmation before checking.
+
+Contracts: new `phone_upload` migration and typed create/status/upload endpoints;
+hashed bearer secret in the URL fragment and request header only; no phone access
+to history, grading, provider credentials, or administration. Recheck origin,
+issuing session, learner, assignment version and provider policy after decoding.
+Identical upload retries acknowledge the same operation; changed payloads fail.
+Expiry, replacement, logout/revocation, deletion and finished sessions invalidate
+unused permissions. Public assets only remain cacheable.
+
+Acceptance: migration/rollback and integrity; owner/anonymous/wrong-learner
+authorization; expiry, replacement, revocation, stale assignments, duplicate and
+lost-ack upload; one worker interpretation and explicit confirmation; two-browser
+capture with photo preview, no sensitive caching, and phone-width layout.
+Required gates: `make check`, `make test-integration`, `make smoke`,
+`make eval-mock`. Real iPhone/Spark/vLLM evidence remains separate from fixtures.
+
+Implementation and evidence (the repository `implement-task` workflow):
+
+- Backend: `api/phone.py`, shared normalization/enqueue in `api/photos.py`,
+  `api/app.py`/`api/limits.py`, `adapters/db/models.py`, migration
+  `0009_phone_upload.py`, and retention sweep. A token is bound to its issuing
+  session, problem/version and processing-policy fingerprint. No browser-session
+  credential is delegated; previews are reauthorized after decoding; one atomic
+  accepted upload creates one submission/job. Used links disclose only a receipt.
+- Frontend: `PhoneLink.tsx`, `PhoneCapture.tsx`, `PhotoInput.tsx`, `Practice.tsx`,
+  `client.ts`, `main.tsx`, and styles. Local SVG QR generation with pinned
+  `qrcode.react` 4.2.0; fragment secret removed from the address bar and kept in
+  memory; phone upload needs no sign-in; computer shows the submitted image
+  beside the editable reading before confirmation. Regenerated
+  `contracts/openapi.json` and `apps/web/src/generated/api.d.ts` using
+  `make contracts`; no hand-edited generated client.
+- Native launch: `make serve`/`scripts/dev.py --gateway` builds and supervises one
+  loopback API and worker behind an operator-configured HTTPS gateway. README,
+  RUNBOOK and PHONE_SETUP distinguish camera-only delegation from full learner
+  pairing, and document all-LAN Caddy or private Tailscale Serve, explicit cloud
+  consent, Spark/vLLM setup/probes, and current math limitations. No network
+  service or paid hosting was provisioned.
+- Image budget: documented adjustment from 24,000,000 to 25,000,000 decoded pixels
+  accommodates a synthetic 5712 × 4284 (24 MP-class) photo; 8 MiB input and
+  2048-pixel normalized bounds remain. Above-limit rejection remains tested.
+  SPECIFICATION and THREAT_MODEL match the implementation.
+- Maintainer's six root internet images moved unaltered into ignored
+  `evals/incoming/internet-examples/`. `evals/incoming/README.md` records visual
+  suitability and missing provenance/ground truth; MANIFEST excludes them from
+  public fixtures. A local `normalize` check accepted the three PNG/JPEG examples
+  and rejected the three GIFs. An original in-memory GIF now covers valid-GIF
+  rejection in CI without redistributing the downloads. No provider evaluation
+  or learner submission used these examples.
+
+Actual commands and outcomes:
+
+- `make check`: passed locked dependencies, lint/format, Python/TypeScript types,
+  **103 backend unit tests**, **23 frontend tests**, API/PWA builds, regenerated
+  contract drift, tracked-public-text secret scan, and existing infrastructure
+  lint. New launcher tests assert HTTPS-mode validation, loopback binding, API +
+  worker supervision and cleanup using mocked subprocesses. Vite still emits a
+  non-failing large-chunk warning; no bundle-size gate was relaxed.
+- `make test-integration`: **107 passed**, including all 15 phone scenarios and
+  real SQLite migration/rollback/metadata checks. Phone cases cover hash-only
+  persistence, creation-ack replay, concurrent identical uploads, changed bytes,
+  single worker operation, no grading before explicit confirmation, wrong
+  learner/anonymous/origin/body rejection, expiry/replacement/logout/deletion/
+  cancellation/stale assignment, and authorization/policy changes during decode.
+- `make smoke`: **24 passed** across desktop and mobile Chromium configurations.
+  The new case uses two independent browser contexts, previews/sends a synthetic
+  image without phone login, checks no secret in request URLs or local storage,
+  no external request, phone-width layout, computer confirmation before grading,
+  one operation, and a receipt on rescan. Existing lost-ack/reconnect/offline
+  browser regressions also passed. Chromium emulation is not iPhone Safari proof.
+- `make eval-mock`: passed **63 original rational/vision fixtures**; report
+  `evals/reports/deterministic.json` has overall `passed: true`. This is a workflow
+  and deterministic-evaluation check, not measured handwriting accuracy.
+- `git diff --check`: passed. An additional `rg -l` credential-pattern scan of
+  the eight new public source/docs files found no matches (exit 1). `git
+check-ignore` confirms all six moved internet images are excluded.
+
+Verification environment: existing checkout was clean initially. Its API venv
+had a broken interpreter reference and this shell lacked Node/pnpm. Tests used
+temporary tools without replacing the checkout's venv: Python **3.14.7**, uv
+**0.12.10**, Node **24.20.0**, pnpm **12.3.4**. Commands above used:
+
+```bash
+export PATH=/tmp/math-tutor-toolchain-GanGTg/node-v24.20.0-linux-x64/bin:/tmp/math-tutor-toolchain-GanGTg/pnpm/node_modules/.bin:$PATH
+export UV_PROJECT_ENVIRONMENT=/tmp/math-tutor-venv
+export UV_PYTHON_INSTALL_DIR=/tmp/math-tutor-python
+export UV_CACHE_DIR=/tmp/math-tutor-uv-cache
+export PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/opt/google/chrome/chrome
+```
+
+These temporary paths describe this run, not portable setup requirements. Node's
+archive hash was verified against its official SHASUMS. Dependency downloads were
+approved; no model weights were downloaded. The sandbox stalled even a minimal
+AnyIO thread test, so async/backend/browser checks ran with approved execution
+outside it. One approval-review timeout occurred before command execution; the
+permitted retry succeeded. Initial lint/type/mock-response issues and stale
+database-inventory assertions were corrected; the final gates above passed
+without weakened assertions.
+
+Not run: live Meta/Spark/vLLM probes or handwriting-quality evaluations, real
+iPhone QR/Safari/HEIC/background/accessibility checks, HTTPS gateway installation,
+private account/provider configuration, retained-data migration, container/hosted
+CI or security-release scans. No private operator files were opened, no paid
+inference or cloud provisioning occurred, and nothing was committed/pushed.
+Next bounded maintainer action: follow PHONE_SETUP on the chosen host, configure
+the private HTTPS origin and exact image-capable provider, explicitly authorize
+its synthetic vision probe, then photograph one original fraction/equation and
+compare the reading before confirming. API compatibility does not establish
+exact-model image/structured-output support or transcription quality.
 
 ## Evidence
 
@@ -78,7 +319,7 @@ Actual verification:
 - `UV_CACHE_DIR=/tmp/math-tutor-uv-cache make check`: passed lock freshness, Ruff
   lint/format, strict mypy (4 files), pytest (1 API test), and sdist/wheel builds.
 - `uv run --project apps/api --locked pre-commit validate-config
-  .pre-commit-config.yaml`: passed (with the writable cache override).
+.pre-commit-config.yaml`: passed (with the writable cache override).
 - `make hooks-install`: passed in this checkout and in the temporary fixture.
 - In a temporary Git repository containing only reviewed public files, fresh
   `make bootstrap`, `make hooks-install`, `make hooks-check`, `make check`, and an
@@ -314,7 +555,7 @@ a SHA-256-verified Node 24.20.0 provisioned under `/tmp`):
 - `python -m pytest tests/unit tests/integration`: 19 passed (3 unit, 16
   integration) on Python 3.14.7 / SQLite 3.53.1.
 - `python -m ruff check .`, `ruff format --check .`, `python -m mypy src
-  tests` (strict): all pass. `uv lock --check`: 47 packages. `uv build`:
+tests` (strict): all pass. `uv lock --check`: 47 packages. `uv build`:
   sdist/wheel pass.
 - Frontend (untouched, re-verified): ESLint, Prettier check, root and web
   `tsc --noEmit`, Vitest (1 passed), Vite build — all pass.
@@ -364,10 +605,10 @@ Changed files and requirements:
   wait; `Retry-After` is returned). Task-level parameters, not D-decisions:
   24 h lifetime, 10/min/IP limit, 12-character admin minimum.
 - `apps/api/src/math_tutor/api/auth.py` + `api/app.py`: `GET
-  /api/v1/auth/session` (minimal status plus CSRF bootstrap, no learner
+/api/v1/auth/session` (minimal status plus CSRF bootstrap, no learner
   list), `POST /api/v1/auth/login` (double-submit CSRF + Origin + rate
   limit, one identical 401 for unknown/wrong credentials), `POST
-  /api/v1/auth/logout` (session-bound CSRF, immediate revocation, cookie
+/api/v1/auth/logout` (session-bound CSRF, immediate revocation, cookie
   cleared). Session cookies are `HttpOnly`, `SameSite=Lax`, `Secure` on
   https origins, `Path=/`. Responses carry no password/token hashes.
 - `apps/api/src/math_tutor/cli.py` + `Makefile` + `.env.example`: real
@@ -397,7 +638,7 @@ used — every underlying gate ran explicitly):
 - `.venv/bin/python -m ruff check .`, `ruff format --check .`,
   `.venv/bin/python -m mypy src tests` (strict, 19 files): all pass.
 - `uv lock --directory apps/api --check`: fresh (51 packages). `uv build
-  --directory apps/api`: sdist/wheel pass.
+--directory apps/api`: sdist/wheel pass.
 - Frontend (untouched, re-verified with the provisioned Node 24.20.0):
   ESLint, Prettier check, root and web `tsc --noEmit`, Vitest (1 passed),
   Vite build — all pass. pnpm itself is unavailable in this shell, so the
@@ -494,10 +735,10 @@ Actual verification:
   browser cookie expiration; it was corrected to replay a captured cookie and
   complemented by direct server-token expiry/future-time tests.
 - After T01 fixes: `make check PNPM='pnpm --store-dir
-  /tmp/math-tutor-pnpm-store'` passed, and `make test-integration` passed
+/tmp/math-tutor-pnpm-store'` passed, and `make test-integration` passed
   **42 tests** before the T02 review changes.
 - After all fixes: `apps/api/.venv/bin/python -m pytest apps/api/tests/unit
-  apps/api/tests/integration -q` passed **85 tests**, up from 45 original cases.
+apps/api/tests/integration -q` passed **85 tests**, up from 45 original cases.
   This is 22 unit tests and 63 on-disk integration tests; all data is synthetic.
 - Final `make check PNPM='pnpm --store-dir /tmp/math-tutor-pnpm-store'` passed
   both locks, lint/format, strict mypy (19 files), TypeScript, 22 pytest unit
@@ -515,7 +756,7 @@ Actual verification:
 - Commands used the documented `/tmp` Node/Python/cache overrides. A sandboxed
   ASGI run stalled and was interrupted; the synthetic integration/browser gates
   passed with execution permission. No test policy was disabled. `git diff
-  --check` and `git diff --cached --check` passed. `make hooks-check` passed all
+--check` and `git diff --cached --check` passed. `make hooks-check` passed all
   applicable file/privacy, lock, lint/format/type, and unit/component checks.
   Commit `ae3f135` was pushed to `main`; [its full hosted CI run passed](https://github.com/tylermowll/shepard-academy-universe/actions/runs/34072697983)
   in 1m31s, including locked installs, hooks, Make checks, SQLite runtime,
@@ -563,7 +804,7 @@ the historical test/CI observations above remain observations of those commits.
   constraints, foreign-key checks, DDL/savepoint rollback, failed-migration
   atomicity, expiry/revocation, ownership-principal checks, and secret exclusion.
 - `make test-integration`: **62 passed**. `make check
-  PNPM='pnpm --store-dir /tmp/math-tutor-pnpm-store'`: all locks, lint/format,
+PNPM='pnpm --store-dir /tmp/math-tutor-pnpm-store'`: all locks, lint/format,
   strict types, **22 unit + 1 frontend tests**, and Python/Vite builds passed.
   The current backend total is **84 tests**; the count change follows the removed
   compatibility behavior. No failing assertion was suppressed.
@@ -578,7 +819,6 @@ The assessment of Spark's original code remains **5/10 for T01/T02**. The remove
 compatibility migration was added during this review, not by Spark. T03 remains
 ready to start. No private database/configuration was opened or reset, and no
 provider, deployment, or model-download work was performed.
-
 
 ### 2026-09-06 — Authorized completion of remaining implementation
 
@@ -648,7 +888,6 @@ and exercise. It is presentation evidence, not a correctness test.
 Docker is not installed in this workspace; the release container build, runtime
 smoke and image scan are executed by hosted CI after the authorized push. A clean
 checkout rehearsal and observed hosted result will be recorded separately.
-
 
 Clean-clone rehearsal of implementation commit `9c81e37820dce43193d416bd427bd68a5bf93e29`:
 `git clone --no-hardlinks` into a new `/tmp` checkout, `make bootstrap` with a

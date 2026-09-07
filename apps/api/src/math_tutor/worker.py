@@ -39,6 +39,7 @@ from math_tutor.adapters.providers.contracts import (
 from math_tutor.api.practice import finish_deterministic
 from math_tutor.providers import authorize_route, complete, effective_configuration
 from math_tutor.retention import purge_completed_photo
+from math_tutor.tutoring import finish_model, make_request
 
 
 @dataclass(frozen=True)
@@ -127,7 +128,9 @@ def finish(
             return False
         problem = db.get(ProblemInstance, row.problem_id)
         assert problem is not None
-        if job.stage == "interpreting":
+        if problem.template_id.startswith("ai-"):
+            finish_model(db, job, row, problem, result, source)
+        elif job.stage == "interpreting":
             if result is None or not isinstance(result.validated_payload, InterpretationPayload):
                 raise ProviderError("malformed_output")
             payload = result.validated_payload
@@ -183,7 +186,8 @@ def prepare(engine: Engine, work: Claim) -> Prepared | None:
         assert problem is not None
         session = db.get(PracticeSession, problem.session_id)
         assert session is not None
-        if job.stage != "interpreting":
+        ai = problem.template_id.startswith("ai-")
+        if not ai and job.stage != "interpreting":
             if row.kind != "question":
                 return None
             # Authored help is the enforcement mechanism while solutions are protected.
@@ -232,16 +236,20 @@ def prepare(engine: Engine, work: Claim) -> Prepared | None:
                 session.profile_settings
             )
             message = "Assigned problem: " + problem.problem_text + "\nLearner question: " + text
-        request = ModelRequest(
-            operation_id=row.id,
-            stage=stage,
-            model_id=provider.model,
-            system_instruction=instruction[:6000],
-            ordered_messages=[Message(role="user", content=message)],
-            private_image_bytes=image,
-            response_schema=(
-                InterpretationPayload if stage == "vision" else TutorPayload
-            ).model_json_schema(),
+        request = (
+            make_request(db, job, row, problem, session, provider, image)
+            if ai
+            else ModelRequest(
+                operation_id=row.id,
+                stage=stage,
+                model_id=provider.model,
+                system_instruction=instruction[:6000],
+                ordered_messages=[Message(role="user", content=message)],
+                private_image_bytes=image,
+                response_schema=(
+                    InterpretationPayload if stage == "vision" else TutorPayload
+                ).model_json_schema(),
+            )
         )
         call = ModelCall(
             submission_id=row.id,

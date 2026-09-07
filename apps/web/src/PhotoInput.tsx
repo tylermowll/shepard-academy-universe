@@ -8,6 +8,8 @@ type Props = {
   onPendingChange: (pending: boolean) => void;
   onSaved: () => Promise<void>;
   act: (a: () => Promise<void>) => Promise<void>;
+  companionToken?: string;
+  reference?: boolean;
 };
 type PendingPhoto = {
   path: string;
@@ -22,12 +24,13 @@ export function PhotoInput({
   onPendingChange,
   onSaved,
   act,
+  companionToken,
+  reference = false,
 }: Props) {
   const [blob, setBlob] = useState<Blob | null>(null);
   const [url, setUrl] = useState("");
   const [rotation, setRotation] = useState(0);
   const [crop, setCrop] = useState(0);
-  const [kind, setKind] = useState("answer");
   const [pending, setPending] = useState<PendingPhoto | null>(null);
   const [working, setWorking] = useState(false);
   const uploading = useRef(false);
@@ -85,7 +88,12 @@ export function PhotoInput({
     setWorking(true);
     try {
       try {
-        await imageRequest(request.path, request.blob, request.key);
+        await imageRequest(
+          request.path,
+          request.blob,
+          request.key,
+          companionToken,
+        );
       } catch (cause) {
         if (
           !request.ambiguous &&
@@ -108,12 +116,18 @@ export function PhotoInput({
     }
   }
   return (
-    <details hidden={disabled && !pending}>
+    <details
+      open={companionToken ? true : undefined}
+      hidden={disabled && !pending}
+    >
       <summary>Submit a photograph</summary>
       <p>
-        Photograph your work on this problem. You will confirm the transcription
-        before it is checked. Typed answers remain available if camera access is
-        denied.
+        {reference
+          ? "Photograph the reference material. The tutor will create a different practice activity, not solve the original assignment."
+          : "Photograph your work. The tutor shows its reading and continues when it is clear, or asks you to rewrite or retake unclear work."}{" "}
+        {companionToken
+          ? "If camera access is unavailable, return to your computer to enter an answer."
+          : "Typed answers remain available if camera access is denied."}
       </p>
       <fieldset disabled={disabled || working || pending !== null}>
         <label>
@@ -128,8 +142,21 @@ export function PhotoInput({
                 void act(async () => {
                   if (file.size > 8388608)
                     throw new Error("Choose a photograph under 8 MiB.");
-                  const response = await imageRequest("/images/preview", file);
-                  const normalized = await response.blob();
+                  setWorking(true);
+                  let normalized: Blob;
+                  try {
+                    const response = await imageRequest(
+                      companionToken
+                        ? "/phone-upload/preview"
+                        : "/images/preview",
+                      file,
+                      undefined,
+                      companionToken,
+                    );
+                    normalized = await response.blob();
+                  } finally {
+                    setWorking(false);
+                  }
                   if (!mounted.current) return;
                   setBlob(normalized);
                   setUrl(URL.createObjectURL(normalized));
@@ -171,13 +198,6 @@ export function PhotoInput({
                 />
               </label>
             </div>
-            <label>
-              Purpose
-              <select value={kind} onChange={(e) => setKind(e.target.value)}>
-                <option value="answer">Check my final answer</option>
-                <option value="question">Ask about my work</option>
-              </select>
-            </label>
             <button
               onClick={() =>
                 void act(async () => {
@@ -188,7 +208,9 @@ export function PhotoInput({
                   let request: PendingPhoto | undefined;
                   try {
                     request = {
-                      path: `/problems/${problem}/photos?version=${version}&kind=${kind}`,
+                      path: companionToken
+                        ? "/phone-upload/photos"
+                        : `/problems/${problem}/photos?version=${version}&kind=answer`,
                       blob: await transform(),
                       key: newKey(),
                       ambiguous: false,
@@ -204,7 +226,7 @@ export function PhotoInput({
                 })
               }
             >
-              Submit this photograph
+              {companionToken ? "Send to computer" : "Submit this photograph"}
             </button>
           </>
         )}

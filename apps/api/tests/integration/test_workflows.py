@@ -1,5 +1,6 @@
 """Synthetic on-disk acceptance gates for pairing, practice, recovery and privacy."""
 
+import asyncio
 import json
 from collections.abc import AsyncIterator, Iterator
 from datetime import timedelta
@@ -26,6 +27,7 @@ from math_tutor.adapters.db.models import (
     Job,
     Learner,
     PairingRequest,
+    PhoneUpload,
     ProblemInstance,
     ProgressEvent,
     Submission,
@@ -33,13 +35,285 @@ from math_tutor.adapters.db.models import (
 from math_tutor.adapters.db.types import utcnow
 from math_tutor.adapters.images import delete_image, normalize, object_path
 from math_tutor.adapters.providers.config import ProviderConfig
-from math_tutor.adapters.providers.contracts import Capabilities, ModelRequest, ModelResult
+from math_tutor.adapters.providers.contracts import (
+    Capabilities,
+    InterpretationPayload,
+    ModelRequest,
+    ModelResult,
+    ProviderError,
+)
 from math_tutor.adapters.providers.transports import HTTPProvider
 from math_tutor.api.app import create_app
 from math_tutor.demo import DEMO_PASSWORD, seed
 from math_tutor.retention import sweep
 
 ORIGIN = "http://127.0.0.1:8000"
+
+
+async def phone_link(
+    adult: AsyncClient, problem: dict[str, Any], key: str | None = None
+) -> dict[str, Any]:
+    response = await adult.post(
+        f"/api/v1/problems/{problem['id']}/phone-uploads",
+        json={"version": problem["version"]},
+        headers={"Idempotency-Key": key or str(uuid4())},
+    )
+    assert response.status_code == 201, response.text
+    return cast(dict[str, Any], response.json())
+
+
+@pytest.mark.anyio
+async def test_concurrent_phone_retry_and_changed_photo(adult: AsyncClient, engine: Engine) -> None:
+    _, problem = await start(adult, (await learner_ids(adult))[0])
+    link = await phone_link(adult, problem)
+    headers = {"X-Photo-Token": link["url"].split("#capture=")[1], "Idempotency-Key": str(uuid4())}
+    async with client(engine) as first, client(engine) as second:
+        results = await asyncio.gather(
+            first.post("/api/v1/phone-upload/photos", content=photo_bytes(), headers=headers),
+            second.post("/api/v1/phone-upload/photos", content=photo_bytes(), headers=headers),
+        )
+        assert [response.status_code for response in results] == [202, 202]
+        output = BytesIO()
+        Image.new("RGB", (80, 60), "black").save(output, "PNG")
+        response = await first.post(
+            "/api/v1/phone-upload/photos", content=output.getvalue(), headers=headers
+        )
+        assert response.status_code == 409
+    with Session(engine) as db:
+        assert db.scalar(select(func.count()).select_from(Submission)) == 1
+        assert db.scalar(select(func.count()).select_from(Job)) == 1
+
+
+@pytest.mark.anyio
+async def test_phone_photo_to_computer_confirmation(
+    adult: AsyncClient,
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_id, problem = await start(adult, (await learner_ids(adult))[0])
+    set_example(engine, problem["id"])
+    key = str(uuid4())
+    link = await phone_link(adult, problem, key)
+    assert await phone_link(adult, problem, key) == link  # lost create acknowledgement
+    secret = link["url"].split("#capture=")[1]
+    assert "?" not in link["url"]
+    with Session(engine) as db:
+        grant = db.get(PhoneUpload, UUID(link["id"]))
+        assert grant is not None and grant.token_hash == auth.hash_opaque_token(secret)
+        assert grant.token_hash != secret
+    async with client(engine) as phone:
+        phone.headers["X-Photo-Token"] = secret
+        info = await phone.get("/api/v1/phone-upload")
+        assert info.status_code == 200 and info.json()["problem_text"] == "1/2 + 1/3"
+        assert "5/6" not in info.text
+        assert info.headers["Cache-Control"] == "no-store"
+        assert (await phone.get(f"/api/v1/sessions/{session_id}")).status_code == 401
+        assert (await phone.get("/api/v1/admin/providers")).status_code == 401
+        preview = await phone.post("/api/v1/phone-upload/preview", content=photo_bytes())
+        assert preview.status_code == 200 and preview.content.startswith(b"\x89PNG")
+        headers = {"Idempotency-Key": str(uuid4())}
+        first = await phone.post(
+            "/api/v1/phone-upload/photos", content=preview.content, headers=headers
+        )
+        assert first.status_code == 202 and first.json() == {"received": True}
+        duplicate = await phone.post(
+            "/api/v1/phone-upload/photos", content=preview.content, headers=headers
+        )
+        assert duplicate.status_code == 202 and duplicate.json() == first.json()
+        assert (
+            await phone.post(
+                "/api/v1/phone-upload/photos",
+                content=preview.content,
+                headers={"Idempotency-Key": str(uuid4())},
+            )
+        ).status_code == 409
+        assert (
+            await phone.post("/api/v1/phone-upload/preview", content=photo_bytes())
+        ).status_code == 409
+        assert (await phone.get("/api/v1/phone-upload")).json()["problem_text"] == ""
+
+        def read_handwriting(_provider: ProviderConfig, request: ModelRequest) -> ModelResult:
+            assert request.stage == "vision" and request.private_image_bytes
+            assert "5/6" not in str(request.ordered_messages)
+            return ModelResult(
+                model_id=request.model_id,
+                validated_payload=InterpretationPayload(
+                    transcription="1/2 + 1/3 = 5/6",
+                    final_answer="5/6",
+                    ambiguities=[],
+                ),
+            )
+
+        monkeypatch.setattr(worker, "complete", read_handwriting)
+        assert worker.run_once(engine)
+        result = (await read_problem(adult, session_id))["operations"][0]
+        assert result["status"] == "awaiting_confirmation" and result["verdict"] is None
+        operation = result["id"]
+        confirmation = {
+            "version": 1,
+            "transcription": result["interpretation"],
+            "final_answer": "5/6",
+        }
+        assert (
+            await phone.post(
+                f"/api/v1/submissions/{operation}/confirm-interpretation", json=confirmation
+            )
+        ).status_code == 401
+        assert (
+            await adult.post(
+                f"/api/v1/submissions/{operation}/confirm-interpretation", json=confirmation
+            )
+        ).status_code == 202
+        assert worker.run_once(engine)
+        assert (await read_problem(adult, session_id))["operations"][0]["verdict"][
+            "answer_status"
+        ] == "correct"
+        assert (
+            await phone.post(
+                "/api/v1/phone-upload/photos", content=preview.content, headers=headers
+            )
+        ).status_code == 202
+        with Session(engine) as db:
+            assert db.scalar(select(func.count()).select_from(Submission)) == 1
+            assert db.scalar(select(func.count()).select_from(Job)) == 1
+            assert db.scalar(select(func.count()).select_from(ProgressEvent)) == 1
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "change", ["expire", "logout", "version", "skip", "finish", "delete", "replace", "cancel"]
+)
+async def test_phone_link_invalidation(adult: AsyncClient, engine: Engine, change: str) -> None:
+    learner = (await learner_ids(adult))[0]
+    session_id, problem = await start(adult, learner)
+    link = await phone_link(adult, problem)
+    if change == "logout":
+        assert (await adult.post("/api/v1/auth/logout")).status_code == 200
+    elif change == "skip":
+        assert (
+            await adult.post(f"/api/v1/problems/{problem['id']}/skip", json={"version": 1})
+        ).status_code == 200
+    elif change == "finish":
+        assert (await adult.post(f"/api/v1/sessions/{session_id}/finish")).status_code == 200
+    elif change == "delete":
+        assert (await adult.delete(f"/api/v1/admin/learners/{learner}")).status_code == 200
+    elif change == "replace":
+        await phone_link(adult, problem)
+    elif change == "cancel":
+        assert (await adult.delete(f"/api/v1/phone-uploads/{link['id']}")).status_code == 200
+    else:
+        with Session(engine) as db:
+            if change == "expire":
+                grant = db.get(PhoneUpload, UUID(link["id"]))
+                assert grant is not None
+                grant.created_at -= timedelta(minutes=10)
+                grant.expires_at = utcnow() - timedelta(seconds=1)
+            else:
+                row = db.get(ProblemInstance, UUID(problem["id"]))
+                assert row is not None
+                row.version += 1
+            db.commit()
+    async with client(engine) as phone:
+        phone.headers["X-Photo-Token"] = link["url"].split("#capture=")[1]
+        assert (await phone.get("/api/v1/phone-upload")).status_code in {404, 409, 410}
+        assert (
+            await phone.post(
+                "/api/v1/phone-upload/photos",
+                content=photo_bytes(),
+                headers={"Idempotency-Key": str(uuid4())},
+            )
+        ).status_code in {404, 409, 410}
+    with Session(engine) as db:
+        assert db.scalar(select(func.count()).select_from(Submission)) == 0
+    if change == "expire":
+        sweep(engine)
+        with Session(engine) as db:
+            assert db.get(PhoneUpload, UUID(link["id"])) is None
+
+
+@pytest.mark.anyio
+async def test_phone_permission_ownership_origin_and_body_limits(
+    adult: AsyncClient, engine: Engine
+) -> None:
+    first, second = await learner_ids(adult)
+    _, problem = await start(adult, second)
+    link = await phone_link(adult, problem)
+    async with client(engine) as stranger:
+        path = f"/api/v1/problems/{problem['id']}/phone-uploads"
+        assert (await stranger.post(path, json={"version": 1})).status_code == 401
+        assert (
+            await stranger.post("/api/v1/phone-upload/preview", content=b"invalid")
+        ).status_code == 401
+        await pair_learner(adult, stranger, first)
+        assert (
+            await stranger.post(
+                path, json={"version": 1}, headers={"Idempotency-Key": str(uuid4())}
+            )
+        ).status_code == 404
+        assert (await stranger.delete(f"/api/v1/phone-uploads/{link['id']}")).status_code == 404
+        stranger.headers["X-Photo-Token"] = link["url"].split("#capture=")[1]
+        assert (
+            await stranger.post(
+                "/api/v1/phone-upload/preview",
+                content=photo_bytes(),
+                headers={"Origin": "https://evil.invalid"},
+            )
+        ).status_code == 403
+        assert (
+            await stranger.post("/api/v1/phone-upload/preview", content=b"GIF89a")
+        ).status_code == 422
+        assert (
+            await stranger.post(
+                "/api/v1/phone-upload/photos",
+                content=b"x" * (8 * 1024 * 1024 + 1),
+                headers={"Idempotency-Key": str(uuid4())},
+            )
+        ).status_code == 413
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("change", ["version", "logout", "policy", "mode"])
+async def test_phone_rechecks_after_decode(
+    adult: AsyncClient, engine: Engine, monkeypatch: pytest.MonkeyPatch, change: str
+) -> None:
+    from math_tutor.api import photos
+
+    _, problem = await start(adult, (await learner_ids(adult))[0])
+    link = await phone_link(adult, problem)
+
+    def concurrent_change(data: bytes) -> bytes:
+        result = normalize(data)
+        with Session(engine) as db:
+            grant = db.get(PhoneUpload, UUID(link["id"]))
+            assert grant is not None
+            if change == "logout":
+                issuer = db.get(DeviceSession, grant.issuer_id)
+                assert issuer is not None
+                issuer.revoked_at = utcnow()
+            elif change == "version":
+                row = db.get(ProblemInstance, grant.problem_id)
+                assert row is not None
+                row.version += 1
+            elif change == "policy":
+                monkeypatch.setenv("APP_AUDIENCE", "adult_only")
+            else:
+                monkeypatch.setenv("APP_MODE", "demo")
+            db.commit()
+        return result
+
+    monkeypatch.setattr(photos, "normalize", concurrent_change)
+    async with client(engine) as phone:
+        response = await phone.post(
+            "/api/v1/phone-upload/photos",
+            content=photo_bytes(),
+            headers={
+                "X-Photo-Token": link["url"].split("#capture=")[1],
+                "Idempotency-Key": str(uuid4()),
+            },
+        )
+    assert response.status_code in {403, 409, 410}
+    with Session(engine) as db:
+        assert db.scalar(select(func.count()).select_from(Submission)) == 0
 
 
 @pytest.mark.anyio
@@ -102,6 +376,7 @@ def engine(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[Engine]:
     monkeypatch.setenv("SESSION_SECRET", "synthetic-secret-for-workflow-tests-1234567890")
     monkeypatch.setenv("APP_PUBLIC_ORIGIN", ORIGIN)
     monkeypatch.setenv("ALLOW_CLOUD_INFERENCE", "false")
+    monkeypatch.setenv("APP_AUDIENCE", "mixed")
     monkeypatch.setenv("APP_MODE", "private")
     monkeypatch.delenv("PROVIDER_CONFIG", raising=False)
     auth.clear_login_rate_limit()
@@ -532,7 +807,6 @@ async def test_completed_photo_cleanup_recovers_after_failure(
 async def test_unconfirmed_and_failed_photos_retain_only_until_ttl(
     adult: AsyncClient, engine: Engine, monkeypatch: pytest.MonkeyPatch, failed: bool
 ) -> None:
-    from math_tutor.adapters.providers.contracts import ProviderError
 
     _, problem = await start(adult, (await learner_ids(adult))[0])
     response = await adult.post(
@@ -663,7 +937,6 @@ async def test_external_problem_stays_unverifiable(
 async def test_failed_provider_retry_budget_and_stale_retry(
     adult: AsyncClient, engine: Engine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from math_tutor.adapters.providers.contracts import ProviderError
 
     response = await adult.post(
         "/api/v1/admin/tutor-profiles", json={"name": "Questions", "solution_policy": "on_request"}

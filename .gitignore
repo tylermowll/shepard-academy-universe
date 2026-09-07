@@ -45,6 +45,9 @@ blob-report/
 /backups/
 /logs/
 
+# Unlicensed internet examples supplied for local evaluation only.
+/evals/incoming/internet-examples/
+
 # SQLite runtime files, including journals and WAL sidecars (any directory).
 # Generate synthetic databases in tests; commit their source fixtures instead.
 *.db

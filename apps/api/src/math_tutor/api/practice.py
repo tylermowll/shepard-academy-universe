@@ -26,6 +26,7 @@ from math_tutor.adapters.db.models import (
     TutorProfileVersion,
     TutorTurn,
 )
+from math_tutor.adapters.providers.contracts import FeedbackPayload, ReadingPayload
 from math_tutor.api.access import Database, Principal, owned_learner
 from math_tutor.api.learners import Acknowledged
 from math_tutor.api.profiles import ProfileSettings
@@ -54,9 +55,13 @@ class VersionInput(BaseModel):
 
 class SubmissionInput(VersionInput):
     kind: Literal["answer", "question", "hint"] = "answer"
-    text: str = Field(default="", max_length=4000)
+    text: str = Field(default="", max_length=8000)
     help_level: int = Field(default=0, ge=0, le=4)
-    work_text: str = Field(default="", max_length=4000)
+    work_text: str = Field(default="", max_length=8000)
+
+
+class ReadingPublic(ReadingPayload):
+    can_continue: bool
 
 
 class VerdictPublic(BaseModel):
@@ -84,12 +89,17 @@ class OperationPublic(BaseModel):
     interpretation_version: int | None = None
     interpreted_final_answer: str | None = None
     ambiguities: list[str] = Field(default_factory=list)
+    reading: ReadingPublic | None = None
+    feedback: FeedbackPayload | None = None
 
 
 class ProblemPublic(ProblemInstancePublic):
     version: int
     assistance_level: int
     operations: list[OperationPublic]
+    activity_state: Literal["generating", "reference_capture", "ready"] = "ready"
+    reference_source: Literal["topic", "reference_text", "reference_photo"] | None = None
+    concept_focus: str | None = None
 
 
 class SessionPublic(BaseModel):
@@ -171,6 +181,10 @@ def operation_public(db: Session, row: Submission) -> OperationPublic:
         interpretation_version=interpretation.version if interpretation else None,
         interpreted_final_answer=interpretation.final_answer if interpretation else None,
         ambiguities=interpretation.ambiguities if interpretation else [],
+        reading=ReadingPublic.model_validate(interpretation.reading)
+        if interpretation and interpretation.reading
+        else None,
+        feedback=FeedbackPayload.model_validate(turn.feedback) if turn and turn.feedback else None,
     )
 
 
@@ -180,6 +194,9 @@ def problem_public(db: Session, row: ProblemInstance) -> ProblemPublic:
         **data,
         version=row.version,
         assistance_level=row.assistance_level,
+        activity_state=row.parameters.get("activity_state", "ready"),
+        reference_source=row.parameters.get("reference_source"),
+        concept_focus=row.parameters.get("concept_focus"),
         operations=[
             operation_public(db, op)
             for op in db.scalars(
@@ -215,7 +232,12 @@ def catalog(actor: Principal) -> list[str]:
 
 @router.get("/sessions", response_model=list[SessionSummary])
 def sessions(db: Database, actor: Principal) -> list[PracticeSession]:
-    query = select(PracticeSession).order_by(PracticeSession.created_at.desc()).limit(100)
+    query = (
+        select(PracticeSession)
+        .where(PracticeSession.mode == "built_in")
+        .order_by(PracticeSession.created_at.desc())
+        .limit(100)
+    )
     if actor.role != "adult":
         query = query.where(PracticeSession.learner_id == actor.learner_id)
     return list(db.scalars(query))
@@ -263,6 +285,8 @@ def next_problem(
     session_id: UUID, body: ProblemInput, request: Request, db: Database, actor: Principal
 ) -> ProblemPublic:
     session = owned_session(db, actor, session_id)
+    if session.mode != "built_in":
+        raise HTTPException(409, "Use the AI tutor to create a new practice activity.")
     key = request_key(request)
     problems = list(
         db.scalars(select(ProblemInstance).where(ProblemInstance.session_id == session_id))
@@ -413,6 +437,19 @@ def submit(
             raise HTTPException(409, "Request key already used with different input.")
         return operation_public(db, old)
     assert_available(db, problem, body.version)
+    ai = problem.template_id.startswith("ai-")
+    if ai:
+        if session.status != "open" or problem.parameters.get("activity_state") != "ready":
+            raise HTTPException(409, "Wait for the new practice activity before submitting work.")
+        if body.help_level == 4:
+            raise HTTPException(
+                403, "The tutor guides your work; it does not supply final answers."
+            )
+        if body.kind != "hint" and not (body.text.strip() or body.work_text.strip()):
+            raise HTTPException(422, "Write your work or question, or submit a photograph.")
+        from math_tutor.providers import authorize_route, effective_configuration
+
+        authorize_route(db, effective_configuration(db), "tutor", session.learner_id)
     if problem.template_id == "external-photo" and not problem.parameters.get("confirmed"):
         raise HTTPException(409, "Confirm the external question photograph before submitting work.")
     if os.getenv("APP_MODE", "private") == "demo" and body.work_text:
@@ -424,7 +461,7 @@ def submit(
             raise HTTPException(
                 403, "Demo accepts synthetic numeric answers and authored hints only."
             )
-    if body.kind != "answer" and body.help_level == 4:
+    if not ai and body.kind != "answer" and body.help_level == 4:
         policy = session.profile_settings["solution_policy"]
         attempts = len(
             list(
@@ -460,7 +497,7 @@ def submit(
     db.add(
         Job(
             submission_id=row.id,
-            stage="checking" if row.kind == "answer" else "tutoring",
+            stage="tutoring" if ai else ("checking" if row.kind == "answer" else "tutoring"),
             policy_digest=effective_configuration(db).fingerprint(),
         )
     )
@@ -537,6 +574,10 @@ def external_problem(
     if os.getenv("ENABLE_EXTERNAL_PROBLEMS", "false") != "true":
         raise HTTPException(404, "External problem mode is disabled.")
     session = owned_session(db, actor, session_id)
+    if session.mode != "built_in":
+        raise HTTPException(
+            409, "Use reference material to generate distinct practice in the AI tutor."
+        )
     key = request_key(request)
     problems = list(
         db.scalars(select(ProblemInstance).where(ProblemInstance.session_id == session_id))

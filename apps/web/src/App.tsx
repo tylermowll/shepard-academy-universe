@@ -7,8 +7,7 @@ import {
   type Schema,
 } from "./client";
 import { AdultPanel } from "./AdultPanel";
-import { Practice } from "./Practice";
-import { OfflinePractice } from "./OfflinePractice";
+import { Tutor } from "./Tutor";
 import { UpdateNotice } from "./UpdateNotice";
 
 const Research = lazy(() => import("./Research"));
@@ -82,7 +81,7 @@ export function App() {
       .catch(() => {
         if (!canceled)
           setError(
-            "The server is unavailable. Reconnect to access saved practice, or use public offline exercises.",
+            "The server is unavailable. Reconnect to access your saved tutoring sessions.",
           );
       });
     return () => {
@@ -121,11 +120,11 @@ export function App() {
   return (
     <main>
       <a className="skip-link" href="#workspace">
-        Skip to practice
+        Skip to tutoring
       </a>
       <header className="masthead">
         <a href="/" className="wordmark">
-          Math Practice Tutor
+          Shepard Tutor
         </a>
         <span className="pill">One step at a time</span>
         {identity?.authenticated && (
@@ -158,9 +157,10 @@ export function App() {
         {!identity?.authenticated ? (
           <section className="welcome">
             <p className="eyebrow">Small steps. Clear thinking.</p>
-            <h1>Make room for a little math.</h1>
+            <h1>Make room for understanding.</h1>
             <p className="lede">
-              Work through a problem, learn from a mistake, and try again.
+              Explore a subject, photograph your thinking, and work through the
+              next step with your tutor.
             </p>
             <div className="grid">
               <form
@@ -258,7 +258,7 @@ export function App() {
               />
             )}
             {learner ? (
-              <Practice
+              <Tutor
                 key={learner}
                 learner={learner}
                 act={act}
@@ -272,14 +272,13 @@ export function App() {
             )}
             <p className="fine">
               The adult who manages this deployment can review your saved
-              practice. Photos are deleted after confirmed processing, so later
-              review uses saved text. Failed or unconfirmed photos expire within
+              learning sessions. Photos are deleted after processing, so later
+              review uses saved text. Failed or unprocessed photos expire within
               24 hours; history defaults to 30 days.
             </p>
           </>
         )}
       </div>
-      <OfflinePractice />
       {identity?.role === "adult" && (
         <details>
           <summary>Optional browser model research</summary>
@@ -289,8 +288,8 @@ export function App() {
         </details>
       )}
       <footer>
-        Exact mathematics. Room to revise.{" "}
-        <span>Built-in help works without a model provider.</span>
+        Understanding takes practice. Room to revise.{" "}
+        <span>Private hosting. Your choice of AI provider.</span>
       </footer>
     </main>
   );

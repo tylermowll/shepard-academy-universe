@@ -8,7 +8,6 @@ type Props = {
 };
 export function AdultPanel({ learner, onLearner, act }: Props) {
   const [learners, setLearners] = useState<Schema<"LearnerPublic">[]>([]);
-  const [profiles, setProfiles] = useState<Schema<"ProfilePublic">[]>([]);
   const [providers, setProviders] = useState<Schema<"ProvidersPublic"> | null>(
     null,
   );
@@ -16,14 +15,12 @@ export function AdultPanel({ learner, onLearner, act }: Props) {
   const refreshSequence = useRef(0);
   const refresh = useCallback(async () => {
     const sequence = ++refreshSequence.current;
-    const [l, p, c] = await Promise.all([
+    const [l, c] = await Promise.all([
       api<Schema<"LearnerPublic">[]>("/admin/learners"),
-      api<Schema<"ProfilePublic">[]>("/admin/tutor-profiles"),
       api<Schema<"ProvidersPublic">>("/admin/providers"),
     ]);
     if (sequence !== refreshSequence.current) return;
     setLearners(l);
-    setProfiles(p);
     setProviders(c);
   }, []);
   useEffect(() => {
@@ -168,174 +165,6 @@ export function AdultPanel({ learner, onLearner, act }: Props) {
             </button>
           </div>
         )}
-      </details>
-      <details>
-        <summary>Tutor profiles</summary>
-        <form
-          className="card"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const data = new FormData(e.currentTarget);
-            const body = {
-              name: data.get("name"),
-              profile_id: data.get("profile") || null,
-              topics: data.getAll("topics"),
-              difficulty: data.get("difficulty"),
-              teaching_style: data.get("style"),
-              verbosity: data.get("verbosity"),
-              solution_policy: data.get("solution"),
-              session_problem_limit: Number(data.get("limit")),
-              custom_instructions: data.get("instructions"),
-              presentation: {
-                font_scale: Number(data.get("font")),
-                reduced_motion: data.get("motion") === "on",
-                compact_explanations: data.get("compact") === "on",
-              },
-            };
-            void act(async () => {
-              await api("/admin/tutor-profiles", "POST", body, newKey());
-              await refresh();
-              setMessage(
-                "Profile version saved. Existing sessions retain their starting settings.",
-              );
-            });
-          }}
-        >
-          <h2>Create a profile version</h2>
-          <div className="grid">
-            <label>
-              Profile family
-              <select name="profile">
-                <option value="">New profile</option>
-                {profiles
-                  .filter(
-                    (p, i, a) =>
-                      a.findIndex((v) => v.profile_id === p.profile_id) === i,
-                  )
-                  .map((p) => (
-                    <option key={p.id} value={p.profile_id}>
-                      {p.settings.name} (v{p.version})
-                    </option>
-                  ))}
-              </select>
-            </label>
-            <label>
-              Name
-              <input name="name" required maxLength={64} />
-            </label>
-            <label>
-              Difficulty
-              <select name="difficulty">
-                <option>standard</option>
-                <option>introductory</option>
-                <option>challenge</option>
-              </select>
-            </label>
-            <label>
-              Teaching style
-              <select name="style">
-                <option>guided</option>
-                <option>direct</option>
-                <option>worked_example</option>
-              </select>
-            </label>
-            <label>
-              Verbosity
-              <select name="verbosity">
-                <option>standard</option>
-                <option>brief</option>
-                <option>detailed</option>
-              </select>
-            </label>
-            <label>
-              Full solution
-              <select name="solution">
-                <option value="after_two_attempts">After two attempts</option>
-                <option value="on_request">On request</option>
-                <option value="adult_only">Adult only</option>
-              </select>
-            </label>
-            <label>
-              Problems per session
-              <input
-                type="number"
-                name="limit"
-                min={1}
-                max={20}
-                defaultValue={5}
-              />
-            </label>
-            <label>
-              Font scale
-              <input
-                type="number"
-                name="font"
-                min={1}
-                max={1.5}
-                step={0.1}
-                defaultValue={1}
-              />
-            </label>
-          </div>
-          <fieldset>
-            <legend>Topics</legend>
-            {[
-              "fractions.equivalent",
-              "fractions.simplify",
-              "fractions.add",
-              "fractions.subtract",
-              "fractions.multiply",
-              "fractions.divide",
-              "equations.linear",
-            ].map((topic) => (
-              <label className="check" key={topic}>
-                <input
-                  type="checkbox"
-                  name="topics"
-                  value={topic}
-                  defaultChecked={topic === "fractions.add"}
-                />
-                {topic.replaceAll(".", " · ")}
-              </label>
-            ))}
-          </fieldset>
-          <label className="check">
-            <input type="checkbox" name="motion" defaultChecked />
-            Reduced motion
-          </label>
-          <label className="check">
-            <input type="checkbox" name="compact" />
-            Compact explanations
-          </label>
-          <label>
-            Teaching preferences
-            <textarea name="instructions" maxLength={2000} />
-          </label>
-          <p className="fine">
-            English is the evaluated language. Preferences cannot change privacy
-            or verification rules.
-          </p>
-          <div className="actions">
-            <button>Save profile version</button>
-            <button
-              type="button"
-              onClick={() =>
-                void act(async () => {
-                  const preview = await api<Schema<"Preview">>(
-                    "/admin/tutor-profiles/preview",
-                    "POST",
-                    { name: "Synthetic preview" },
-                  );
-                  setMessage(
-                    `${preview.problem}: ${preview.message} (${preview.source})`,
-                  );
-                })
-              }
-            >
-              Preview a synthetic example
-            </button>
-          </div>
-        </form>
       </details>
       <details>
         <summary>Provider routes and health</summary>

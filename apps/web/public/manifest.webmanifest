@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Math Practice Tutor",
-  "short_name": "Math Practice",
+  "name": "Shepard Tutor",
+  "short_name": "Shepard Tutor",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#f7f6ef",

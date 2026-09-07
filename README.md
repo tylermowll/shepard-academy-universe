@@ -1,38 +1,42 @@
-# Math Practice Tutor
+# Shepard Tutor
 
-A self-hosted math practice PWA for one household. Practice fractions and linear
-equations, enter an answer and optional steps, ask questions, or submit a photo.
-Exact rational arithmetic checks supported answers. Photos require confirmation;
-model responses cannot change grades, permissions, or progress.
+A self-hosted AI tutor: choose a topic, receive an activity, work on paper, send
+an iPhone photo, and get guidance on your actual work. Revise or discuss it, then
+receive a next activity informed by the conversation. Use math, writing, reading,
+history, social studies, science, or your own topic—no required grade level or
+fixed-template catalog.
 
-The repository now includes the T03–T23 implementations. Automated evidence and
+The AI reads the work automatically and shows its reading before the feedback.
+Clear readings proceed without an approval step. Unclear handwriting or layout
+gets specific improvement advice and a request for a cleaner submission.
+
+Uploaded or pasted homework is **reference material, not a request for answers**.
+The tutor generates different practice on related concepts and guides with
+explanations and relevant examples. It does not complete the original assignment
+or supply the active task's final answer. Tutor initiative is adjustable.
+
+The T25 correction replaces the earlier math-checker-first experience. Evidence and
 remaining release gates are recorded in [TASKS](docs/TASKS.md) and
 [ACCEPTANCE](docs/ACCEPTANCE.md). Live model quality, real phone camera/install
 checks, and browser model device measurements remain unverified. They require the
 maintainer's devices/accounts and were explicitly deferred. This is not a claim
 of production readiness or educational effectiveness.
 
-## Try the synthetic demo
+## Run it on your computer
 
 Prerequisites: Git, GNU Make, Node **24.20.0**, pnpm **12.3.4**, and uv
 **0.12.10**. Python **3.14.7** is installed by uv if needed. See
 [dependency decisions](docs/DEPENDENCIES.md).
 
+For **computer practice with iPhone photo submission**, follow
+[the phone setup guide](docs/PHONE_SETUP.md). It covers private HTTPS, local vLLM
+or Spark API configuration, `make serve`, and the expiring **Take photo with phone**
+QR link. The app runs on your desktop/laptop; the iPhone is its camera. A local
+vLLM vision model can handle inference, or explicitly select an API provider.
+No paid hosting, native phone app, or public deployment is required by this design.
+
 ```bash
 make bootstrap
-make demo
-```
-
-Open <http://127.0.0.1:8000>. Sign in as `demo` with
-`synthetic-demo-password-only`. This public credential belongs only to the
-isolated, temporary demo database. Select Orbit or Delta, start a session, and
-assign a problem. Ctrl+C stops both services and deletes the disposable database.
-Demo mode accepts numeric answers and authored help, blocks free-text work,
-photos, and live providers, and never reads private operator configuration.
-
-## Set up private practice
-
-```bash
 make setup
 set -a
 . ./.env
@@ -56,42 +60,41 @@ to the adult workspace, and approve the selected learner. Pairing expires after
 five minutes and is bound to the requesting browser. Learners can access only
 their own practice; adults can review managed learners' history.
 
-The default mock vision route does not read handwriting: it exercises confirmation
-by asking you to type the transcription and final answer. Built-in hints and
-exact checking work without any model. Configure live routes using
+The default mock routes return explicitly synthetic fixtures and do not provide
+real tutoring or read handwriting. Configure actual **tutor and vision** routes using
 [providers.example.yaml](config/providers.example.yaml) and follow
 [PROVIDER_STATUS](docs/PROVIDER_STATUS.md) before using them.
+An unavailable model produces a visible error, not an authored-hint substitute.
 
 This is a pre-production hard cutover: recreate disposable databases from earlier
 revisions. Do not apply these corrected initial migrations to data you intend to
 retain. [RUNBOOK](docs/RUNBOOK.md) covers private HTTPS, containers, EC2/EBS,
 retention, encrypted backups, and restore rehearsals.
 
-![Synthetic practice with a corrected answer and recorded assistance](docs/screenshots/synthetic-practice.png)
-
 ## Behavior and boundaries
 
-- Seven supported skills: fraction addition, subtraction, multiplication,
-  division, simplification, equivalence, and `a*x+b=c` equations.
-- Separate answer, format, and reasoning status. Reasoning is explicitly **not
-  checked**; correct final answers do not certify intermediate work.
-- Versioned profiles, progressively requested help, session history, bounded
-  progress counts, authenticated exports, and deletion with recovery tombstones.
+- AI-generated activities and guidance across subjects; full written work and
+  recent conversation inform feedback, revisions, and next activities.
+- Paste an assignment or photograph one to generate distinct analogous practice.
+  Supply a book excerpt for passage-specific comprehension questions. The app
+  does not fetch books or pretend a title supplies the full text.
+- Learner-led, balanced, and tutor-led initiative settings; no grade-level gate.
+- AI assessment is not a verified grade or a proof of mastery. Model confidence
+  can be mistaken. Handwriting accuracy, factual correctness, and answer-leak
+  resistance need evaluation with your actual model, not just passing mock tests.
+- Owned session history, authenticated exports, and deletion with recovery tombstones.
 - Durable jobs survive API reloads and worker crashes. Duplicate requests produce
   one visible result. A crash after a provider response may require a second
   billed request; total calls remain bounded.
-- Photos are normalized privately and metadata removed. Confirmed photos are
-  deleted after processing; failed/unconfirmed photos expire within 24 hours.
+- Photos are normalized privately and metadata removed. Photos are
+  deleted after processing; failed/unprocessed photos expire within 24 hours.
   History defaults to 30 days. Retention runs in the worker.
-- Public offline exercises check exact values locally and never sync or count as
-  saved server progress. Service-worker caches contain public assets only.
-- Optional external-problem photos always remain **unverifiable**. Optional
-  browser model research requires explicit download consent, uses synthetic text
-  only, and has no access to tutoring grades or saved work.
+- Service-worker caches contain public assets only. Offline does not mean the
+  server or AI can be reached; no work is silently replayed to a cloud provider.
 
 ```mermaid
 flowchart LR
-  Browser[React PWA] --> API[FastAPI: auth, ownership, exact checking]
+  Browser[React PWA] --> API[FastAPI: auth, ownership, tutoring workflow]
   API --> DB[(Private local SQLite)]
   Worker[Separate worker] --> DB
   Worker --> Routes[Policy-checked provider adapters]
@@ -109,21 +112,22 @@ responses cannot exceed the request deadline. See [D008](docs/DECISIONS.md#d008-
 
 The [Makefile](Makefile) is authoritative.
 
-| Command | Purpose |
-|---|---|
-| `make bootstrap`, `make hooks-install` | Locked install and local commit checks |
-| `make check` | Locks, lint, format, strict types, unit/component tests, builds, generated contracts, secret scan, IaC lint |
-| `make test-integration` | On-disk migration, authorization, recovery, provider-policy and retention checks |
-| `make smoke` / `make test-e2e` | Isolated API/worker and desktop/mobile Chromium workflows |
-| `make eval-mock` | Original deterministic fixtures and mock vision contracts; no quality claim |
-| `make audit`, `make hooks-check` | Locked dependency vulnerability audit and tracked-file checks |
-| `make contracts` / `make contracts-check` | Regenerate OpenAPI/TypeScript or reject drift |
-| `make format`, `make lint`, `make typecheck` | Focused developer checks |
-| `make demo`, `make seed-demo` | Disposable supervisor, or explicit empty demo database seed |
-| `make dev`, `make worker` | Native foreground services, or worker alone |
-| `make down` | Stop Compose services while retaining data; native services use Ctrl+C |
-| `make backup OUTPUT=...`, `make restore INPUT=... OUTPUT=... LEDGER=...` | Interactive encrypted backup/restore with writes stopped |
-| `make eval-live PROVIDER=...` | Explicit opt-in, at most three synthetic tutor calls; requires configured route |
+| Command                                                                  | Purpose                                                                                                     |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------------------------- |
+| `make bootstrap`, `make hooks-install`                                   | Locked install and local commit checks                                                                      |
+| `make check`                                                             | Locks, lint, format, strict types, unit/component tests, builds, generated contracts, secret scan, IaC lint |
+| `make test-integration`                                                  | On-disk migration, authorization, recovery, provider-policy and retention checks                            |
+| `make smoke` / `make test-e2e`                                           | Isolated API/worker and desktop/mobile Chromium workflows                                                   |
+| `make eval-mock`                                                         | Original deterministic fixtures and mock vision contracts; no quality claim                                 |
+| `make audit`, `make hooks-check`                                         | Locked dependency vulnerability audit and tracked-file checks                                               |
+| `make contracts` / `make contracts-check`                                | Regenerate OpenAPI/TypeScript or reject drift                                                               |
+| `make format`, `make lint`, `make typecheck`                             | Focused developer checks                                                                                    |
+| `make demo`, `make seed-demo`                                            | Disposable supervisor, or explicit empty demo database seed                                                 |
+| `make dev`, `make worker`                                                | Native foreground services, or worker alone                                                                 |
+| `make serve`                                                             | API/worker behind your configured private HTTPS gateway; see PHONE_SETUP                                    |
+| `make down`                                                              | Stop Compose services while retaining data; native services use Ctrl+C                                      |
+| `make backup OUTPUT=...`, `make restore INPUT=... OUTPUT=... LEDGER=...` | Interactive encrypted backup/restore with writes stopped                                                    |
+| `make eval-live PROVIDER=...`                                            | Explicit opt-in, at most three synthetic tutor calls; requires configured route                             |
 
 Install the test browser with `pnpm exec playwright install --with-deps chromium`,
 or set `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` to an installed Chrome. Mobile

@@ -31,6 +31,21 @@ def test_heif_round_trip_and_metadata_stripping() -> None:
     assert b"synthetic metadata" not in normalize(png.getvalue())
 
 
+def test_24_megapixel_class_phone_photo_is_not_rejected_by_rounded_label() -> None:
+    source = BytesIO()
+    Image.new("RGB", (5712, 4284), "white").save(source, "JPEG")
+    with Image.open(BytesIO(normalize(source.getvalue()))) as result:
+        assert result.size == (2048, 1536)
+        assert not result.info
+
+
+def test_valid_gif_is_rejected_not_only_corrupt_gif_headers() -> None:
+    source = BytesIO()
+    Image.new("RGB", (64, 32), "white").save(source, "GIF")
+    with pytest.raises(ValueError, match="Use one JPEG"):
+        normalize(source.getvalue())
+
+
 @pytest.mark.parametrize(
     "data",
     [

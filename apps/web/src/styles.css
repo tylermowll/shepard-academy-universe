@@ -376,3 +376,57 @@ img {
   padding-block: 8px;
   line-height: 1.4;
 }
+/* The camera companion remains a small touch-friendly page on an iPhone. */
+.phone-capture {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 1.25rem;
+}
+.phone-capture h1 {
+  font-size: clamp(1.75rem, 6vw, 2.5rem);
+}
+.phone-link {
+  margin-block: 1rem;
+}
+.phone-link-details {
+  padding-block: 1rem;
+}
+.phone-link-details svg {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+.phone-link-details p {
+  max-width: 38rem;
+}
+.tutor-activity > .explanation {
+  font-size: 1.25rem;
+  line-height: 1.65;
+}
+.tutor-history h5 {
+  font-size: 1.2rem;
+  margin: 20px 0 12px;
+}
+.tutor-history h6 {
+  font-size: 1rem;
+  margin: 16px 0 8px;
+}
+.tutor-feedback {
+  padding: 4px 20px 16px;
+  border-left: 3px solid #668779;
+  background: #f0f4e9;
+  border-radius: 4px 12px 12px 4px;
+}
+.photo-reading {
+  padding: 4px 16px 12px;
+  background: #f5f1e6;
+  border-radius: 12px;
+  margin-block: 12px;
+}
+.tutor ul {
+  padding-left: 24px;
+}
+.tutor-history,
+.tutor-activity {
+  overflow-wrap: anywhere;
+}

@@ -39,10 +39,42 @@ class InterpretationPayload(BaseModel):
     ambiguities: list[str] = Field(max_length=20)
 
 
+class ActivityPayload(BaseModel):
+    """A new practice activity, never an answer key or a solved reference."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    problem_text: str = Field(min_length=12, max_length=4000)
+    concept_focus: str = Field(min_length=1, max_length=500)
+
+
+class ReadingPayload(BaseModel):
+    """Visible work and readability, with no permissive quality defaults."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    transcription: str = Field(max_length=8000)
+    quality: Literal["clear", "uncertain", "unreadable"]
+    confidence: float = Field(ge=0, le=1)
+    ambiguities: list[str] = Field(max_length=20)
+    organization_feedback: list[str] = Field(max_length=8)
+    rejection_reason: str | None = Field(max_length=1000)
+
+
+class FeedbackPayload(BaseModel):
+    """Teaching observations are not grades, tools, or completion commands."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    strengths: list[str] = Field(max_length=5)
+    guidance: list[str] = Field(min_length=1, max_length=5)
+    next_step: str = Field(min_length=1, max_length=1000)
+    concepts: list[str] = Field(max_length=5)
+    uncertainty_note: str | None = Field(default=None, max_length=500)
+
+
 class ModelRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     operation_id: UUID
     stage: Literal["tutor", "vision"]
+    purpose: Literal["legacy", "generate", "read", "review"] = "legacy"
     model_id: str
     system_instruction: str = Field(max_length=6000)
     ordered_messages: list[Message] = Field(max_length=12)
@@ -53,7 +85,9 @@ class ModelRequest(BaseModel):
 
 
 class ModelResult(BaseModel):
-    validated_payload: TutorPayload | InterpretationPayload
+    validated_payload: (
+        TutorPayload | InterpretationPayload | ActivityPayload | ReadingPayload | FeedbackPayload
+    )
     provider_request_id: str | None = None
     model_id: str
     reported_usage: dict[str, int] = Field(default_factory=dict)

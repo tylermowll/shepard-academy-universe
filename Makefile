@@ -82,7 +82,7 @@ check: pre-commit-check build contracts-check secret-check infra-check
 smoke: build
 	$(PNPM) smoke
 
-.PHONY: contracts contracts-check secret-check audit eval-mock eval-live dev demo worker test-e2e infra-check backup restore
+.PHONY: contracts contracts-check secret-check audit eval-mock eval-live dev serve demo worker test-e2e infra-check backup restore
 
 contracts:
 	$(UV) run --project $(API_PROJECT) --locked python scripts/export-contracts.py --output contracts/openapi.json
@@ -111,6 +111,10 @@ eval-live:
 
 dev: build
 	$(UV) run --project $(API_PROJECT) --locked python scripts/dev.py
+
+# A separately configured HTTPS gateway forwards to loopback port 8000.
+serve: build
+	$(UV) run --project $(API_PROJECT) --locked python scripts/dev.py --gateway
 
 demo: build
 	$(UV) run --project $(API_PROJECT) --locked python scripts/serve-demo.py --port 8000

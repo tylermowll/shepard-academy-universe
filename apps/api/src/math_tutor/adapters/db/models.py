@@ -71,6 +71,23 @@ class PracticeSession(Base):
     profile_settings: Mapped[dict[str, Any]] = mapped_column(
         JSON, nullable=False, default=lambda: dict(DEFAULT_PROFILE)
     )
+    mode: Mapped[str] = mapped_column(
+        String(16),
+        CheckConstraint("mode IN ('built_in', 'ai_tutor')", name="ck_session_mode"),
+        nullable=False,
+        default="built_in",
+        server_default="built_in",
+    )
+    topic: Mapped[str] = mapped_column(Text, nullable=False, default="", server_default="")
+    initiative: Mapped[str] = mapped_column(
+        String(16),
+        CheckConstraint(
+            "initiative IN ('tutor_led', 'balanced', 'learner_led')", name="ck_session_initiative"
+        ),
+        nullable=False,
+        default="balanced",
+        server_default="balanced",
+    )
 
     learner: Mapped[Learner] = relationship()
 
@@ -260,6 +277,34 @@ class Submission(Base):
     )
 
 
+class PhoneUpload(Base):
+    """One short-lived delegated photo permission; no bearer secret is persisted."""
+
+    __tablename__ = "phone_upload"
+    __table_args__ = (
+        UniqueConstraint("issuer_id", "request_key", name="uq_phone_upload_request"),
+        CheckConstraint("version >= 1", name="ck_phone_upload_version"),
+        CheckConstraint("expires_at > created_at", name="ck_phone_upload_expiration"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType, primary_key=True, default=uuid.uuid4)
+    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    issuer_id: Mapped[uuid.UUID] = mapped_column(
+        UUIDType, ForeignKey("device_session.id", ondelete="CASCADE"), nullable=False
+    )
+    problem_id: Mapped[uuid.UUID] = mapped_column(
+        UUIDType, ForeignKey("problem_instance.id", ondelete="CASCADE"), nullable=False
+    )
+    version: Mapped[int] = mapped_column(nullable=False)
+    policy_digest: Mapped[str] = mapped_column(String(64), nullable=False)
+    request_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    submission_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUIDType, ForeignKey("submission.id", ondelete="CASCADE"), unique=True
+    )
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+
+
 class Evaluation(Base):
     __tablename__ = "evaluation"
     id: Mapped[uuid.UUID] = mapped_column(UUIDType, primary_key=True, default=uuid.uuid4)
@@ -283,6 +328,7 @@ class TutorTurn(Base):
     source: Mapped[str] = mapped_column(String(64), nullable=False)
     assistance_level: Mapped[int] = mapped_column(nullable=False)
     prompt_version: Mapped[str] = mapped_column(String(32), nullable=False, default="tutor-v1")
+    feedback: Mapped[dict[str, Any] | None] = mapped_column(JSON)
 
 
 class ProgressEvent(Base):
@@ -390,6 +436,7 @@ class Interpretation(Base):
     transcription: Mapped[str] = mapped_column(Text, nullable=False)
     final_answer: Mapped[str | None] = mapped_column(String(128))
     ambiguities: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    reading: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     confirmed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utcnow)
 

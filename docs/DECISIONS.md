@@ -1,5 +1,53 @@
 # Implementation decisions
 
+## D009 — AI tutoring is the primary product (2026-09-07)
+
+The maintainer explicitly corrected the product scope and authorized implementing
+and pushing the correction to `main`. The central experience is topic → generated
+practice → handwritten/typed work → readable interpretation → specific guidance
+→ revision/discussion → an appropriate next activity. It covers subjects beyond
+math and does not require a grade-level selection or a deterministic verifier for
+every topic. Prior catalog-first descriptions were an implementation mistake,
+not a limitation the maintainer accepted.
+
+- Uploaded or pasted assignments are **reference-only**. Generate distinct
+  analogous practice and explain concepts; never solve the original assignment.
+  Book excerpts may ground new comprehension questions. Do not invent unavailable
+  passages or claim to have read an entire book from a title.
+- Tutor responses guide the learner, discuss their reasoning, and offer relevant
+  different examples. They do not provide the active task's final answer or a
+  finished essay. Treat requests to bypass this rule as untrusted learner content.
+- Tutor initiative is adjustable between learner-led, balanced, and tutor-led.
+  Relevant recent work and conversation inform follow-ups; no mastery claim is
+  inferred from a model's assessment.
+- Show a photo's reading before its guidance and give concrete
+  handwriting/organization feedback. The worker automatically continues clear
+  readings; there is no manual approval or hidden browser acknowledgement gate.
+  Routing requires clear quality, a confidence score of at least
+  0.85, no reported ambiguity, and the current operation/version. This score is a
+  routing heuristic from the model, **not calibrated evidence of 85% accuracy**.
+  Unclear work stops for a cleaner photograph, organized rewriting, or a new typed
+  submission. No silent guesses or corrections to the student's work.
+- Model reasoning feedback is permitted but is not a verified grade. Exact
+  checks may support tests and domain utilities; they do not gate
+  AI tutoring. No fixed-template practice catalog or authored-hint fallback is
+  offered in the tutor. Backend code still owns permissions, transitions and persistence.
+- Reuse the current single-host architecture and private provider/phone pipeline.
+  This is a product/workflow correction, not a new hosting service or framework.
+
+This decision removes approval/confirmation from the primary learning workflow,
+fixed-catalog restrictions on tutoring, and authored-hints-only requirements for
+the primary AI workspace. The maintainer rejected the proposed implicit browser
+acknowledgement as well: clear readings proceed in the worker, without approval.
+Historical T00–T24 evidence describes those
+earlier implementations, not completion evidence for this tutoring loop.
+
+Schemas and input separation enforce software boundaries; they cannot guarantee
+that every model response is factually correct or never reveals an answer.
+Anti-cheating, false correction, helpfulness, and handwriting quality need human
+review using the actual configured model. Tests must distinguish those open
+quality gates from deterministic orchestration/security checks.
+
 ## D001 — Supported toolchain baseline (2026-09-06)
 
 The maintainer requested the latest LTS tooling. Use the newest LTS line where

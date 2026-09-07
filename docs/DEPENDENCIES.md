@@ -151,3 +151,11 @@ installer packages (60 OS and two installer findings). D007 replaces the runtime
 base with a pinned Distroless Debian 13 image and removes unused installer code.
 It retains the exact managed Python/SQLite runtime and locked app dependencies.
 The scan threshold and unfixed-vulnerability policy remain unchanged.
+
+## Phone companion QR rendering (T24, 2026-09-07)
+
+`qrcode.react` 4.2.0 renders the expiring upload URL as an SVG locally in the
+existing React UI. It ships TypeScript declarations, supports React 19, and adds
+no remote QR service, credentials, runtime network calls, or application framework.
+The pnpm lockfile pins the package/integrity. See the
+[upstream documentation](https://github.com/zpao/qrcode.react).

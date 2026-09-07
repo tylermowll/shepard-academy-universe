@@ -1,48 +1,10 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
+import { createActivity, createLearner, login, startTutor } from "./support";
 
-async function login(page: Page) {
-  await page.goto("/");
-  await page.getByLabel("Login name", { exact: true }).fill("demo");
-  await page
-    .getByLabel("Password", { exact: true })
-    .fill("synthetic-demo-password-only");
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
-}
-async function createLearner(page: Page) {
-  await page.getByText("Manage learners and devices", { exact: true }).click();
-  const alias = `Synthetic ${Date.now()}`;
-  await page.getByLabel("Alias", { exact: true }).fill(alias);
-  await page
-    .getByRole("button", { name: "Create learner", exact: true })
-    .click();
-  await expect(
-    page.getByRole("combobox", { name: "Learner", exact: true }),
-  ).toHaveValue(/[a-f0-9-]{36}/);
-  await page.getByText("Manage learners and devices", { exact: true }).click();
-  return alias;
-}
-function answer(text: string) {
-  const parts = text.split(" + ");
-  const rational = (part: string) => {
-    const [n, d] = part.split("/").map(Number);
-    return [n ?? 0, d ?? 1] as const;
-  };
-  const [a, b] = rational(parts[0] ?? "");
-  const [c, d] = rational(parts[1] ?? "");
-  let n = a * d + c * b,
-    den = b * d;
-  let x = n,
-    y = den;
-  while (y) {
-    [x, y] = [y, x % y];
-  }
-  n /= x;
-  den /= x;
-  return den === 1 ? String(n) : `${n}/${den}`;
-}
-
-test("same-origin entry renders without external requests or overflow", async ({
+// T25 supersedes template/exact-answer/manual-confirmation UI expectations.
+// Preserve their auth, persistence, offline and request-recovery guarantees in
+// the requested AI workflow, using the real disposable API, worker and database.
+test("same-origin entry renders without external requests, templates, or overflow", async ({
   page,
   request,
 }) => {
@@ -58,13 +20,16 @@ test("same-origin entry renders without external requests or overflow", async ({
   });
   expect((await request.get("/health/ready")).status()).toBe(200);
   await page.goto("/");
-  await expect(page).toHaveTitle("Math Practice Tutor");
+  await expect(page).toHaveTitle("Shepard Tutor");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-    "Make room for a little math.",
+    "Make room for understanding.",
   );
   await expect(
     page.getByRole("button", { name: "Sign in", exact: true }),
   ).toBeEnabled();
+  await expect(
+    page.getByText("Public offline practice pack", { exact: true }),
+  ).toHaveCount(0);
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -74,31 +39,28 @@ test("same-origin entry renders without external requests or overflow", async ({
   expect(external).toEqual([]);
 });
 
-test("persisted practice, assistance, reload, progress and logout", async ({
+test("persisted tutoring survives disconnect and reload, then logout clears private content", async ({
   page,
   context,
 }) => {
-  await login(page);
-  const alias = await createLearner(page);
-  await page.getByRole("button", { name: "Start a new session" }).click();
-  await page.getByRole("button", { name: "Assign next problem" }).click();
-  const problem = page.locator(".math-problem");
-  await expect(problem).toBeVisible();
-  const value = answer(await problem.innerText());
-  await page.getByLabel("Your answer or question").fill("-999");
-  await page.getByRole("button", { name: "Check answer", exact: true }).click();
-  await expect(page.locator(".verdict").first()).toContainText("incorrect");
-  await page.getByRole("button", { name: "Hint", exact: true }).click();
-  await expect(
-    page.getByText("Help used: level 1", { exact: true }),
-  ).toBeVisible();
-  await page.getByLabel("Your answer or question").fill(value);
+  const alias = await startTutor(
+    page,
+    "History: comparing evidence from two accounts",
+  );
+  await createActivity(page);
+  await page
+    .getByRole("textbox", { name: "Your work or question", exact: true })
+    .fill(
+      "I would compare which claims both accounts support and which depend on one witness.",
+    );
   const submitted = page.waitForResponse(
     (response) =>
       response.url().includes("/submissions") &&
       response.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "Check answer", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Share my work", exact: true })
+    .click();
   expect((await submitted).status()).toBe(202);
   await context.setOffline(true);
   await page.reload();
@@ -110,36 +72,30 @@ test("persisted practice, assistance, reload, progress and logout", async ({
   await page
     .getByRole("combobox", { name: "Learner", exact: true })
     .selectOption({ label: alias });
-  await expect(page.locator(".verdict.correct")).toHaveCount(1);
-  if (
-    process.env.CAPTURE_SYNTHETIC_SCREENSHOT &&
-    test.info().project.name === "desktop-chromium"
-  )
-    await page.screenshot({
-      path: "/tmp/math-tutor-practice.png",
-      fullPage: true,
-    });
+  await expect(page.locator(".tutor-feedback")).toHaveCount(1);
   const hash = await page.evaluate(() => location.hash);
   await page.reload();
-  // Adult selection is explicit after reload; select the session's learner again.
   await page
     .getByRole("combobox", { name: "Learner", exact: true })
     .selectOption({ label: alias });
-  await expect(page.locator(".verdict.correct")).toHaveCount(1);
+  await expect(page.locator(".tutor-feedback")).toHaveCount(1);
   expect(await page.evaluate(() => location.hash)).toBe(hash);
-  await page.getByRole("button", { name: "Finish session" }).click();
+  await page.getByText("Session settings", { exact: true }).click();
+  await page
+    .getByRole("button", { name: "Finish tutoring session", exact: true })
+    .click();
   await expect(
-    page.locator(".practice").getByText(/Guided practice · completed/),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Sign out" }).click();
+    page.getByRole("textbox", { name: "Your work or question", exact: true }),
+  ).toHaveCount(0);
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page.getByRole("heading", { level: 1 })).toHaveText(
-    "Make room for a little math.",
+    "Make room for understanding.",
   );
-  await expect(page.locator(".operation")).toHaveCount(0);
+  await expect(page.locator(".tutor-feedback")).toHaveCount(0);
   expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([]);
 });
 
-test("public offline pack remains distinct from saved tutoring", async ({
+test("offline shell does not cache private work or replace tutoring with templates", async ({
   page,
   context,
 }) => {
@@ -149,16 +105,15 @@ test("public offline pack remains distinct from saved tutoring", async ({
   });
   await context.setOffline(true);
   await page.reload();
-  await page.getByText("Public offline practice pack", { exact: true }).click();
-  await page.getByLabel("Offline answer", { exact: true }).fill("5/6");
-  await page.getByRole("button", { name: "Check on this device" }).click();
   await expect(
-    page.getByText("Correct value (checked on this device)."),
+    page.getByRole("alert").filter({ hasText: "The server is unavailable." }),
   ).toBeVisible();
+  await expect(
+    page.getByText("Public offline practice pack", { exact: true }),
+  ).toHaveCount(0);
   const cached = await page.evaluate(async () => {
-    const keys = await caches.keys();
     const urls: string[] = [];
-    for (const key of keys)
+    for (const key of await caches.keys())
       for (const request of await (await caches.open(key)).keys())
         urls.push(new URL(request.url).pathname);
     return urls;
@@ -175,39 +130,6 @@ test.describe("without JavaScript", () => {
     await expect(page.locator("noscript p")).toBeVisible();
     await expect(page.locator("noscript p")).toContainText("JavaScript");
   });
-});
-
-test("photo preview and explicit confirmation preserve work before checking", async ({
-  page,
-}) => {
-  await login(page);
-  await createLearner(page);
-  await page.getByRole("button", { name: "Start a new session" }).click();
-  await page.getByRole("button", { name: "Assign next problem" }).click();
-  await page.getByText("Submit a photograph", { exact: true }).click();
-  await page
-    .getByLabel("Take or choose a photo")
-    .setInputFiles("evals/fixtures/work.png");
-  await expect(
-    page.getByRole("img", { name: "Your photograph before submission" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Rotate 90°" }).click();
-  await page.getByRole("button", { name: "Submit this photograph" }).click();
-  await expect(
-    page.getByRole("button", { name: "Confirm this interpretation" }),
-  ).toBeVisible();
-  await expect(page.locator(".verdict")).toHaveCount(0);
-  await page
-    .getByLabel("Confirm or edit the transcription")
-    .fill("My work says 2/5.");
-  await page.getByLabel("Final answer from this work").fill("2/5");
-  await page
-    .getByRole("button", { name: "Confirm this interpretation" })
-    .click();
-  await expect(page.locator(".verdict")).toHaveCount(1);
-  await expect(
-    page.getByText("Transcription: My work says 2/5."),
-  ).toBeVisible();
 });
 
 test("an installed update waits for the user before refreshing", async ({
@@ -235,7 +157,7 @@ test("an installed update waits for the user before refreshing", async ({
   await expect(page.getByLabel("Login name", { exact: true })).toHaveValue("");
 });
 
-test("adult pairs a second browser and revocation clears learner access", async ({
+test("adult pairs a second browser and revocation clears its tutoring access", async ({
   page,
   browser,
 }) => {
@@ -255,14 +177,18 @@ test("adult pairs a second browser and revocation clears learner access", async 
     await page.getByLabel("Pairing request ID").fill(requestId);
     await page.getByRole("button", { name: "Approve this browser" }).click();
     await expect(
-      learner.getByRole("button", { name: "Start a new session" }),
+      learner.getByRole("button", { name: "Start tutoring", exact: true }),
     ).toBeVisible();
     await expect(
       learner.getByText("Manage learners and devices", { exact: true }),
     ).toHaveCount(0);
-    await learner.getByRole("button", { name: "Start a new session" }).click();
-    await learner.getByRole("button", { name: "Assign next problem" }).click();
-    await expect(learner.locator(".math-problem")).toBeVisible();
+    await learner
+      .getByRole("textbox", { name: "Topic or learning goal", exact: true })
+      .fill("Science: testing a prediction");
+    await learner
+      .getByRole("button", { name: "Start tutoring", exact: true })
+      .click();
+    await createActivity(learner);
     await page.getByRole("button", { name: "Revoke learner devices" }).click();
     await expect(
       page.getByText("Learner devices revoked.", { exact: true }),
@@ -270,7 +196,7 @@ test("adult pairs a second browser and revocation clears learner access", async 
     await expect(
       learner.getByRole("button", { name: "Pair this device" }),
     ).toBeEnabled();
-    await expect(learner.locator(".math-problem")).toHaveCount(0);
+    await expect(learner.locator(".tutor-activity")).toHaveCount(0);
     await expect(learner.getByRole("button", { name: "Sign out" })).toHaveCount(
       0,
     );
@@ -280,40 +206,45 @@ test("adult pairs a second browser and revocation clears learner access", async 
   }
 });
 
-test("changing learners clears the previous learner's session and entries", async ({
+test("changing learners clears the previous learner's tutoring and unsent work", async ({
   page,
 }) => {
-  await login(page);
-  await createLearner(page);
-  await page.getByRole("button", { name: "Start a new session" }).click();
-  await page.getByRole("button", { name: "Assign next problem" }).click();
-  await page.getByLabel("Your answer or question").fill("-999");
-  await page.getByRole("button", { name: "Check answer", exact: true }).click();
-  await expect(page.locator(".verdict.incorrect")).toHaveCount(1);
+  await startTutor(page, "Writing: choosing evidence");
+  await createActivity(page);
+  await page
+    .getByRole("textbox", { name: "Your work or question", exact: true })
+    .fill("My evidence should support my paragraph's claim.");
+  await page
+    .getByRole("button", { name: "Share my work", exact: true })
+    .click();
+  await expect(page.locator(".tutor-feedback")).toHaveCount(1);
+  await page
+    .getByRole("textbox", { name: "Your work or question", exact: true })
+    .fill("Unsent work must not appear for Delta.");
   const previousSession = await page.evaluate(() => location.hash);
   await page
     .getByRole("combobox", { name: "Learner", exact: true })
     .selectOption({ label: "Delta" });
-  await expect(page.locator(".operation")).toHaveCount(0);
-  await expect(page.locator(".math-problem")).toHaveCount(0);
+  await expect(page.locator(".tutor-feedback")).toHaveCount(0);
+  await expect(page.locator(".tutor-activity")).toHaveCount(0);
   await expect(
-    page.getByRole("combobox", { name: "Saved sessions" }),
+    page.getByRole("combobox", { name: "Saved tutoring sessions" }),
   ).toHaveValue("");
   expect(await page.evaluate(() => location.hash)).toBe("");
-  await page.getByRole("button", { name: "Start a new session" }).click();
-  await expect(
-    page.getByRole("button", { name: "Assign next problem" }),
-  ).toBeVisible();
+  await page
+    .getByRole("textbox", { name: "Topic or learning goal", exact: true })
+    .fill("Reading: compare two characters");
+  await page
+    .getByRole("button", { name: "Start tutoring", exact: true })
+    .click();
   expect(await page.evaluate(() => location.hash)).not.toBe(previousSession);
 });
 
-test("a lost submission acknowledgement retries the original entry without duplicate grading", async ({
+test("a lost work receipt retries the original submission through throttling without duplicate guidance", async ({
   page,
 }) => {
-  await login(page);
-  await createLearner(page);
-  await page.getByRole("button", { name: "Start a new session" }).click();
-  await page.getByRole("button", { name: "Assign next problem" }).click();
+  await startTutor(page, "Social studies: evaluating a source");
+  await createActivity(page);
   const submissions: { key: string | undefined; body: string | null }[] = [];
   await page.route("**/api/v1/problems/*/submissions", async (route) => {
     const request = route.request();
@@ -322,8 +253,7 @@ test("a lost submission acknowledgement retries the original entry without dupli
       body: request.postData(),
     });
     if (submissions.length === 1) {
-      const accepted = await route.fetch();
-      expect(accepted.status()).toBe(202);
+      expect((await route.fetch()).status()).toBe(202);
       await route.abort("connectionreset");
     } else if (submissions.length === 2)
       await route.fulfill({
@@ -332,58 +262,65 @@ test("a lost submission acknowledgement retries the original entry without dupli
       });
     else await route.continue();
   });
-  await page.getByLabel("Your answer or question").fill("-999");
   await page
-    .getByLabel("Steps (optional; reasoning is not checked)")
-    .fill("Synthetic steps stay with this entry.");
-  await page.getByRole("button", { name: "Check answer", exact: true }).click();
-  await expect(page.locator(".verdict.incorrect")).toHaveCount(1);
-  await expect(page.getByLabel("Your answer or question")).not.toBeEditable();
+    .getByRole("textbox", { name: "Your work or question", exact: true })
+    .fill("Synthetic original work remains bound to this entry.");
+  await page
+    .getByRole("button", { name: "Share my work", exact: true })
+    .click();
+  await expect(page.locator(".tutor-feedback")).toHaveCount(1);
   await expect(
-    page.getByRole("button", { name: "Check answer", exact: true }),
+    page.getByRole("textbox", { name: "Your work or question", exact: true }),
+  ).not.toBeEditable();
+  await expect(
+    page.getByRole("button", { name: "Share my work", exact: true }),
   ).toBeDisabled();
   const throttled = page.waitForResponse(
     (response) =>
       response.url().endsWith("/submissions") &&
       response.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "Retry saved submission" }).click();
+  await page
+    .getByRole("button", { name: "Retry saved request", exact: true })
+    .click();
   expect((await throttled).status()).toBe(429);
   await expect(
-    page.getByRole("button", { name: "Retry saved submission" }),
+    page.getByRole("button", { name: "Retry saved request", exact: true }),
   ).toBeEnabled();
-  await expect(page.getByLabel("Your answer or question")).not.toBeEditable();
+  await expect(
+    page.getByRole("textbox", { name: "Your work or question", exact: true }),
+  ).not.toBeEditable();
   const recovered = page.waitForResponse(
     (response) =>
       response.url().endsWith("/submissions") &&
       response.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "Retry saved submission" }).click();
+  await page
+    .getByRole("button", { name: "Retry saved request", exact: true })
+    .click();
   expect((await recovered).status()).toBe(202);
-  await expect(page.getByLabel("Your answer or question")).toBeEditable();
+  await expect(
+    page.getByRole("textbox", { name: "Your work or question", exact: true }),
+  ).toBeEditable();
   expect(submissions).toHaveLength(3);
   expect(submissions[1]).toEqual(submissions[0]);
   expect(submissions[2]).toEqual(submissions[0]);
-  await expect(page.locator(".operation")).toHaveCount(1);
-  await expect(
-    page
-      .locator(".progress .stats > div")
-      .filter({ hasText: "Incorrect answers" })
-      .locator("strong"),
-  ).toHaveText("1");
-  await page.getByLabel("Your answer or question").fill("-998");
-  await page.getByRole("button", { name: "Check answer", exact: true }).click();
-  await expect(page.locator(".verdict.incorrect")).toHaveCount(2);
+  await expect(page.locator(".tutor-feedback")).toHaveCount(1);
+  await page
+    .getByRole("textbox", { name: "Your work or question", exact: true })
+    .fill("A new revision gets its own operation.");
+  await page
+    .getByRole("button", { name: "Share my work", exact: true })
+    .click();
+  await expect(page.locator(".tutor-feedback")).toHaveCount(2);
   expect(submissions[3]?.key).not.toBe(submissions[0]?.key);
 });
 
-test("a lost photograph acknowledgement retries the same bytes and purpose after polling", async ({
+test("a lost photograph receipt retries the same bytes and purpose without duplicate reading or guidance", async ({
   page,
 }) => {
-  await login(page);
-  await createLearner(page);
-  await page.getByRole("button", { name: "Start a new session" }).click();
-  await page.getByRole("button", { name: "Assign next problem" }).click();
+  await startTutor(page, "Science: interpreting experiment results");
+  await createActivity(page);
   const submissions: {
     key: string | undefined;
     url: string;
@@ -397,8 +334,7 @@ test("a lost photograph acknowledgement retries the same bytes and purpose after
       body: request.postDataBuffer(),
     });
     if (submissions.length === 1) {
-      const accepted = await route.fetch();
-      expect(accepted.status()).toBe(202);
+      expect((await route.fetch()).status()).toBe(202);
       await route.abort("connectionreset");
     } else if (submissions.length === 2)
       await route.fulfill({
@@ -411,62 +347,53 @@ test("a lost photograph acknowledgement retries the same bytes and purpose after
   await page
     .getByLabel("Take or choose a photo")
     .setInputFiles("evals/fixtures/work.png");
-  await page.getByRole("button", { name: "Submit this photograph" }).click();
+  await page
+    .getByRole("button", { name: "Submit this photograph", exact: true })
+    .click();
+  await expect(page.locator(".tutor-feedback")).toHaveCount(1);
   await expect(
-    page.getByRole("button", { name: "Confirm this interpretation" }),
-  ).toBeVisible();
-  await expect(
-    page.getByRole("combobox", { name: "Purpose", exact: true }),
-  ).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Rotate 90°" })).toBeDisabled();
-  await expect(
-    page.getByRole("button", { name: "Start a new session" }),
+    page.getByRole("button", { name: "Rotate 90°", exact: true }),
   ).toBeDisabled();
   await expect(
-    page.getByRole("combobox", { name: "Saved sessions" }),
+    page.getByRole("combobox", { name: "Saved tutoring sessions" }),
   ).toBeDisabled();
-  await expect(page.getByLabel("Your answer or question")).not.toBeEditable();
   await expect(
-    page.getByRole("button", { name: "Confirm this interpretation" }),
-  ).toBeDisabled();
+    page.getByRole("textbox", { name: "Your work or question", exact: true }),
+  ).not.toBeEditable();
   const throttled = page.waitForResponse(
     (response) =>
       response.url().includes("/photos?") &&
       response.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "Retry saved photograph" }).click();
+  await page
+    .getByRole("button", { name: "Retry saved photograph", exact: true })
+    .click();
   expect((await throttled).status()).toBe(429);
   await expect(
-    page.getByRole("button", { name: "Retry saved photograph" }),
+    page.getByRole("button", { name: "Retry saved photograph", exact: true }),
   ).toBeEnabled();
-  await expect(
-    page.getByRole("button", { name: "Start a new session" }),
-  ).toBeDisabled();
   const recovered = page.waitForResponse(
     (response) =>
       response.url().includes("/photos?") &&
       response.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "Retry saved photograph" }).click();
+  await page
+    .getByRole("button", { name: "Retry saved photograph", exact: true })
+    .click();
   expect((await recovered).status()).toBe(202);
   expect(submissions).toHaveLength(3);
   expect(submissions[1]).toEqual(submissions[0]);
   expect(submissions[2]).toEqual(submissions[0]);
-  await expect(page.locator(".operation")).toHaveCount(1);
+  await expect(page.locator(".tutor-feedback")).toHaveCount(1);
   await expect(
-    page.getByRole("button", { name: "Retry saved photograph" }),
+    page.getByRole("heading", { name: "Reading from your photo", exact: true }),
+  ).toHaveCount(1);
+  await expect(
+    page.getByRole("button", { name: "Retry saved photograph", exact: true }),
   ).toHaveCount(0);
-  await page
-    .getByLabel("Confirm or edit the transcription")
-    .fill("My synthetic work says -999.");
-  await page.getByLabel("Final answer from this work").fill("-999");
-  await page
-    .getByRole("button", { name: "Confirm this interpretation" })
-    .click();
-  await expect(page.locator(".verdict.incorrect")).toHaveCount(1);
 });
 
-test("lost session and problem receipts retain their original configuration", async ({
+test("lost tutoring session and activity receipts retain their original topic, settings, source, and request identity", async ({
   page,
 }) => {
   await login(page);
@@ -478,7 +405,7 @@ test("lost session and problem receipts retain their original configuration", as
   }[] = [];
   const acceptedPaths = new Set<string>();
   await page.route(
-    /\/api\/v1\/sessions(?:\/[^/]+\/problems)?$/,
+    /\/api\/v1\/tutor\/sessions(?:\/[^/]+\/activities)?$/,
     async (route) => {
       const request = route.request();
       if (request.method() !== "POST") {
@@ -498,43 +425,54 @@ test("lost session and problem receipts retain their original configuration", as
     },
   );
   await page
-    .getByRole("combobox", { name: "Tutor profile", exact: true })
-    .selectOption({ label: "All supported skills · v1" });
-  await page.getByRole("button", { name: "Start a new session" }).click();
+    .getByRole("textbox", { name: "Topic or learning goal", exact: true })
+    .fill("Reading: support an interpretation with evidence");
+  await page
+    .getByRole("combobox", { name: "Tutor initiative", exact: true })
+    .selectOption("learner_led");
+  await page
+    .getByRole("button", { name: "Start tutoring", exact: true })
+    .click();
   await expect(
-    page.getByRole("button", { name: "Retry session creation" }),
+    page.getByRole("button", { name: "Retry saved request", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("combobox", { name: "Tutor profile", exact: true }),
-  ).toBeDisabled();
+    page.getByRole("textbox", { name: "Topic or learning goal", exact: true }),
+  ).not.toBeEditable();
   await expect(
-    page.getByRole("button", { name: "Start a new session" }),
+    page.getByRole("button", { name: "Start tutoring", exact: true }),
   ).toBeDisabled();
-  await page.getByRole("button", { name: "Retry session creation" }).click();
+  await page
+    .getByRole("button", { name: "Retry saved request", exact: true })
+    .click();
   await expect(
-    page.getByRole("button", { name: "Assign next problem" }),
+    page.getByRole("button", { name: "Create practice activity", exact: true }),
   ).toBeEnabled();
-  await expect(
-    page.getByRole("combobox", { name: "Saved sessions" }).locator("option"),
-  ).toHaveCount(2);
   expect(requests).toHaveLength(2);
   expect(requests[1]).toEqual(requests[0]);
   await page
-    .getByRole("combobox", { name: "Skill", exact: true })
-    .selectOption("fractions.add");
-  await page.getByRole("button", { name: "Assign next problem" }).click();
+    .getByRole("combobox", { name: "Practice source", exact: true })
+    .selectOption("reference_text");
+  await page
+    .getByRole("textbox", { name: "Reference material", exact: true })
+    .fill(
+      "Synthetic original homework prompt to use only for analogous practice.",
+    );
+  await page
+    .getByRole("button", { name: "Create practice activity", exact: true })
+    .click();
   await expect(
-    page.getByRole("button", { name: "Retry problem assignment" }),
+    page.getByRole("button", { name: "Retry saved request", exact: true }),
   ).toBeVisible();
-  await expect(page.locator(".math-problem")).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Skip problem" }),
+    page.getByRole("combobox", { name: "Practice source", exact: true }),
   ).toBeDisabled();
-  await page.getByRole("button", { name: "Retry problem assignment" }).click();
+  await page
+    .getByRole("button", { name: "Retry saved request", exact: true })
+    .click();
   await expect(
-    page.getByRole("button", { name: "Skip problem" }),
-  ).toBeEnabled();
+    page.getByRole("textbox", { name: "Your work or question", exact: true }),
+  ).toBeEditable();
   expect(requests).toHaveLength(4);
   expect(requests[3]).toEqual(requests[2]);
-  await expect(page.locator(".history.card")).toHaveCount(1);
 });

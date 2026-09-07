@@ -13,7 +13,8 @@ from pillow_heif.as_plugin import register_heif_opener
 from math_tutor import settings
 
 MAX_BYTES = 8 * 1024 * 1024
-MAX_PIXELS = 24_000_000
+# Allow 24 MP-class phone photos such as 5712 × 4284, without admitting 48 MP originals.
+MAX_PIXELS = 25_000_000
 Image.MAX_IMAGE_PIXELS = MAX_PIXELS
 register_heif_opener()
 
@@ -31,7 +32,7 @@ def normalize(data: bytes) -> bytes:
                     or getattr(image, "n_frames", 1) != 1
                 ):
                     raise ValueError(
-                        "Use one JPEG, PNG, WebP, HEIC or HEIF image under 24 million pixels."
+                        "Use one JPEG, PNG, WebP, HEIC or HEIF image at most 25 million pixels."
                     )
                 image.load()
                 oriented = ImageOps.exif_transpose(image).convert("RGB")

@@ -1,5 +1,18 @@
 # Current handoff
 
+The current task is **T25: restore the primary multi-subject AI tutoring loop**,
+not more fixed math exercises. See [D009](DECISIONS.md#d009--ai-tutoring-is-the-primary-product-2026-09-07)
+and the T25 entry in [TASKS](TASKS.md). The maintainer explicitly wants no fixed
+templates and no photo approval step. Clear readings continue automatically;
+unclear work receives concrete handwriting/organization advice. Uploaded/pasted
+homework is reference-only for distinct analogous practice, never direct solving.
+Guide, explain concepts, and give relevant different examples. Tutor initiative
+is adjustable; no required subject catalog or school level.
+
+The maintainer authorized implementing these changes and pushing reviewed public
+work to `main`. That does not authorize inspecting private provider settings,
+publishing unlicensed examples, paid inference, or public deployment.
+
 The maintainer authorized completing the remaining repository implementations and
 pushing main, selected MIT, and deferred device/account-dependent verification.
 T03 is implemented; do not restart the old T03 prompt. The historical T01/T02 Spark

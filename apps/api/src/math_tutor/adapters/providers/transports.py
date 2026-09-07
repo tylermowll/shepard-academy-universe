@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import socket
@@ -21,10 +22,13 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from math_tutor.adapters.providers.config import ProviderConfig, blocked_destination
 from math_tutor.adapters.providers.contracts import (
+    ActivityPayload,
+    FeedbackPayload,
     InterpretationPayload,
     ModelRequest,
     ModelResult,
     ProviderError,
+    ReadingPayload,
     TutorPayload,
 )
 
@@ -108,10 +112,18 @@ def pinned_endpoints(url: httpx.URL) -> list[httpx.URL]:
     return [url.copy_with(host=host) for host in dict.fromkeys(str(row[4][0]) for row in addresses)]
 
 
-def validate_payload(request: ModelRequest, text: str) -> TutorPayload | InterpretationPayload:
+def validate_payload(
+    request: ModelRequest, text: str
+) -> TutorPayload | InterpretationPayload | ActivityPayload | ReadingPayload | FeedbackPayload:
     if len(text) > 16000:
         raise ProviderError("malformed_output")
     try:
+        if request.purpose == "generate":
+            return ActivityPayload.model_validate_json(text)
+        if request.purpose == "read":
+            return ReadingPayload.model_validate_json(text)
+        if request.purpose == "review":
+            return FeedbackPayload.model_validate_json(text)
         if request.stage == "vision":
             return InterpretationPayload.model_validate_json(text)
         return TutorPayload.model_validate_json(text)
@@ -151,8 +163,48 @@ def check_request(config: ProviderConfig, request: ModelRequest) -> None:
 
 class MockProvider:
     def complete(self, request: ModelRequest) -> ModelResult:
-        payload: TutorPayload | InterpretationPayload
-        if request.stage == "vision":
+        payload: (
+            TutorPayload
+            | InterpretationPayload
+            | ActivityPayload
+            | ReadingPayload
+            | FeedbackPayload
+        )
+        if request.purpose == "generate":
+            payload = ActivityPayload(
+                problem_text="Synthetic practice: Two groups each observe a seedling for a week. One receives light and one stays in shade. Describe one observation you would record and explain how it could support a comparison.",
+                concept_focus="Synthetic example: observations and evidence",
+            )
+        elif request.purpose == "read":
+            # This exact, original public fixture contains only '2/5'. Never
+            # pretend the mock can recognize arbitrary learner handwriting.
+            known = (
+                hashlib.sha256(request.private_image_bytes or b"").hexdigest()
+                == "ba37eb35a8ed619379f6bd5d6cf69504efa1d408e359c170b3009afb270d09af"
+            )
+            payload = ReadingPayload(
+                transcription="2/5" if known else "",
+                quality="clear" if known else "unreadable",
+                confidence=1.0 if known else 0.0,
+                ambiguities=[] if known else ["Mock provider cannot read this photograph."],
+                organization_feedback=[
+                    "Synthetic fixture reading only. For real work, show the question number, leave space between steps, and keep the full page in focus."
+                ],
+                rejection_reason=None
+                if known
+                else "No handwriting model is configured. Choose an image-capable provider; use clear, well-lit, organized work.",
+            )
+        elif request.purpose == "review":
+            payload = FeedbackPayload(
+                strengths=["Synthetic feedback: you submitted work for discussion."],
+                guidance=[
+                    "Connect one specific observation to the claim it supports. Explain why that observation matters instead of giving only a conclusion."
+                ],
+                next_step="Revise one sentence to connect your evidence and explanation.",
+                concepts=["Evidence and explanation"],
+                uncertainty_note="Synthetic mock response, not an assessment of your work.",
+            )
+        elif request.stage == "vision":
             payload = InterpretationPayload(
                 transcription="",
                 ambiguities=[

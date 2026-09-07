@@ -1,5 +1,6 @@
 """Foreground native supervisor; does not read configuration files or migrate data."""
 
+import argparse
 import os
 import signal
 import subprocess
@@ -10,11 +11,24 @@ from urllib.parse import urlsplit
 
 from math_tutor import settings
 
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument(
+    "--gateway",
+    action="store_true",
+    help="Serve on loopback port 8000 behind a separately configured HTTPS gateway.",
+)
+args = parser.parse_args()
 settings.session_secret()
 origin = urlsplit(settings.app_public_origin())
-if origin.scheme != "http" or origin.hostname not in {"127.0.0.1", "localhost", "::1"}:
+if args.gateway and origin.scheme != "https":
     raise SystemExit(
-        "For HTTPS deployments use the service/gateway runbook; make dev is loopback only."
+        "make serve requires APP_PUBLIC_ORIGIN=https://your-phone-reachable-hostname (see docs/PHONE_SETUP.md)."
+    )
+if not args.gateway and (
+    origin.scheme != "http" or origin.hostname not in {"127.0.0.1", "localhost", "::1"}
+):
+    raise SystemExit(
+        "For HTTPS deployments use make serve behind the gateway; make dev is loopback only."
     )
 root = Path(__file__).resolve().parents[1]
 children = []
@@ -33,9 +47,9 @@ try:
             "uvicorn",
             "math_tutor.api.app:app",
             "--host",
-            origin.hostname,
+            "127.0.0.1" if args.gateway else origin.hostname,
             "--port",
-            str(origin.port or 80),
+            "8000" if args.gateway else str(origin.port or 80),
             "--no-proxy-headers",
             "--no-access-log",
         ],
@@ -43,7 +57,7 @@ try:
     ):
         children.append(subprocess.Popen(command, cwd=root, env=os.environ.copy()))
     print(
-        f"Math Practice Tutor: {origin.geturl()} (Ctrl+C stops API and worker)",
+        f"Shepard Tutor: {origin.geturl()} (Ctrl+C stops API and worker)",
         flush=True,
     )
     while all(child.poll() is None for child in children):

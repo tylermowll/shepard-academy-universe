@@ -9,8 +9,9 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-from math_tutor.adapters.db.models import Interpretation, Job, Submission
+from math_tutor.adapters.db.models import Interpretation, Job, ProblemInstance, Submission
 from math_tutor.adapters.db.types import utcnow
 from math_tutor.adapters.images import MAX_BYTES, delete_image, normalize, read_image, store_image
 from math_tutor.api.access import Database, Principal, principal
@@ -34,6 +35,65 @@ class Confirmation(BaseModel):
     version: int = Field(ge=1)
     transcription: str = Field(min_length=1, max_length=4000)
     final_answer: str | None = Field(default=None, max_length=128)
+
+
+async def receive_image(request: Request) -> tuple[bytes, str]:
+    """Bound and normalize both ordinary and delegated phone photos."""
+    data = bytearray()
+    async for chunk in request.stream():
+        data.extend(chunk)
+        if len(data) > MAX_BYTES:
+            raise HTTPException(413, "Image exceeds 8 MiB.")
+    checksum = hashlib.sha256(data).hexdigest()
+    async with _decode_slots:
+        try:
+            image = await asyncio.to_thread(normalize, bytes(data))
+        except ValueError as error:
+            raise HTTPException(422, str(error)) from None
+    return image, checksum
+
+
+def enqueue_photo(
+    db: Session,
+    problem: ProblemInstance,
+    learner_id: UUID,
+    version: int,
+    kind: str,
+    key: str,
+    payload: str,
+    image: bytes,
+) -> Submission:
+    """Persist one photo/job; caller commits and cleans up on commit failure."""
+    from math_tutor.providers import authorize_route, effective_configuration
+
+    assert_available(db, problem, version)
+    if problem.template_id.startswith("ai-") and problem.parameters.get("activity_state") not in {
+        "ready",
+        "reference_capture",
+    }:
+        raise HTTPException(409, "Wait for the practice activity before uploading work.")
+    config = effective_configuration(db)
+    authorize_route(db, config, "vision", learner_id)
+    image_key = store_image(image)
+    try:
+        row = Submission(
+            learner_id=learner_id,
+            problem_id=problem.id,
+            request_key=key,
+            payload_hash=payload,
+            kind=kind,
+            text="",
+            image_key=image_key,
+            assignment_version=version,
+        )
+        db.add(row)
+        db.flush()
+        db.add(Job(submission_id=row.id, stage="interpreting", policy_digest=config.fingerprint()))
+        db.flush()
+    except Exception:
+        delete_image(image_key)
+        raise
+    return row
 
 
 @router.post("/problems/{problem_id}/photos", response_model=OperationPublic, status_code=202)
@@ -60,24 +120,15 @@ async def upload_photo(
         kind = "question"
     # Release the authentication transaction before receiving/decoding the image.
     db.commit()
-    data = bytearray()
-    async for chunk in request.stream():
-        data.extend(chunk)
-        if len(data) > MAX_BYTES:
-            raise HTTPException(413, "Image exceeds 8 MiB.")
+    image, checksum = await receive_image(request)
     payload = digest(
         {
             "problem_id": problem_id,
             "version": version,
             "kind": kind,
-            "sha256": hashlib.sha256(data).hexdigest(),
+            "sha256": checksum,
         }
     )
-    async with _decode_slots:
-        try:
-            image = await asyncio.to_thread(normalize, bytes(data))
-        except ValueError as error:
-            raise HTTPException(422, str(error)) from None
     db.connection(execution_options={"sqlite_begin_immediate": True})
     db.expire_all()
     actor = principal(request, db)
@@ -89,29 +140,12 @@ async def upload_photo(
         if old.payload_hash != payload:
             raise HTTPException(409, "Request key already used with different input.")
         return operation_public(db, old)
-    assert_available(db, problem, version)
-    from math_tutor.providers import authorize_route, effective_configuration
-
-    config = effective_configuration(db)
-    authorize_route(db, config, "vision", learner_id)
-    image_key = store_image(image)
+    row = enqueue_photo(db, problem, learner_id, version, kind, key, payload, image)
     try:
-        row = Submission(
-            learner_id=learner_id,
-            problem_id=problem_id,
-            request_key=key,
-            payload_hash=payload,
-            kind=kind,
-            text="",
-            image_key=image_key,
-            assignment_version=version,
-        )
-        db.add(row)
-        db.flush()
-        db.add(Job(submission_id=row.id, stage="interpreting", policy_digest=config.fingerprint()))
         db.commit()
     except Exception:
-        delete_image(image_key)
+        if row.image_key:
+            delete_image(row.image_key)
         raise
     return operation_public(db, row)
 
@@ -141,6 +175,12 @@ def confirm(
     submission_id: UUID, body: Confirmation, db: Database, actor: Principal
 ) -> OperationPublic:
     row = owned_operation(db, actor, submission_id)
+    problem = owned_problem(db, actor, row.problem_id)
+    if problem.template_id.startswith("ai-"):
+        raise HTTPException(
+            409,
+            "AI tutoring does not require approval. Clear readings continue automatically; retake unclear work.",
+        )
     latest = db.scalar(
         select(Interpretation)
         .where(Interpretation.submission_id == submission_id)
@@ -193,14 +233,5 @@ async def preview_image(request: Request, db: Database, actor: Principal) -> Res
     if os.getenv("APP_MODE", "private") == "demo":
         raise HTTPException(403, "Demo does not accept personal photographs.")
     db.commit()
-    data = bytearray()
-    async for chunk in request.stream():
-        data.extend(chunk)
-        if len(data) > MAX_BYTES:
-            raise HTTPException(413, "Image exceeds 8 MiB.")
-    async with _decode_slots:
-        try:
-            normalized = await asyncio.to_thread(normalize, bytes(data))
-        except ValueError as error:
-            raise HTTPException(422, str(error)) from None
+    normalized, _ = await receive_image(request)
     return Response(normalized, media_type="image/png", headers={"Cache-Control": "no-store"})

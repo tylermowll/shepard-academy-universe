@@ -12,7 +12,9 @@ do not silently pick whichever permits an easier implementation.
 
 React/TypeScript/Vite PWA; Python/FastAPI modular monolith; SQLite on local disk;
 one API process and one separate worker on the same host. See docs/DECISIONS.md
-D004 for the approved database change and deployment limits. Exact math in domain code.
+D004 for the approved database change and deployment limits. The primary product
+is a multi-subject AI tutor (D009/T25), not the exact-math exercise catalog.
+Exact checking is optional supporting evidence, implemented in domain code.
 Adapters isolate Meta, Ollama, vLLM, Bedrock, and compatible endpoints.
 The app has no autonomous external tools. Do not add frameworks, services,
 or database engines without a documented need and architecture decision.
@@ -26,8 +28,16 @@ or database engines without a documented need and architecture decision.
 - Never execute learner/model text or pass it to unsafe expression evaluators.
 - Never silently send local/private work to a cloud provider.
 - Enforce provider capability, audience, ownership, and retention in backend code.
-- Photo interpretation must be confirmed before grading in version 1.
-- Models cannot change verdicts, permissions, answer keys, or workflow state.
+- Display photo interpretation before its tutoring feedback. Clear readings
+  proceed automatically in the worker; there is no approval or confirmation gate.
+  Ambiguous/unreadable work receives concrete advice and a request for a cleaner
+  submission. Do not introduce a fixed-template catalog or authored-hint fallback
+  into the tutor.
+- Models cannot change verified verdicts, permissions, answer keys, or workflow
+  state. AI reasoning feedback is allowed and must not masquerade as verified grades.
+- Uploaded/pasted assignments are reference material for concepts and distinct
+  analogous practice, never tasks to solve for the learner. Guide, explain, and
+  give relevant different examples; do not provide answers to the active task.
 - No application/test paid inference, cloud provisioning, public deployment,
   destructive migration, Git push, or model download unless the maintainer has
   authorized that action.

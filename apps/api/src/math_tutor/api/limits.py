@@ -13,7 +13,8 @@ class BoundedBodies:
         path = scope.get("path", "")
         limit = (
             8 * 1024 * 1024
-            if path.endswith("/photos") or path == "/api/v1/images/preview"
+            if path.endswith("/photos")
+            or path in {"/api/v1/images/preview", "/api/v1/phone-upload/preview"}
             else 16384
         )
 

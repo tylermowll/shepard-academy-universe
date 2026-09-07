@@ -79,6 +79,7 @@ export async function imageRequest(
   path: string,
   blob: Blob,
   key?: string,
+  photoToken?: string,
 ): Promise<Response> {
   const current = generation;
   const headers: Record<string, string> = {
@@ -86,11 +87,12 @@ export async function imageRequest(
     "Content-Type": "application/octet-stream",
   };
   if (key) headers["Idempotency-Key"] = key;
+  if (photoToken) headers["X-Photo-Token"] = photoToken;
   const response = await fetch(`/api/v1${path}`, {
     method: "POST",
     headers,
     body: blob,
-    credentials: "same-origin",
+    credentials: photoToken ? "omit" : "same-origin",
     cache: "no-store",
   });
   checkSession(current, response, path);
