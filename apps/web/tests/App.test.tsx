@@ -229,3 +229,190 @@ it("keeps the selected session when a previous session response arrives late", a
   expect(window.location.hash).toBe(`#${second}`);
   window.location.hash = "";
 });
+
+it("rejects a URL session belonging to a different selected learner", async () => {
+  const wrongSession = "4a15f6fc-8866-468e-801c-1faedc9ae883";
+  const learner = "4a15f6fc-8866-468e-801c-1faedc9ae884";
+  window.location.hash = wrongSession;
+  const response = (body: unknown) =>
+    Promise.resolve(new Response(JSON.stringify(body)));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string) => {
+      if (url.endsWith(`/sessions/${wrongSession}`))
+        return response({
+          id: wrongSession,
+          learner_id: "4a15f6fc-8866-468e-801c-1faedc9ae885",
+          status: "completed",
+          problems: [],
+          profile: {
+            name: "Previous learner private profile",
+            session_problem_limit: 5,
+            topics: ["fractions.add"],
+          },
+        });
+      if (url.endsWith("/progress"))
+        return response({
+          correct_without_help: 0,
+          correct_with_help: 0,
+          incorrect: 0,
+        });
+      if (url.endsWith("/features"))
+        return response({ photos_available: false });
+      return response([]);
+    }),
+  );
+  const run = async (action: () => Promise<void>) => {
+    await action();
+  };
+  render(<Practice learner={learner} offline={false} act={run} />);
+  await vi.waitFor(() => expect(window.location.hash).toBe(""));
+  expect(screen.queryByText(/Previous learner private profile/)).toBeNull();
+  expect(screen.queryByRole("heading", { name: "Session history" })).toBeNull();
+  expect(screen.getByRole("combobox", { name: "Saved sessions" })).toHaveValue(
+    "",
+  );
+});
+
+it("does not restore an old learner's URL when its request completes after switching", async () => {
+  const oldLearner = "4a15f6fc-8866-468e-801c-1faedc9ae885";
+  const newLearner = "4a15f6fc-8866-468e-801c-1faedc9ae886";
+  const oldSession = "4a15f6fc-8866-468e-801c-1faedc9ae887";
+  window.location.hash = oldSession;
+  let resolveOld!: (response: Response) => void;
+  const oldResponse = new Promise<Response>((resolve) => {
+    resolveOld = resolve;
+  });
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string) => {
+      if (url.endsWith(`/sessions/${oldSession}`)) return oldResponse;
+      if (url.endsWith("/progress"))
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              correct_without_help: 0,
+              correct_with_help: 0,
+              incorrect: 0,
+            }),
+          ),
+        );
+      if (url.endsWith("/features"))
+        return Promise.resolve(new Response('{"photos_available":false}'));
+      return Promise.resolve(new Response("[]"));
+    }),
+  );
+  const run = async (action: () => Promise<void>) => {
+    await action();
+  };
+  const view = render(
+    <Practice
+      key={oldLearner}
+      learner={oldLearner}
+      offline={false}
+      act={run}
+    />,
+  );
+  window.location.hash = "";
+  view.rerender(
+    <Practice
+      key={newLearner}
+      learner={newLearner}
+      offline={false}
+      act={run}
+    />,
+  );
+  await act(async () => {
+    resolveOld(
+      new Response(
+        JSON.stringify({
+          id: oldSession,
+          learner_id: oldLearner,
+          status: "completed",
+          problems: [],
+          profile: {
+            name: "Old private session",
+            topics: ["fractions.add"],
+            session_problem_limit: 5,
+          },
+        }),
+      ),
+    );
+    await oldResponse;
+  });
+  expect(window.location.hash).toBe("");
+  expect(screen.queryByText(/Old private session/)).toBeNull();
+});
+
+it("allows a corrected request after its first attempt is definitively rejected", async () => {
+  window.location.hash = "";
+  const learner = "4a15f6fc-8866-468e-801c-1faedc9ae884";
+  const session = {
+    id: "4a15f6fc-8866-468e-801c-1faedc9ae883",
+    learner_id: learner,
+    status: "open",
+    problems: [],
+    profile: {
+      name: "Guided practice",
+      topics: ["fractions.add"],
+      session_problem_limit: 5,
+    },
+  };
+  const keys: unknown[] = [];
+  const errors: unknown[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn((url: string, options: RequestInit) => {
+      if (url.endsWith("/sessions") && options.method === "POST") {
+        keys.push(
+          (options.headers as Record<string, string>)["Idempotency-Key"],
+        );
+        return Promise.resolve(
+          keys.length === 1
+            ? new Response('{"detail":"Synthetic first-attempt rejection."}', {
+                status: 422,
+              })
+            : new Response(JSON.stringify(session), { status: 201 }),
+        );
+      }
+      if (url.endsWith(`/sessions/${session.id}`))
+        return Promise.resolve(new Response(JSON.stringify(session)));
+      if (url.endsWith("/progress"))
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              correct_without_help: 0,
+              correct_with_help: 0,
+              incorrect: 0,
+            }),
+          ),
+        );
+      if (url.endsWith("/features"))
+        return Promise.resolve(new Response('{"photos_available":false}'));
+      return Promise.resolve(new Response("[]"));
+    }),
+  );
+  const run = async (action: () => Promise<void>) => {
+    try {
+      await action();
+    } catch (cause) {
+      errors.push(cause);
+    }
+  };
+  render(<Practice learner={learner} offline={false} act={run} />);
+  fireEvent.click(screen.getByRole("button", { name: "Start a new session" }));
+  await vi.waitFor(() => expect(errors).toHaveLength(1));
+  expect(
+    screen.queryByRole("button", { name: "Retry session creation" }),
+  ).toBeNull();
+  expect(screen.getByRole("combobox", { name: "Tutor profile" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Start a new session" }));
+  await vi.waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Assign next problem" }),
+    ).toBeEnabled(),
+  );
+  expect(keys).toHaveLength(2);
+  expect(keys[1]).not.toBe(keys[0]);
+  window.location.hash = "";
+});

@@ -708,3 +708,68 @@ secret/IaC gates with **61 backend unit tests** and **5 frontend component tests
 `make test-integration` passed **84 tests**; `make smoke` passed **14 desktop/mobile
 browser tests**. `git diff --check` passed. Hosted CI verifies the pushed revision
 with its own fresh environment and the required packaging job.
+
+### 2026-09-07 — Review and close workflow, privacy, and provider gaps
+
+The maintainer authorized review, fixes, and a push to `main`. The earlier green
+suite missed real failures in A08/A10/A22 and completed-photo retention; its result
+did not establish that those paths were correct. This review uses synthetic
+reproductions and adds regression coverage without relaxing specification gates.
+
+Changes and affected contracts:
+
+- T03/T05/T17, A22: learner selection clears the previous session hash, loaded
+  sessions must match the selected learner, and stale/unmounted requests cannot
+  restore old content. An authenticated 401 clears private UI immediately and
+  bootstraps anonymous sign-in/pairing without requiring a page reload.
+- T05/T06/T10, A08: pending mutations retain their original path, body/blob, and
+  idempotency key after a lost acknowledgement. Recovery blocks conflicting
+  actions and preserves the original request even if a later retry is throttled.
+  Browser regressions simulate acceptance followed by a lost HTTP response.
+- T10/T16: completion commits before deleting confirmed photos; image access
+  returns 404 immediately. Cleanup retains durable references after storage
+  failure, and sweeps retry completed objects regardless of age. Failed and
+  unconfirmed photos retain the existing expiry limit. README now reflects the
+  specification's immediate completed-photo rule, rather than only its TTL.
+- T07/T09/T12–T14, A10: typed HTTP/Ollama/Bedrock response envelopes reject malformed
+  nested values safely. The worker continues to the next job after bad output.
+  Optional Bedrock cache metadata remains supported and consumed counters remain
+  typed. DNS results are validated and pinned with original Host/TLS names;
+  metadata targets are rejected before transmission.
+- T06/T07: live calls have a total deadline covering process startup, DNS, SDK
+  setup, and slow responses; timed-out local children are reaped. D008 documents
+  the short-lived process boundary and the remaining remote billing limitation.
+  Container smoke now checks subprocess execution without contacting a provider.
+- T23: cancel, unmount, and withdrawn consent invalidate asynchronous browser
+  model loading/evaluation. A late runtime import cannot start a worker/download;
+  cache removal is serialized with loading. Tests mock the runtime and weights.
+
+Validation:
+
+- `make check PNPM='pnpm --store-dir /tmp/math-tutor-pnpm-store'`: passed locked
+  dependencies, Ruff/ESLint/formatting, strict Python/TypeScript, **96 backend unit
+  tests**, **19 component tests**, Python/UI builds, generated contract drift,
+  tracked secret scanning, and IaC lint.
+- `make test-integration`: **92 passed**, using temporary on-disk databases.
+- `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome make smoke`:
+  **22 passed** across desktop/mobile Chromium. Synthetic services shut down.
+- `make eval-mock`: completed the **63 original rational/vision cases**.
+- `git diff --check` and `sh -n scripts/container-smoke.sh`: passed. The final
+  user-facing photo-retention wording was updated after smoke; it changes copy
+  only. The required commit hook rechecks source/types/tests before publication.
+- Focused regressions also verify worker progress after malformed output,
+  total deadline under regularly arriving response chunks, API-thread spawning,
+  Unicode payload transfer, and child expiry/reaping after its parent is killed.
+
+During verification, a photo browser test's implicit-label selector did not resolve
+the disabled purpose select; a semantic combobox locator fixed the test without
+weakening its disabled-state or request-identity assertions. A second review of
+the provider changes caught optional Bedrock cache metadata and dual-stack address
+fallback regressions; both were corrected and covered before the final gates.
+
+Hosted CI validates the pushed revision separately, including the restricted
+container subprocess check, image scan, and SBOM. No application inference, model
+download, provisioning, deployment, or access to private configuration/learner
+data was performed. Live provider quality, real phones/accessibility, WebGPU
+measurements, and private-host release acceptance still require the previously
+deferred maintainer checks.

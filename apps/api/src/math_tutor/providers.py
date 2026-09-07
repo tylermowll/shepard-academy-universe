@@ -17,7 +17,8 @@ from math_tutor.adapters.providers.config import (
     route,
 )
 from math_tutor.adapters.providers.contracts import ModelRequest, ModelResult, ProviderError
-from math_tutor.adapters.providers.transports import BedrockProvider, HTTPProvider, MockProvider
+from math_tutor.adapters.providers.execution import complete_bounded
+from math_tutor.adapters.providers.transports import MockProvider
 
 
 def effective_configuration(db: Session) -> Configuration:
@@ -54,6 +55,4 @@ def authorize_route(
 def complete(provider: ProviderConfig, request: ModelRequest) -> ModelResult:
     if provider.adapter == "mock":
         return MockProvider().complete(request)
-    if provider.adapter == "bedrock":
-        return BedrockProvider(provider).complete(request)
-    return HTTPProvider(provider).complete(request)
+    return complete_bounded(provider, request)

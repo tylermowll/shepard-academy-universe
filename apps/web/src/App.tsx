@@ -1,5 +1,11 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from "react";
-import { api, newKey, setIdentity, type Schema } from "./client";
+import {
+  api,
+  newKey,
+  onAuthenticationLost,
+  setIdentity,
+  type Schema,
+} from "./client";
 import { AdultPanel } from "./AdultPanel";
 import { Practice } from "./Practice";
 import { OfflinePractice } from "./OfflinePractice";
@@ -14,12 +20,41 @@ export function App() {
   const [learner, setLearner] = useState("");
   const [pair, setPair] = useState<Schema<"PairPublic"> | null>(null);
   const [busy, setBusy] = useState(false);
+  const chooseLearner = (id: string) => {
+    if (learner && learner !== id)
+      window.history.replaceState(
+        null,
+        "",
+        window.location.pathname + window.location.search,
+      );
+    setLearner(id);
+  };
   const refresh = useCallback(async () => {
     const session = await api<Schema<"SessionStatus">>("/auth/session");
-    setIdentity(session.csrf_token);
+    setIdentity(session.csrf_token, session.authenticated);
     setSession(session);
     setLearner(session.learner_id ?? "");
   }, []);
+  useEffect(
+    () =>
+      onAuthenticationLost(() => {
+        setSession(null);
+        setLearner("");
+        setPair(null);
+        window.history.replaceState(
+          null,
+          "",
+          window.location.pathname + window.location.search,
+        );
+        setError("Your session ended. Sign in or pair this device again.");
+        void refresh().catch(() => {
+          setError(
+            "Your session ended. Reconnect to sign in or pair this device again.",
+          );
+        });
+      }),
+    [refresh],
+  );
   const act = useCallback(async (action: () => Promise<void>) => {
     setBusy(true);
     setError("");
@@ -40,7 +75,7 @@ export function App() {
     void api<Schema<"SessionStatus">>("/auth/session")
       .then((session) => {
         if (canceled) return;
-        setIdentity(session.csrf_token);
+        setIdentity(session.csrf_token, session.authenticated);
         setSession(session);
         setLearner(session.learner_id ?? "");
       })
@@ -142,7 +177,7 @@ export function App() {
                         password: data.get("password"),
                       },
                     );
-                    setIdentity(session.csrf_token);
+                    setIdentity(session.csrf_token, session.authenticated);
                     setSession(session);
                   });
                 }}
@@ -216,7 +251,11 @@ export function App() {
         ) : (
           <>
             {identity.role === "adult" && (
-              <AdultPanel learner={learner} onLearner={setLearner} act={act} />
+              <AdultPanel
+                learner={learner}
+                onLearner={chooseLearner}
+                act={act}
+              />
             )}
             {learner ? (
               <Practice
@@ -233,8 +272,9 @@ export function App() {
             )}
             <p className="fine">
               The adult who manages this deployment can review your saved
-              practice. Photos expire within 24 hours; history defaults to 30
-              days.
+              practice. Photos are deleted after confirmed processing, so later
+              review uses saved text. Failed or unconfirmed photos expire within
+              24 hours; history defaults to 30 days.
             </p>
           </>
         )}

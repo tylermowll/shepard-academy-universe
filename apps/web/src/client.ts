@@ -3,10 +3,39 @@ export type Schema<K extends keyof components["schemas"]> =
   components["schemas"][K];
 let csrf = "";
 let generation = 0;
+let authenticated = false;
+const authenticationLost = new Set<() => void>();
 
-export function setIdentity(token: string) {
+export function setIdentity(token: string, signedIn = false) {
   csrf = token;
+  authenticated = signedIn;
   generation += 1;
+}
+export function onAuthenticationLost(listener: () => void) {
+  authenticationLost.add(listener);
+  return () => {
+    authenticationLost.delete(listener);
+  };
+}
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+function checkSession(current: number, response: Response, path: string) {
+  if (current !== generation)
+    throw new Error("Session changed. Reload your current session.");
+  if (response.status === 401 && authenticated && path !== "/auth/login") {
+    setIdentity("");
+    for (const listener of authenticationLost) listener();
+    throw new ApiError(
+      "Your session ended. Sign in or pair this device again.",
+      401,
+    );
+  }
 }
 export async function api<T>(
   path: string,
@@ -28,20 +57,23 @@ export async function api<T>(
     options.body = JSON.stringify(body);
   }
   const response = await fetch(`/api/v1${path}`, options);
-  if (current !== generation)
-    throw new Error("Session changed. Reload your current session.");
+  checkSession(current, response, path);
   if (!response.ok) {
     const error: unknown = await response.json().catch(() => null);
-    throw new Error(
+    checkSession(current, response, path);
+    throw new ApiError(
       error &&
         typeof error === "object" &&
         "detail" in error &&
         typeof error.detail === "string"
         ? error.detail
         : "Request failed. Your saved work is available in session history.",
+      response.status,
     );
   }
-  return response.json() as Promise<T>;
+  const result = (await response.json()) as T;
+  checkSession(current, response, path);
+  return result;
 }
 export async function imageRequest(
   path: string,
@@ -61,17 +93,18 @@ export async function imageRequest(
     credentials: "same-origin",
     cache: "no-store",
   });
-  if (current !== generation)
-    throw new Error("Session changed. Reload your current session.");
+  checkSession(current, response, path);
   if (!response.ok) {
     const data: unknown = await response.json().catch(() => null);
-    throw new Error(
+    checkSession(current, response, path);
+    throw new ApiError(
       data &&
         typeof data === "object" &&
         "detail" in data &&
         typeof data.detail === "string"
         ? data.detail
         : "Photo could not be submitted. Try typed input.",
+      response.status,
     );
   }
   return response;

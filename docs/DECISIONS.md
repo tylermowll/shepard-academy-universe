@@ -228,7 +228,6 @@ A restore regression exposed uncheckpointed post-restore WAL changes; restore
 now closes/checkpoints before copying the validated restored file. The regression
 proves deleted learners and revoked sessions do not return from old backups.
 
-
 ## D007 — Minimal immutable container runtime (2026-09-06)
 
 Hosted run 34079742050 passed all source checks and built/smoke-tested the original
@@ -252,3 +251,36 @@ cryptography, and absence of unused pip/setuptools. The registry index digest an
 supported platforms were verified from public registry metadata on September 6.
 See the [official Distroless documentation](https://github.com/GoogleContainerTools/distroless)
 for maintained Debian 13 images, vector entrypoints and signed-image verification.
+
+## D008 — Bounded provider I/O and destination validation (2026-09-07)
+
+Review reproduced a live-transport deadline gap without invoking a real model: a
+loopback server sending bytes every 0.4 seconds completed after 2.48 seconds despite
+a one-second request timeout. The HTTP/SDK socket timeouts bound individual waits;
+they do not bound the whole call. A slow response could occupy the sole worker
+past its 120-second lease. This contradicts D006's fixed 90-second call budget.
+
+Keep one API process and one persistent worker. Each live provider invocation now
+runs in a short-lived spawned Python child, with no database connection, filesystem
+queue, new service, or dependency. Spawn avoids inheriting active database handles
+and thread locks from API probe threads. The parent includes startup, DNS, SDK
+setup, and response handling in the request deadline, then terminates and reaps
+the child (up to 2.1 seconds of cleanup). A child expiry timer also bounds a call
+whose parent dies. Mock and deterministic work stay in process. Both worker jobs
+and adult capability probes use this boundary; process-local failures become safe
+typed errors. Stopping our child cannot cancel remote inference or guarantee that
+the provider stops billing. Existing call budgets and lease comparisons remain.
+
+Configured HTTP destinations reject metadata names, link-local and metadata IPs,
+including mapped IPv6 addresses. Live HTTP calls resolve once, reject the entire
+answer set if any address is forbidden, then connect only to the validated IPs.
+The original Host and TLS server name are preserved. A second validated address
+is tried only if connection setup failed before HTTP transmission; response/read
+failures never trigger hidden retries. Redirects and environment proxies stay
+disabled. Operators remain responsible for identifying which allowed host belongs
+to their private network and selecting the corresponding data boundary.
+
+Provider response envelopes validate every consumed nested field before access,
+while ignoring unused vendor metadata. Malformed envelopes cannot terminate the
+worker. The Bedrock schema is checked against the installed SDK, including optional
+cache usage metadata, and the public provider statuses remain live-unverified.

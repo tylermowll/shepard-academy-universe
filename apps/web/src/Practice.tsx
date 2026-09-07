@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, newKey, type Schema } from "./client";
+import { api, ApiError, newKey, type Schema } from "./client";
 import { PhotoInput } from "./PhotoInput";
 import { SafeText } from "./SafeText";
 
@@ -7,6 +7,18 @@ type Props = {
   learner: string;
   offline: boolean;
   act: (action: () => Promise<void>) => Promise<void>;
+};
+type PendingCommand = {
+  key: string;
+  path: string;
+  kind: "session" | "problem" | "submission";
+  body: Readonly<
+    | Schema<"SessionInput">
+    | Schema<"ProblemInput">
+    | Schema<"SubmissionInput">
+    | Record<string, never>
+  >;
+  ambiguous: boolean;
 };
 export function Practice({ learner, offline, act }: Props) {
   const [history, setHistory] = useState<Schema<"SessionSummary">[]>([]);
@@ -18,13 +30,17 @@ export function Practice({ learner, offline, act }: Props) {
   );
   const [text, setText] = useState("");
   const [workText, setWorkText] = useState("");
-  const [key, setKey] = useState(newKey);
-  const [sessionKey, setSessionKey] = useState(newKey);
   const [working, setWorking] = useState(false);
+  const [pending, setPending] = useState<PendingCommand | null>(null);
+  const [photoPending, setPhotoPending] = useState(false);
+  const pendingCommand = useRef<PendingCommand | null>(null);
+  const blocked = working || pending !== null || photoPending;
+  const mounted = useRef(true);
   const loadSequence = useRef(0);
   const selectedSession = useRef("");
   const load = useCallback(
     async (id?: string) => {
+      if (!mounted.current) return;
       const sequence = ++loadSequence.current;
       if (id) selectedSession.current = id;
       const [h, p, g, f, loaded] = await Promise.all([
@@ -36,21 +52,36 @@ export function Practice({ learner, offline, act }: Props) {
           ? api<Schema<"SessionPublic">>(`/sessions/${id}`)
           : Promise.resolve(null),
       ]);
-      if (sequence !== loadSequence.current) return;
+      if (!mounted.current || sequence !== loadSequence.current) return;
       setHistory(h.filter((s) => s.learner_id === learner));
       setProfiles(p);
       setProgress(g);
       setFeatures(f);
       if (loaded) {
-        setSession(loaded);
-        window.location.hash = loaded.id;
+        if (loaded.learner_id === learner) {
+          setSession(loaded);
+          window.location.hash = loaded.id;
+        } else {
+          selectedSession.current = "";
+          setSession(null);
+          window.history.replaceState(
+            null,
+            "",
+            window.location.pathname + window.location.search,
+          );
+        }
       }
     },
     [learner],
   );
   useEffect(() => {
+    mounted.current = true;
     const id = window.location.hash.slice(1);
     void act(() => load(/^[a-f0-9-]{36}$/.test(id) ? id : undefined));
+    return () => {
+      mounted.current = false;
+      loadSequence.current += 1;
+    };
   }, [act, load]);
   const sessionId = session?.id;
   useEffect(() => {
@@ -75,29 +106,67 @@ export function Practice({ learner, offline, act }: Props) {
         "awaiting_confirmation",
       ].includes(o.status),
     ) ?? false;
-  const submit = async (kind: "answer" | "question" | "hint", help = 0) => {
-    if (!problem) return;
+  const sendCommand = async (request: PendingCommand) => {
     setWorking(true);
     try {
-      await api(
-        `/problems/${problem.id}/submissions`,
-        "POST",
-        {
-          version: problem.version,
-          kind,
-          text: kind === "hint" ? "" : text,
-          help_level: help,
-          work_text: kind === "answer" ? workText : "",
-        },
-        key,
-      );
-      setText("");
-      setWorkText("");
-      setKey(newKey());
-      await refresh();
+      let created: Schema<"SessionPublic"> | undefined;
+      try {
+        if (request.kind === "session")
+          created = await api<Schema<"SessionPublic">>(
+            request.path,
+            "POST",
+            request.body,
+            request.key,
+          );
+        else await api(request.path, "POST", request.body, request.key);
+      } catch (cause) {
+        // A rejection of a retry cannot disprove acceptance of an earlier call.
+        if (
+          !request.ambiguous &&
+          cause instanceof ApiError &&
+          cause.status < 500 &&
+          cause.status !== 408
+        ) {
+          pendingCommand.current = null;
+          setPending(null);
+        } else request.ambiguous = true;
+        throw cause;
+      }
+      pendingCommand.current = null;
+      setPending(null);
+      if (request.kind === "submission") {
+        setText("");
+        setWorkText("");
+      }
+      if (created && mounted.current && created.learner_id === learner)
+        await load(created.id);
+      else await refresh();
     } finally {
       setWorking(false);
     }
+  };
+  const startCommand = async (
+    command: Omit<PendingCommand, "key" | "ambiguous">,
+  ) => {
+    if (pendingCommand.current || photoPending) return;
+    const request = { ...command, key: newKey(), ambiguous: false };
+    pendingCommand.current = request;
+    setPending(request);
+    await sendCommand(request);
+  };
+  const submit = async (kind: "answer" | "question" | "hint", help = 0) => {
+    if (!problem) return;
+    await startCommand({
+      path: `/problems/${problem.id}/submissions`,
+      kind: "submission",
+      body: {
+        version: problem.version,
+        kind,
+        text: kind === "hint" ? "" : text,
+        help_level: help,
+        work_text: kind === "answer" ? workText : "",
+      },
+    });
   };
   const profile = session?.profile;
   const presentation = profile?.presentation;
@@ -130,6 +199,7 @@ export function Practice({ learner, offline, act }: Props) {
           Saved sessions
           <select
             value={session?.id ?? ""}
+            disabled={blocked}
             onChange={(e) => {
               const id = e.target.value;
               if (id)
@@ -152,26 +222,23 @@ export function Practice({ learner, offline, act }: Props) {
         onSubmit={(e) => {
           e.preventDefault();
           const data = new FormData(e.currentTarget);
-          void act(async () => {
-            const row = await api<Schema<"SessionPublic">>(
-              "/sessions",
-              "POST",
-              {
+          const profileId = data.get("profile");
+          void act(() =>
+            startCommand({
+              path: "/sessions",
+              kind: "session",
+              body: {
                 learner_id: learner,
-                profile_version_id: data.get("profile") || null,
+                profile_version_id:
+                  typeof profileId === "string" && profileId ? profileId : null,
               },
-              sessionKey,
-            );
-            setSessionKey(newKey());
-            setSession(row);
-            window.location.hash = row.id;
-            await load(row.id);
-          });
+            }),
+          );
         }}
       >
         <label>
           Tutor profile
-          <select name="profile">
+          <select name="profile" disabled={blocked}>
             <option value="">Built-in guided practice</option>
             {profiles.map((p) => (
               <option key={p.id} value={p.id}>
@@ -180,10 +247,28 @@ export function Practice({ learner, offline, act }: Props) {
             ))}
           </select>
         </label>
-        <button className="primary" disabled={offline}>
+        <button className="primary" disabled={offline || blocked}>
           Start a new session
         </button>
       </form>
+      {pending && !working && (
+        <div role="status" className="notice">
+          <p>
+            The server has not acknowledged this request. Retry it to recover
+            its result before continuing.
+          </p>
+          <button
+            disabled={offline}
+            onClick={() => void act(() => sendCommand(pending))}
+          >
+            {pending.kind === "session"
+              ? "Retry session creation"
+              : pending.kind === "problem"
+                ? "Retry problem assignment"
+                : "Retry saved submission"}
+          </button>
+        </div>
+      )}
       {session && (
         <>
           <div className="actions">
@@ -195,7 +280,7 @@ export function Practice({ learner, offline, act }: Props) {
             </span>
             {session.status === "open" && (
               <button
-                disabled={active || offline}
+                disabled={active || offline || blocked}
                 onClick={() =>
                   void act(async () => {
                     await api(`/sessions/${session.id}/finish`, "POST");
@@ -224,22 +309,23 @@ export function Practice({ learner, offline, act }: Props) {
                 onSubmit={(e) => {
                   e.preventDefault();
                   const data = new FormData(e.currentTarget);
-                  void act(async () => {
-                    await api(
-                      `/sessions/${session.id}/problems`,
-                      "POST",
-                      { skill_id: data.get("skill") },
-                      key,
-                    );
-                    setKey(newKey());
-                    await refresh();
-                  });
+                  const skill = data.get("skill");
+                  void act(() =>
+                    startCommand({
+                      path: `/sessions/${session.id}/problems`,
+                      kind: "problem",
+                      body: {
+                        skill_id:
+                          typeof skill === "string" ? skill : "fractions.add",
+                      },
+                    }),
+                  );
                 }}
               >
                 <h3>Choose the next problem</h3>
                 <label>
                   Skill
-                  <select name="skill">
+                  <select name="skill" disabled={blocked}>
                     {(Array.isArray(profile?.topics)
                       ? profile.topics
                       : ["fractions.add"]
@@ -250,23 +336,21 @@ export function Practice({ learner, offline, act }: Props) {
                     ))}
                   </select>
                 </label>
-                <button className="primary" disabled={offline}>
+                <button className="primary" disabled={offline || blocked}>
                   Assign next problem
                 </button>
                 {features?.external_problems && (
                   <button
                     type="button"
+                    disabled={offline || blocked}
                     onClick={() =>
-                      void act(async () => {
-                        await api(
-                          `/sessions/${session.id}/external-problem`,
-                          "POST",
-                          {},
-                          key,
-                        );
-                        setKey(newKey());
-                        await refresh();
-                      })
+                      void act(() =>
+                        startCommand({
+                          path: `/sessions/${session.id}/external-problem`,
+                          kind: "problem",
+                          body: {},
+                        }),
+                      )
                     }
                   >
                     Start external photo problem (unverified)
@@ -297,6 +381,7 @@ export function Practice({ learner, offline, act }: Props) {
                   Your answer or question
                   <textarea
                     value={text}
+                    readOnly={blocked}
                     onChange={(e) => setText(e.target.value)}
                     maxLength={4000}
                     rows={2}
@@ -307,6 +392,7 @@ export function Practice({ learner, offline, act }: Props) {
                   Steps (optional; reasoning is not checked)
                   <textarea
                     value={workText}
+                    readOnly={blocked}
                     onChange={(event) => setWorkText(event.target.value)}
                     maxLength={4000}
                     rows={2}
@@ -315,13 +401,17 @@ export function Practice({ learner, offline, act }: Props) {
                 <div className="actions">
                   <button
                     className="primary"
-                    disabled={active || working || offline || !text.trim()}
+                    disabled={
+                      active || working || offline || blocked || !text.trim()
+                    }
                   >
                     Check answer
                   </button>
                   <button
                     type="button"
-                    disabled={active || working || offline || !text.trim()}
+                    disabled={
+                      active || working || offline || blocked || !text.trim()
+                    }
                     onClick={() => void act(() => submit("question", 2))}
                   >
                     Ask tutor
@@ -332,7 +422,7 @@ export function Practice({ learner, offline, act }: Props) {
                 {([1, 2, 3, 4] as const).map((level) => (
                   <button
                     key={level}
-                    disabled={active || working || offline}
+                    disabled={active || working || offline || blocked}
                     onClick={() => void act(() => submit("hint", level))}
                   >
                     {
@@ -347,7 +437,7 @@ export function Practice({ learner, offline, act }: Props) {
                   </button>
                 ))}
                 <button
-                  disabled={active || offline}
+                  disabled={active || offline || blocked}
                   onClick={() =>
                     void act(async () => {
                       await api(`/problems/${problem.id}/skip`, "POST", {
@@ -361,10 +451,13 @@ export function Practice({ learner, offline, act }: Props) {
                 </button>
               </div>
               <p className="fine">{features?.photo_status}</p>
-              {!active && features?.photos_available && (
+              {features?.photos_available && (
                 <PhotoInput
+                  key={problem.id}
                   problem={problem.id}
                   version={problem.version}
+                  disabled={active || working || pending !== null || offline}
+                  onPendingChange={setPhotoPending}
                   act={act}
                   onSaved={refresh}
                 />
@@ -472,14 +565,17 @@ export function Practice({ learner, offline, act }: Props) {
                             />
                           </label>
                         )}
-                        <button className="primary" disabled={offline}>
+                        <button
+                          className="primary"
+                          disabled={offline || blocked}
+                        >
                           Confirm this interpretation
                         </button>
                       </form>
                     )}
                     {op.status === "failed" && (
                       <button
-                        disabled={offline}
+                        disabled={offline || blocked}
                         onClick={() =>
                           void act(async () => {
                             await api(`/operations/${op.id}/retry`, "POST");
@@ -492,7 +588,7 @@ export function Practice({ learner, offline, act }: Props) {
                     )}
                     {!["completed", "canceled"].includes(op.status) && (
                       <button
-                        disabled={offline}
+                        disabled={offline || blocked}
                         onClick={() =>
                           void act(async () => {
                             await api(`/operations/${op.id}/cancel`, "POST");

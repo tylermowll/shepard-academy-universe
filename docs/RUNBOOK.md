@@ -78,10 +78,13 @@ not container evidence; see TASKS for observed CI results.
 
 ## Retention, export and deletion
 
-Photos default to 24 hours and are capped at 24; `PHOTO_RETENTION_HOURS` permits
-shorter retention. History defaults to 30 days; `HISTORY_RETENTION_DAYS` is bounded
-1–365. The worker sweeps every 60 seconds while running. Monitor readiness and
-restart a failed worker; downtime delays physical expiry cleanup.
+Confirmed photos become inaccessible when processing completes and are then
+deleted. A crash or storage failure leaves a durable cleanup reference for the
+next sweep. Failed/unconfirmed photos default to 24 hours and are capped at 24;
+`PHOTO_RETENTION_HOURS` permits shorter retention. History defaults to 30 days;
+`HISTORY_RETENTION_DAYS` is bounded 1–365. The worker sweeps every 60 seconds while
+running. Monitor readiness and restart a failed worker; downtime delays physical
+expiry cleanup.
 
 An adult export is an authenticated no-store download in the current request.
 There is no persistent bearer export URL. Downloaded copies are outside server

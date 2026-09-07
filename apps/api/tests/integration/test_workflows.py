@@ -11,13 +11,13 @@ from uuid import UUID, uuid4
 import pytest
 from alembic import command
 from alembic.config import Config
-from httpx2 import ASGITransport, AsyncClient
+from httpx2 import ASGITransport, AsyncClient, Client, MockTransport, Response
 from PIL import Image
 from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from math_tutor import auth, backup, worker
+from math_tutor import auth, backup, retention, worker
 from math_tutor.adapters.db.engine import create_engine_for_url
 from math_tutor.adapters.db.models import (
     DeviceSession,
@@ -31,12 +31,63 @@ from math_tutor.adapters.db.models import (
     Submission,
 )
 from math_tutor.adapters.db.types import utcnow
-from math_tutor.adapters.images import normalize, object_path
+from math_tutor.adapters.images import delete_image, normalize, object_path
+from math_tutor.adapters.providers.config import ProviderConfig
+from math_tutor.adapters.providers.contracts import Capabilities, ModelRequest, ModelResult
+from math_tutor.adapters.providers.transports import HTTPProvider
 from math_tutor.api.app import create_app
 from math_tutor.demo import DEMO_PASSWORD, seed
 from math_tutor.retention import sweep
 
 ORIGIN = "http://127.0.0.1:8000"
+
+
+@pytest.mark.anyio
+async def test_malformed_provider_does_not_stop_following_jobs(
+    adult: AsyncClient, engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    learner = (await learner_ids(adult))[0]
+    _, photo_problem = await start(adult, learner)
+    photo = await adult.post(
+        f"/api/v1/problems/{photo_problem['id']}/photos?version=1",
+        content=photo_bytes(),
+        headers={"Idempotency-Key": str(uuid4())},
+    )
+    assert photo.status_code == 202, photo.text
+    session_id, typed_problem = await start(adult, learner)
+    set_example(engine, typed_problem["id"])
+    await send(adult, typed_problem)
+
+    def malformed(_provider: ProviderConfig, request: ModelRequest) -> ModelResult:
+        config = ProviderConfig(
+            adapter="compatible",
+            model=request.model_id,
+            enabled=True,
+            base_url="http://127.0.0.1:11434",
+            eligibility_record="Synthetic fixture",
+            capabilities=Capabilities(image_input=True),
+        )
+        with Client(
+            transport=MockTransport(
+                lambda _: Response(
+                    200,
+                    json={"choices": [{"finish_reason": "stop", "message": None}]},
+                )
+            )
+        ) as transport:
+            return HTTPProvider(config, transport).complete(request)
+
+    monkeypatch.setattr(worker, "complete", malformed)
+    assert worker.run_once(engine)
+    with Session(engine) as db:
+        row = db.get(Submission, UUID(photo.json()["id"]))
+        assert row is not None and row.status == "failed"
+        assert db.scalar(select(func.count()).select_from(Evaluation)) == 0
+    assert worker.run_once(engine)
+    assert (await read_problem(adult, session_id))["operations"][0]["verdict"][
+        "answer_status"
+    ] == "correct"
+    assert not worker.run_once(engine)
 
 
 @pytest.fixture
@@ -326,8 +377,9 @@ def photo_bytes() -> bytes:
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("answer, verdict", [("2/5", "incorrect"), ("5/6", "correct")])
 async def test_photo_confirmation_is_explicit_immutable_and_stale_safe(
-    adult: AsyncClient, engine: Engine
+    adult: AsyncClient, engine: Engine, answer: str, verdict: str
 ) -> None:
     session_id, problem = await start(adult, (await learner_ids(adult))[0])
     set_example(engine, problem["id"])
@@ -341,8 +393,14 @@ async def test_photo_confirmation_is_explicit_immutable_and_stale_safe(
     worker.run_once(engine)
     result = (await adult.get(f"/api/v1/operations/{operation}")).json()
     assert result["status"] == "awaiting_confirmation" and result["verdict"] is None
+    with Session(engine) as db:
+        row = db.get(Submission, UUID(operation))
+        assert row is not None and row.image_key is not None
+        image = object_path(row.image_key)
+    assert image.exists()
+    assert (await adult.get(f"/api/v1/submissions/{operation}/image")).status_code == 200
     assert not worker.run_once(engine)
-    body = {"version": 1, "transcription": "2/5"}
+    body = {"version": 1, "transcription": answer}
     assert (
         await adult.post(f"/api/v1/submissions/{operation}/confirm-interpretation", json=body)
     ).status_code == 202
@@ -352,21 +410,154 @@ async def test_photo_confirmation_is_explicit_immutable_and_stale_safe(
     assert (
         await adult.post(
             f"/api/v1/submissions/{operation}/confirm-interpretation",
-            json={**body, "transcription": "5/6"},
+            json={**body, "transcription": "different transcription"},
         )
     ).status_code == 409
-    worker.run_once(engine)
+    assert image.exists()
+    assert worker.run_once(engine)
     problem = await read_problem(adult, session_id)
-    assert problem["operations"][0]["verdict"]["answer_status"] == "incorrect"
+    assert problem["operations"][0]["verdict"]["answer_status"] == verdict
     with Session(engine) as db:
         assert db.scalar(select(func.count()).select_from(Interpretation)) == 2
         assert db.scalar(select(func.count()).select_from(ProgressEvent)) == 1
         row = db.get(Submission, UUID(operation))
         assert row is not None
-        assert row.text == "" and row.image_key
-        row.created_at = utcnow() - timedelta(hours=25)
+        assert row.text == "" and row.image_key is None
+    assert not image.exists()
+    assert (await adult.get(f"/api/v1/submissions/{operation}/image")).status_code == 404
+    duplicate = await adult.post(
+        f"/api/v1/submissions/{operation}/confirm-interpretation", json=body
+    )
+    assert duplicate.status_code == 202 and duplicate.json()["status"] == "completed"
+    assert not worker.run_once(engine)
+
+
+@pytest.mark.anyio
+async def test_completed_photo_question_is_purged_without_grading(
+    adult: AsyncClient, engine: Engine
+) -> None:
+    _, problem = await start(adult, (await learner_ids(adult))[0])
+    response = await adult.post(
+        f"/api/v1/problems/{problem['id']}/photos?version=1&kind=question",
+        content=photo_bytes(),
+        headers={"Idempotency-Key": str(uuid4())},
+    )
+    assert response.status_code == 202, response.text
+    operation = response.json()["id"]
+    assert worker.run_once(engine)
+    with Session(engine) as db:
+        row = db.get(Submission, UUID(operation))
+        assert row is not None and row.image_key is not None
         image = object_path(row.image_key)
+    assert (
+        await adult.post(
+            f"/api/v1/submissions/{operation}/confirm-interpretation",
+            json={"version": 1, "transcription": "Why do fractions need equal-sized parts?"},
+        )
+    ).status_code == 202
+    assert worker.run_once(engine)
+    result = (await adult.get(f"/api/v1/operations/{operation}")).json()
+    assert result["status"] == "completed" and result["verdict"] is None
+    assert not image.exists()
+    assert (await adult.get(f"/api/v1/submissions/{operation}/image")).status_code == 404
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("failure", ["storage", "crash_before_delete", "crash_after_delete"])
+async def test_completed_photo_cleanup_recovers_after_failure(
+    adult: AsyncClient, engine: Engine, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    _, problem = await start(adult, (await learner_ids(adult))[0])
+    set_example(engine, problem["id"])
+    response = await adult.post(
+        f"/api/v1/problems/{problem['id']}/photos?version=1",
+        content=photo_bytes(),
+        headers={"Idempotency-Key": str(uuid4())},
+    )
+    assert response.status_code == 202, response.text
+    operation = UUID(response.json()["id"])
+    assert worker.run_once(engine)
+    with Session(engine) as db:
+        row = db.get(Submission, operation)
+        assert row is not None and row.image_key is not None
+        image = object_path(row.image_key)
+    assert (
+        await adult.post(
+            f"/api/v1/submissions/{operation}/confirm-interpretation",
+            json={"version": 1, "transcription": "5/6"},
+        )
+    ).status_code == 202
+
+    def interrupted_delete(key: str) -> None:
+        # Completion must be independently visible before irreversible storage deletion.
+        with Session(engine) as reader:
+            completed = reader.get(Submission, operation)
+            assert completed is not None and completed.status == "completed"
+        if failure == "storage":
+            raise OSError("Synthetic storage outage")
+        delete_image(key)
+        raise SystemExit("Synthetic crash after unlink, before clearing the reference")
+
+    def interrupted_cleanup(_engine: Engine, _operation: UUID) -> None:
+        raise SystemExit("Synthetic crash after completion, before cleanup")
+
+    with monkeypatch.context() as patch:
+        if failure == "crash_before_delete":
+            patch.setattr(worker, "purge_completed_photo", interrupted_cleanup)
+        else:
+            patch.setattr(retention, "delete_image", interrupted_delete)
+        if failure == "storage":
+            assert worker.run_once(engine)
+            sweep(engine)  # An unavailable file must remain discoverable for another sweep.
+        else:
+            with pytest.raises(SystemExit, match="Synthetic crash"):
+                worker.run_once(engine)
+    with Session(engine) as db:
+        row = db.get(Submission, operation)
+        assert row is not None and row.status == "completed" and row.image_key is not None
+        assert db.scalar(select(func.count()).select_from(ProgressEvent)) == 1
+    assert image.exists() is (failure != "crash_after_delete")
+    assert (await adult.get(f"/api/v1/submissions/{operation}/image")).status_code == 404
+    sweep(engine)
+    sweep(engine)
+    assert not image.exists()
+    with Session(engine) as db:
+        row = db.get(Submission, operation)
+        assert row is not None and row.image_key is None
+        assert db.scalar(select(func.count()).select_from(ProgressEvent)) == 1
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("failed", [False, True])
+async def test_unconfirmed_and_failed_photos_retain_only_until_ttl(
+    adult: AsyncClient, engine: Engine, monkeypatch: pytest.MonkeyPatch, failed: bool
+) -> None:
+    from math_tutor.adapters.providers.contracts import ProviderError
+
+    _, problem = await start(adult, (await learner_ids(adult))[0])
+    response = await adult.post(
+        f"/api/v1/problems/{problem['id']}/photos?version=1",
+        content=photo_bytes(),
+        headers={"Idempotency-Key": str(uuid4())},
+    )
+    assert response.status_code == 202, response.text
+    operation = UUID(response.json()["id"])
+
+    def unavailable(*_args: object) -> None:
+        raise ProviderError("timeout", True)
+
+    if failed:
+        monkeypatch.setattr(worker, "complete", unavailable)
+    assert worker.run_once(engine)
+    sweep(engine)
+    with Session(engine) as db:
+        row = db.get(Submission, operation)
+        assert row is not None and row.image_key is not None
+        assert row.status == ("failed" if failed else "awaiting_confirmation")
+        image = object_path(row.image_key)
+        row.created_at = utcnow() - timedelta(hours=25)
         db.commit()
+    assert image.exists()
     sweep(engine)
     assert not image.exists()
     assert (await adult.get(f"/api/v1/submissions/{operation}/image")).status_code == 404

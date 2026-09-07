@@ -45,8 +45,10 @@ endpoint/model from the disabled example.
    A failed local route never invokes an alternate provider.
 
 The fixed request budget is six calls per operation, with no hidden SDK retries
-and no automatic schema repair. Timeouts are at most 90 seconds. Visible errors
-are sanitized. Model-call records contain redacted status/usage, not raw prompts,
+and no automatic schema repair. Live calls have a 90-second total deadline in a
+short-lived child process, plus up to 2.1 seconds to stop/reap it (D008). This cannot
+cancel inference already accepted by a remote provider. Visible errors are
+sanitized. Model-call records contain redacted status/usage, not raw prompts,
 photos, endpoint credentials or model response bodies. Prices are not hardcoded;
 cost is unknown unless externally assessed from current provider billing.
 

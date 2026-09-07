@@ -1,6 +1,7 @@
 """Validated operator configuration and fail-closed policy routing."""
 
 import hashlib
+import ipaddress
 import os
 from pathlib import Path
 from typing import Literal
@@ -10,6 +11,26 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from math_tutor.adapters.providers.contracts import Capabilities, ProviderError
+
+
+def blocked_destination(host: str) -> bool:
+    host = host.lower().rstrip(".")
+    if host in {"metadata", "metadata.google.internal", "instance-data.ec2.internal"}:
+        return True
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return False
+    if isinstance(address, ipaddress.IPv6Address) and address.scope_id is not None:
+        return True
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+        address = address.ipv4_mapped
+    return (
+        address.is_link_local
+        or address.is_unspecified
+        or address.is_multicast
+        or str(address) == "fd00:ec2::254"
+    )
 
 
 class ProviderConfig(BaseModel):
@@ -55,8 +76,11 @@ class ProviderConfig(BaseModel):
                 or url.password
                 or url.query
                 or url.fragment
+                or blocked_destination(url.hostname or "")
             ):
                 raise ValueError("Invalid provider endpoint.")
+            if url.port is not None and not 1 <= url.port <= 65535:
+                raise ValueError("Invalid provider port.")
             if self.data_boundary == "cloud" and url.scheme != "https":
                 raise ValueError("Cloud endpoints require HTTPS.")
         return self

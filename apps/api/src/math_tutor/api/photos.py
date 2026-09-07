@@ -119,7 +119,7 @@ async def upload_photo(
 @router.get("/submissions/{submission_id}/image")
 def photo(submission_id: UUID, db: Database, actor: Principal) -> Response:
     row = owned_operation(db, actor, submission_id)
-    if row.image_key is None:
+    if row.image_key is None or row.status == "completed":
         raise HTTPException(404, "Photo expired or unavailable.")
     try:
         data = read_image(row.image_key)

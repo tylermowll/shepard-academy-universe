@@ -4,7 +4,7 @@ import os
 from datetime import timedelta
 from uuid import UUID
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
@@ -68,6 +68,26 @@ def purge_learner(db: Session, learner_id: UUID) -> None:
     db.execute(delete(Learner).where(Learner.id == learner_id))
 
 
+def _purge_photo(row: Submission) -> None:
+    if row.image_key:
+        try:
+            delete_image(row.image_key)
+        except OSError:
+            # Keep the durable reference so the next sweep can retry storage failure.
+            return
+        row.image_key = None
+
+
+def purge_completed_photo(engine: Engine, submission_id: UUID) -> None:
+    """Run only after completion commits; a crash leaves work for the next sweep."""
+    with Session(engine) as db:
+        db.connection(execution_options={"sqlite_begin_immediate": True})
+        row = db.get(Submission, submission_id)
+        if row is not None and row.status == "completed":
+            _purge_photo(row)
+        db.commit()
+
+
 def sweep(engine: Engine) -> None:
     photo_hours, history_days = limits()
     with Session(engine) as db:
@@ -77,12 +97,13 @@ def sweep(engine: Engine) -> None:
         for row in db.scalars(
             select(Submission).where(
                 Submission.image_key.is_not(None),
-                Submission.created_at < utcnow() - timedelta(hours=photo_hours),
+                or_(
+                    Submission.status == "completed",
+                    Submission.created_at < utcnow() - timedelta(hours=photo_hours),
+                ),
             )
         ):
-            if row.image_key:
-                delete_image(row.image_key)
-                row.image_key = None
+            _purge_photo(row)
         expired = list(
             db.scalars(
                 select(PracticeSession.id).where(

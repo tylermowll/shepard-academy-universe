@@ -5,13 +5,16 @@ import manifest from "./research-manifest.json";
 export default function Research() {
   const worker = useRef<Worker | null>(null);
   const engine = useRef<ResearchEngine | null>(null);
+  const generation = useRef(0);
   const [consent, setConsent] = useState(false);
   const [status, setStatus] = useState("No model downloaded.");
   const [ready, setReady] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [removingCache, setRemovingCache] = useState(false);
   const [report, setReport] = useState("");
   useEffect(
     () => () => {
+      generation.current += 1;
       worker.current?.terminate();
     },
     [],
@@ -20,19 +23,32 @@ export default function Research() {
     (sum, file) => sum + file.size,
     0,
   );
+  function cancel() {
+    generation.current += 1;
+    worker.current?.terminate();
+    worker.current = null;
+    engine.current = null;
+    setReady(false);
+    setBusy(false);
+    setStatus("Canceled and unloaded. Downloaded model cache may remain.");
+  }
   async function load() {
+    if (!consent) return;
+    const operation = ++generation.current;
     setBusy(true);
     try {
       if (!("gpu" in navigator))
         throw new Error("WebGPU is unavailable on this browser.");
       const start = performance.now();
       const { CreateWebWorkerMLCEngine } = await loadResearchLibrary();
-      worker.current = new Worker(
+      if (operation !== generation.current) return;
+      const loadingWorker = new Worker(
         new URL("./research.worker.ts", import.meta.url),
         { type: "module" },
       );
-      engine.current = await CreateWebWorkerMLCEngine(
-        worker.current,
+      worker.current = loadingWorker;
+      const loadedEngine = await CreateWebWorkerMLCEngine(
+        loadingWorker,
         manifest.model_id,
         {
           appConfig: {
@@ -46,25 +62,38 @@ export default function Research() {
               },
             ],
           },
-          initProgressCallback: (progress) => setStatus(progress.text),
+          initProgressCallback: (progress) => {
+            if (operation === generation.current) setStatus(progress.text);
+          },
         },
       );
+      if (operation !== generation.current) {
+        loadingWorker.terminate();
+        return;
+      }
+      engine.current = loadedEngine;
       setReady(true);
       setStatus(
         `Loaded in ${((performance.now() - start) / 1000).toFixed(1)} seconds. Text-only research; no learner data is used.`,
       );
     } catch (cause) {
+      if (operation !== generation.current) return;
+      worker.current?.terminate();
+      worker.current = null;
+      engine.current = null;
       setStatus(
         cause instanceof Error
           ? cause.message
           : "Research runtime unavailable.",
       );
     } finally {
-      setBusy(false);
+      if (operation === generation.current) setBusy(false);
     }
   }
   async function evaluate() {
-    if (!engine.current) return;
+    const evaluatingEngine = engine.current;
+    if (!evaluatingEngine) return;
+    const operation = ++generation.current;
     setBusy(true);
     try {
       const results = [];
@@ -74,11 +103,12 @@ export default function Research() {
         "Explain briefly why 2/4 equals 1/2.",
       ]) {
         const start = performance.now();
-        const response = await engine.current.chat.completions.create({
+        const response = await evaluatingEngine.chat.completions.create({
           messages: [{ role: "user", content: question }],
           max_tokens: 128,
           temperature: 0,
         });
+        if (operation !== generation.current) return;
         results.push({
           question,
           response: response.choices[0]?.message.content,
@@ -87,6 +117,7 @@ export default function Research() {
         });
       }
       const storage = await navigator.storage.estimate();
+      if (operation !== generation.current) return;
       setReport(
         JSON.stringify(
           {
@@ -109,11 +140,40 @@ export default function Research() {
         ),
       );
     } catch (cause) {
+      if (operation !== generation.current) return;
       setStatus(
         cause instanceof Error ? cause.message : "Research run failed.",
       );
     } finally {
-      setBusy(false);
+      if (operation === generation.current) setBusy(false);
+    }
+  }
+  async function removeCache() {
+    cancel();
+    const operation = generation.current;
+    setBusy(true);
+    setRemovingCache(true);
+    try {
+      const { deleteModelAllInfoInCache } = await loadResearchLibrary();
+      if (operation !== generation.current) return;
+      await deleteModelAllInfoInCache(manifest.model_id, {
+        model_list: [
+          {
+            model_id: manifest.model_id,
+            model: manifest.model_base,
+            model_lib: manifest.model_lib,
+          },
+        ],
+      });
+      if (operation === generation.current) setStatus("Model cache removed.");
+    } catch {
+      if (operation === generation.current)
+        setStatus("Cache removal failed. Use browser site-storage controls.");
+    } finally {
+      if (operation === generation.current) {
+        setBusy(false);
+        setRemovingCache(false);
+      }
     }
   }
   return (
@@ -138,7 +198,11 @@ export default function Research() {
         <input
           type="checkbox"
           checked={consent}
-          onChange={(e) => setConsent(e.target.checked)}
+          disabled={removingCache}
+          onChange={(e) => {
+            setConsent(e.target.checked);
+            if (!e.target.checked) cancel();
+          }}
         />
         I am the adult operator, reviewed the model license, and authorize these
         downloads on this device.
@@ -153,46 +217,10 @@ export default function Research() {
         <button disabled={!ready || busy} onClick={() => void evaluate()}>
           Run three synthetic questions
         </button>
-        <button
-          onClick={() => {
-            engine.current?.interruptGenerate();
-            worker.current?.terminate();
-            worker.current = null;
-            engine.current = null;
-            setReady(false);
-            setBusy(false);
-            setStatus(
-              "Canceled and unloaded. Downloaded model cache may remain.",
-            );
-          }}
-        >
+        <button disabled={removingCache} onClick={cancel}>
           Cancel and unload
         </button>
-        <button
-          onClick={() => {
-            void (async () => {
-              const { deleteModelAllInfoInCache } = await loadResearchLibrary();
-              await engine.current?.unload();
-              worker.current?.terminate();
-              engine.current = null;
-              setReady(false);
-              await deleteModelAllInfoInCache(manifest.model_id, {
-                model_list: [
-                  {
-                    model_id: manifest.model_id,
-                    model: manifest.model_base,
-                    model_lib: manifest.model_lib,
-                  },
-                ],
-              });
-              setStatus("Model cache removed.");
-            })().catch(() =>
-              setStatus(
-                "Cache removal failed. Use browser site-storage controls.",
-              ),
-            );
-          }}
-        >
+        <button disabled={busy} onClick={() => void removeCache()}>
           Remove model cache
         </button>
       </div>

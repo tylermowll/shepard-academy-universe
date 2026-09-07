@@ -38,6 +38,7 @@ from math_tutor.adapters.providers.contracts import (
 )
 from math_tutor.api.practice import finish_deterministic
 from math_tutor.providers import authorize_route, complete, effective_configuration
+from math_tutor.retention import purge_completed_photo
 
 
 @dataclass(frozen=True)
@@ -156,8 +157,11 @@ def finish(
                 problem.assistance_level = max(problem.assistance_level, turn.assistance_level)
             job.state = "completed"
         job.lease_token, job.lease_expires_at = None, None
+        purge_photo = row.status == "completed" and row.image_key is not None
         db.commit()
-        return True
+    if purge_photo:
+        purge_completed_photo(engine, work.submission_id)
+    return True
 
 
 @dataclass(frozen=True)

@@ -80,7 +80,8 @@ retention, encrypted backups, and restore rehearsals.
 - Durable jobs survive API reloads and worker crashes. Duplicate requests produce
   one visible result. A crash after a provider response may require a second
   billed request; total calls remain bounded.
-- Photos are normalized privately, metadata removed, and deleted within 24 hours.
+- Photos are normalized privately and metadata removed. Confirmed photos are
+  deleted after processing; failed/unconfirmed photos expire within 24 hours.
   History defaults to 30 days. Retention runs in the worker.
 - Public offline exercises check exact values locally and never sync or count as
   saved server progress. Service-worker caches contain public assets only.
@@ -101,6 +102,8 @@ flowchart LR
 Run one API process and one worker on the same host and local disk. No network
 filesystem, horizontal scaling, autonomous model tools, or silent cloud fallback.
 Provider keys and answer keys stay on the backend.
+Live provider calls use a short-lived child process so DNS, SDK setup, and slow
+responses cannot exceed the request deadline. See [D008](docs/DECISIONS.md#d008--bounded-provider-io-and-destination-validation-2026-09-07).
 
 ## Commands and verification
 

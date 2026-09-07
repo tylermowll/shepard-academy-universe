@@ -5,8 +5,10 @@ from __future__ import annotations
 import base64
 import json
 import os
+import socket
 import time
-from typing import TYPE_CHECKING, Any, cast
+from contextlib import ExitStack
+from typing import TYPE_CHECKING, Any
 
 import boto3
 import httpx2 as httpx
@@ -15,9 +17,9 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 if TYPE_CHECKING:
     from mypy_boto3_bedrock_runtime import BedrockRuntimeClient
-from pydantic import ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
-from math_tutor.adapters.providers.config import ProviderConfig
+from math_tutor.adapters.providers.config import ProviderConfig, blocked_destination
 from math_tutor.adapters.providers.contracts import (
     InterpretationPayload,
     ModelRequest,
@@ -25,6 +27,85 @@ from math_tutor.adapters.providers.contracts import (
     ProviderError,
     TutorPayload,
 )
+
+
+class WireObject(BaseModel):
+    """Validate consumed fields without rejecting vendor-specific metadata."""
+
+    model_config = ConfigDict(strict=True, extra="ignore")
+
+
+class ChatMessage(WireObject):
+    content: str | None = None
+    refusal: str | None = None
+
+
+class ChatChoice(WireObject):
+    message: ChatMessage
+    finish_reason: str | None = None
+
+
+class ChatUsage(WireObject):
+    prompt_tokens: int = Field(default=0, ge=0)
+    completion_tokens: int = Field(default=0, ge=0)
+    total_tokens: int = Field(default=0, ge=0)
+
+
+class ChatResponse(WireObject):
+    choices: list[ChatChoice] = Field(min_length=1)
+    usage: ChatUsage = Field(default_factory=ChatUsage)
+
+
+class OllamaResponse(WireObject):
+    done: bool
+    done_reason: str | None = None
+    message: ChatMessage
+    prompt_eval_count: int = Field(default=0, ge=0)
+    eval_count: int = Field(default=0, ge=0)
+
+
+class BedrockBlock(WireObject):
+    text: str | None = None
+
+
+class BedrockMessage(WireObject):
+    content: list[BedrockBlock]
+
+
+class BedrockOutput(WireObject):
+    message: BedrockMessage
+
+
+class BedrockMetrics(WireObject):
+    latencyMs: int = Field(default=0, ge=0)
+
+
+class BedrockUsage(WireObject):
+    inputTokens: int = Field(default=0, ge=0)
+    outputTokens: int = Field(default=0, ge=0)
+    totalTokens: int = Field(default=0, ge=0)
+    cacheReadInputTokens: int = Field(default=0, ge=0)
+    cacheWriteInputTokens: int = Field(default=0, ge=0)
+
+
+class BedrockResponse(WireObject):
+    stopReason: str
+    output: BedrockOutput | None = None
+    usage: BedrockUsage = Field(default_factory=BedrockUsage)
+    metrics: BedrockMetrics = Field(default_factory=BedrockMetrics)
+
+
+def pinned_endpoints(url: httpx.URL) -> list[httpx.URL]:
+    """Resolve once and pin allowed addresses, preserving Host and TLS SNI separately."""
+    try:
+        addresses = socket.getaddrinfo(
+            url.host, url.port or (443 if url.scheme == "https" else 80), type=socket.SOCK_STREAM
+        )
+    except OSError:
+        raise ProviderError("unavailable", True) from None
+    if not addresses or any(blocked_destination(str(row[4][0])) for row in addresses):
+        raise ProviderError("invalid_endpoint")
+    return [url.copy_with(host=host) for host in dict.fromkeys(str(row[4][0]) for row in addresses)]
 
 
 def validate_payload(request: ModelRequest, text: str) -> TutorPayload | InterpretationPayload:
@@ -143,13 +224,29 @@ class HTTPProvider:
             timeout=request.timeout_seconds, follow_redirects=False, trust_env=False
         )
         try:
-            with client.stream(
-                "POST",
-                (self.config.base_url or "").rstrip("/") + path,
-                json=body,
-                headers=headers,
-                timeout=request.timeout_seconds,
-            ) as response:
+            endpoint = httpx.URL((self.config.base_url or "").rstrip("/") + path)
+            targets = [endpoint] if self.client is not None else pinned_endpoints(endpoint)
+            headers["Host"] = endpoint.netloc.decode("ascii")
+            with ExitStack() as stack:
+                response = None
+                for target in targets:
+                    try:
+                        response = stack.enter_context(
+                            client.stream(
+                                "POST",
+                                target,
+                                json=body,
+                                headers=headers,
+                                timeout=request.timeout_seconds,
+                                extensions={"sni_hostname": endpoint.host},
+                            )
+                        )
+                        break
+                    except httpx.ConnectError, httpx.ConnectTimeout:
+                        # Only try another resolved address before HTTP transmission.
+                        if target == targets[-1]:
+                            raise
+                assert response is not None
                 if response.status_code != 200:
                     code = {
                         401: "authentication",
@@ -168,33 +265,27 @@ class HTTPProvider:
                     chunks.extend(chunk)
                     if len(chunks) > 262144:
                         raise ProviderError("malformed_output")
-                data = json.loads(chunks)
             usage: dict[str, int] = {}
             if self.config.adapter == "ollama":
-                if data.get("done") is not True or data.get("done_reason") not in {"stop", None}:
+                ollama = OllamaResponse.model_validate_json(chunks)
+                if not ollama.done or ollama.done_reason not in {"stop", None}:
                     raise ProviderError("incomplete_output")
-                content = data["message"]["content"]
-                for key_name in ("prompt_eval_count", "eval_count"):
-                    value = data.get(key_name)
-                    if isinstance(value, int) and value >= 0:
-                        usage[key_name] = value
+                content = ollama.message.content
+                usage = ollama.model_dump(
+                    include={"prompt_eval_count", "eval_count"}, exclude_unset=True
+                )
             else:
-                choice = data["choices"][0]
-                if (
-                    choice["message"].get("refusal")
-                    or choice.get("finish_reason") == "content_filter"
-                ):
+                chat = ChatResponse.model_validate_json(chunks)
+                choice = chat.choices[0]
+                if choice.message.refusal or choice.finish_reason == "content_filter":
                     raise ProviderError(
                         "refusal",
                         safe_message="The provider declined this request. Try built-in help.",
                     )
-                if choice.get("finish_reason") != "stop":
+                if choice.finish_reason != "stop":
                     raise ProviderError("incomplete_output")
-                content = choice["message"]["content"]
-                for key_name in ("prompt_tokens", "completion_tokens", "total_tokens"):
-                    value = data.get("usage", {}).get(key_name)
-                    if isinstance(value, int) and value >= 0:
-                        usage[key_name] = value
+                content = choice.message.content
+                usage = chat.usage.model_dump(exclude_unset=True)
             if not isinstance(content, str):
                 raise ProviderError("malformed_output")
             return ModelResult(
@@ -252,33 +343,33 @@ class BedrockProvider:
 
     def complete(self, request: ModelRequest) -> ModelResult:
         check_request(self.config, request)
-        client = self.client or boto3.client(
-            "bedrock-runtime",
-            region_name=self.config.region,
-            config=Config(
-                retries={"total_max_attempts": 1},
-                connect_timeout=5,
-                read_timeout=request.timeout_seconds,
-            ),
-        )
+        client = self.client
         try:
+            if client is None:
+                client = boto3.client(
+                    "bedrock-runtime",
+                    region_name=self.config.region,
+                    config=Config(
+                        retries={"total_max_attempts": 1},
+                        connect_timeout=5,
+                        read_timeout=request.timeout_seconds,
+                    ),
+                )
             raw = client.converse(**self.wire(request))
-            data = cast(dict[str, Any], raw)
-            reason = data.get("stopReason")
+            data = BedrockResponse.model_validate(raw)
+            reason = data.stopReason
             if reason in {"guardrail_intervened", "content_filtered"}:
                 raise ProviderError("refusal")
             if reason != "end_turn":
                 raise ProviderError("incomplete_output")
-            content = "".join(
-                block["text"] for block in data["output"]["message"]["content"] if "text" in block
-            )
+            if data.output is None:
+                raise ProviderError("malformed_output")
+            content = "".join(block.text or "" for block in data.output.message.content)
             return ModelResult(
                 validated_payload=validate_payload(request, content),
                 model_id=request.model_id,
-                reported_usage={
-                    k: v for k, v in data.get("usage", {}).items() if isinstance(v, int) and v >= 0
-                },
-                latency_ms=data.get("metrics", {}).get("latencyMs", 0),
+                reported_usage=data.usage.model_dump(exclude_unset=True),
+                latency_ms=data.metrics.latencyMs,
                 finish_reason="end_turn",
             )
         except ClientError as error:
@@ -297,5 +388,5 @@ class BedrockProvider:
         except KeyError, TypeError, ValueError:
             raise ProviderError("malformed_output") from None
         finally:
-            if self.client is None:
+            if self.client is None and client is not None:
                 client.close()
