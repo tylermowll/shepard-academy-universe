@@ -2,6 +2,9 @@ UV ?= uv
 PNPM ?= pnpm
 API_PROJECT := apps/api
 UV_PROJECT_ARGS := --directory $(API_PROJECT)
+ENV_FILE ?= $(if $(UV_ENV_FILE),$(UV_ENV_FILE),$(CURDIR)/.env)
+# Only operator commands load settings, through captured/redacted uv diagnostics.
+LOCAL_COMMAND = $(UV) run --project $(API_PROJECT) --locked --no-env-file python -m math_tutor.local_start --env-file "$(ENV_FILE)" --uv "$(UV)"
 
 .PHONY: bootstrap setup toolchain-check lock lock-check db migrate admin dev-api dev-web test \
 	test-integration lint format format-check typecheck build check hooks-install \
@@ -30,17 +33,17 @@ lock-check:
 	$(PNPM) install --lockfile-only --frozen-lockfile --ignore-scripts
 
 db:
-	$(UV) run $(UV_PROJECT_ARGS) --locked python -m math_tutor.cli db
+	$(LOCAL_COMMAND) --command db
 
 migrate:
 	@echo "Stop API/worker writes before migrating."
-	$(UV) run $(UV_PROJECT_ARGS) --locked alembic -c alembic.ini upgrade head
+	$(LOCAL_COMMAND) --command migrate
 
 admin:
-	$(UV) run $(UV_PROJECT_ARGS) --locked python -m math_tutor.cli admin
+	$(LOCAL_COMMAND) --command admin
 
 setup:
-	$(UV) run $(UV_PROJECT_ARGS) --locked python -m math_tutor.cli setup
+	$(UV) run $(UV_PROJECT_ARGS) --locked --no-env-file python -m math_tutor.cli setup
 
 dev-api:
 	$(UV) run $(UV_PROJECT_ARGS) --locked uvicorn math_tutor.api.app:app --reload --no-proxy-headers
@@ -82,7 +85,7 @@ check: pre-commit-check build contracts-check secret-check infra-check
 smoke: build
 	$(PNPM) smoke
 
-.PHONY: contracts contracts-check secret-check audit eval-mock eval-live dev serve demo worker test-e2e infra-check backup restore
+.PHONY: contracts contracts-check secret-check audit eval-mock eval-live start dev serve demo worker test-e2e infra-check backup restore
 
 contracts:
 	$(UV) run --project $(API_PROJECT) --locked python scripts/export-contracts.py --output contracts/openapi.json
@@ -109,28 +112,31 @@ eval-live:
 	@test -n "$(PROVIDER)" || { echo "Set PROVIDER to an explicitly configured provider ID."; exit 1; }
 	$(UV) run --project $(API_PROJECT) --locked python -m math_tutor.evaluation --fixtures evals/fixtures/rational-v1.json --output evals/reports/live-synthetic.json --live-provider "$(PROVIDER)" --authorize-synthetic-calls --max-calls 3
 
-dev: build
-	$(UV) run --project $(API_PROJECT) --locked python scripts/dev.py
+start:
+	$(LOCAL_COMMAND) --make "$(MAKE)"
+
+dev:
+	$(LOCAL_COMMAND) --make "$(MAKE)" --loopback
 
 # A separately configured HTTPS gateway forwards to loopback port 8000.
-serve: build
-	$(UV) run --project $(API_PROJECT) --locked python scripts/dev.py --gateway
+serve:
+	$(LOCAL_COMMAND) --make "$(MAKE)" --gateway
 
 demo: build
 	$(UV) run --project $(API_PROJECT) --locked python scripts/serve-demo.py --port 8000
 
 worker:
-	$(UV) run $(UV_PROJECT_ARGS) --locked python -m math_tutor.worker
+	$(LOCAL_COMMAND) --command worker
 
 test-e2e: smoke
 
 backup:
 	@test -n "$(OUTPUT)" || { echo "Set OUTPUT to a new encrypted backup path; stop writes first."; exit 1; }
-	$(UV) run --project $(API_PROJECT) --locked python -m math_tutor.backup backup "$(OUTPUT)" --writes-stopped
+	$(LOCAL_COMMAND) --command backup --output "$(OUTPUT)" --writes-stopped
 
 restore:
 	@test -n "$(INPUT)" -a -n "$(OUTPUT)" -a -n "$(LEDGER)" || { echo "Set INPUT, a new OUTPUT directory, and the current LEDGER path; stop writes first."; exit 1; }
-	$(UV) run --project $(API_PROJECT) --locked python -m math_tutor.backup restore "$(INPUT)" --destination "$(OUTPUT)" --deletion-ledger "$(LEDGER)" --writes-stopped
+	$(LOCAL_COMMAND) --command restore --input "$(INPUT)" --output "$(OUTPUT)" --ledger "$(LEDGER)" --writes-stopped
 
 .PHONY: seed-demo down
 seed-demo:

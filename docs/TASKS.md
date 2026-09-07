@@ -34,6 +34,127 @@ specification gates pass.
 | T24  | Implemented; physical phone/live provider verification pending | Expiring QR upload, computer confirmation, HTTPS launch/runbook; automated migration, authorization, retry and two-browser gates passed.                                                                                       |
 | T25  | Implemented; automated gates passed; live quality unverified   | AI-only multi-subject tutoring, reference-only homework intake, contextual guidance, adjustable initiative and automatic clear photo reading; 125 unit, 33 component, 128 integration and 28 browser tests passed.             |
 | T26  | Implemented; automated gates passed                            | Purposeful tabs, plain wording, in-context Help, parent-as-student profiles and guided phone setup; 125 unit, 51 component, 146 integration and 36 browser tests passed.                                                           |
+| T27  | Implemented; automated gates passed                            | Browser-managed AI connections/keys, current-schema tests, persistent startup and safe backup settings; 145 unit, 80 component, 188 integration and 42 browser tests passed.                                                         |
+
+### T27 — Complete local setup and browser-managed AI connections (2026-09-07)
+
+The maintainer found that Settings could select providers but could not add an
+API key, Ollama server, or vLLM endpoint, and requested closing that gap and
+related setup blockers, pushing `main`, then giving verified local run steps.
+The earlier T26 navigation redesign did not complete the first-run workflow.
+
+Bounded scope and contracts:
+
+- Adult-only typed connection create/read/update/delete, write-only credentials,
+  explicit cloud/audience policy, and existing separately authorized probes and
+  route selection. No connection save performs inference or enables a route.
+- Persist connections and encrypted credentials in the existing private SQLite
+  database with a real migration. API and worker reload effective configuration;
+  configuration/key changes invalidate previous probe and queued-policy state.
+- Retain file-managed configuration without rewriting operator files; learner
+  sessions cannot manage credentials, endpoints, or policy. No browser storage,
+  response/error echo, or learner export may expose keys. Preserve server-side
+  destination, age, capability, consent, demo and request-budget enforcement.
+- A normal persistent local launcher loads settings without shell evaluation,
+  creates only missing setup, checks readiness before building, and creates an
+  adult account only when none exists. Restarts never reset accounts or data.
+  Retained database upgrades remain an explicit stopped-write operation.
+- Update Settings and Help together: add connection → authorized test → choose
+  tutor/photo roles → practice. Show unavailable/managed-policy states honestly.
+
+Plan/evidence gates: parallel backend persistence/API, frontend connection form,
+and local launcher slices; regenerate OpenAPI/TypeScript; add synthetic component,
+real on-disk authorization/credential/rollback tests and real browser workflow
+tests with a local synthetic model server. Run targeted checks, `make check`,
+`make test-integration`, `make smoke`, `make eval-mock`, `make hooks-check`, public
+diff review, commit/push and hosted CI. Results will be recorded before handoff.
+No live `.env`, credentials, provider configuration, learner database or private
+logs will be inspected. No paid inference, model download or deployment is in scope.
+
+Implemented:
+
+- `ProviderConnections.tsx`, `AdultPanel.tsx`, `client.ts` and Help: adult Settings
+  now adds/edits Ollama, vLLM, compatible API and Meta connections, with a password
+  field for write-only keys. Setup is save → explicit synthetic test → choose
+  Tutor/Photo reader → authorize routes. Connection save never calls a model.
+  Contextual instructions, advanced settings, cloud/audience controls, managed
+  policy locks, and actionable redacted connection errors cover the same workflow.
+  API keys are cleared on save/cancel/navigation and never stored in the browser.
+- `api/provider_connections.py`, `provider_secrets.py`, provider configuration,
+  transport and DB models, plus migration `0012_provider_connections`: typed
+  admin/CSRF-only CRUD and policy; encrypted server-side key persistence with
+  purpose-separated HKDF/AES-GCM and connection-ID authentication. API and worker
+  reload saved configuration without restarting. Secret rotation fails closed
+  while leaving Settings available to replace affected keys. File-managed
+  providers remain read-only; collisions cannot shadow them.
+- `api/providers.py`: tutor tests now exercise the current activity and feedback
+  schemas (two synthetic calls); photo tests exercise the current reading schema
+  (one known synthetic image). Existing deadlines, seven-day expiry, call limits,
+  principal/policy checks and destination validation remain enforced. Recheck
+  authorization before each call; changing a selected connection invalidates its
+  tests and requires fresh route consent, including while work is queued.
+- `local_start.py`, `cli.py` and Makefile: persistent `make start` safely loads
+  private settings without shell evaluation, creates missing setup and the first
+  account only, checks prerequisites before building, rejects duplicate launchers,
+  and preserves accounts/data on Ctrl+C/restart. Existing database upgrades remain
+  explicit. Captured dotenv diagnostics cannot echo malformed secret lines.
+  Operator migration/admin/worker/backup/restore commands use the same settings
+  loader; backup/restore retain stopped-write and no-overwrite requirements.
+- README, PHONE_SETUP, RUNBOOK, PROVIDER_STATUS, specification, D010 and HANDOFF:
+  normal local setup and web connection configuration are documented together;
+  YAML is advanced/optional, cloud use stays explicit, and key recovery/backup
+  limitations are stated. The historical pre-D005 hard cutover is distinguished
+  from normal current-schema migrations.
+
+Observed verification with Node 24.20.0/pnpm 12.3.4 selected from the existing
+installation, `UV_CACHE_DIR=/tmp/shepard-t27-uv-cache`, and `UV_NO_ENV_FILE=true`:
+
+- Final `make check` passed: locks, lint/format, strict types, 145 Python unit tests,
+  80 component tests, API/PWA builds, generated contract drift, credential scan
+  and IaC lint. The existing Vite chunk-size warning remains; its threshold was
+  not raised. Backup-loader checks are included in this final run.
+- Final `make test-integration`: 188 passed in 24.02 s, including 27 connection
+  and 15 startup integration cases with on-disk SQLite, rollback/downgrade, current
+  schemas, revocation, stale-policy and worker coverage. Socket/process gates
+  ran outside the sandbox using only isolated synthetic state.
+- Final `make smoke`: 42 desktop/mobile Chromium cases passed in 3.4 min. New
+  cases configure Ollama, vLLM and compatible endpoints through the real UI,
+  prove no call on save or cancelled testing, authenticate bounded schema tests,
+  save roles, reload and generate practice through the worker without restart.
+  Rejected-key responses deliberately contain a fixture secret; the UI displays
+  actionable safe advice without echoing it. Paired learners cannot view or
+  change connection settings. Test fixtures are stopped and routes restored.
+- `make eval-mock` passed all 63 synthetic cases (`passed: true`).
+- Actual PTY `make start ENV_FILE=/tmp/shepard-t27-startup.Z1J684/.env` with
+  isolated synthetic database/data and loopback port 56079: first start created
+  missing settings, initialized the database and prompted for one administrator.
+  Live/ready/login all returned 200. Ctrl+C stopped API/worker and released the
+  port. Repeating the exact command did not prompt/reset the administrator; the
+  existing browser session and same-password login still worked. Final Ctrl+C
+  stopped all synthetic services. Generated private settings were not inspected.
+- Visual inspection of synthetic Settings and connection entry at 1280px and
+  390px showed no horizontal overflow. This is layout evidence only. Independent
+  review verified secret serialization, destination pinning, consent and demo
+  boundaries, and found/fixed dotenv diagnostic leaks, per-call revocation,
+  route reapproval and the `.env`-only backup path gap with regression tests.
+- Backup-loader targeted checks passed 37 startup/supervisor cases in 0.72 s.
+  They prove `.env`-only custom database settings reach both backup and restore,
+  malformed settings cannot echo secrets, and active native writes are refused.
+  The underlying backup command is stubbed in these dispatcher cases; existing
+  integration tests cover actual encrypted backup/restore behavior.
+- `make hooks-check`, the staged-public-file credential scan and
+  `git diff --cached --check` passed. Final diff review found no secrets, learner
+  data, generated contract drift, silent cloud fallback or infrastructure change.
+- One parallel gate run passed 187 integration cases but hit a fixture setup
+  error while Vite briefly replaced the shared generated assets directory.
+  Rerunning the unchanged full integration gate after the build passed all 188;
+  build and integration gates must run sequentially in this shared checkout.
+
+No operator `.env`, provider configuration, retained database,
+uploads or private logs were opened or changed in this implementation turn.
+Live provider/model quality, paid inference, physical phones, model downloads
+and deployment were not tested or performed. Hosted CI will be observed after
+the authorized push.
 
 ### T26 — Purposeful pages and guided setup (2026-09-07)
 

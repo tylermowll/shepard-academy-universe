@@ -107,6 +107,58 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/admin/providers/connections": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Create Connection */
+    post: operations["create_connection_api_v1_admin_providers_connections_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/admin/providers/connections/{provider_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    /** Update Connection */
+    put: operations["update_connection_api_v1_admin_providers_connections__provider_id__put"];
+    post?: never;
+    /** Delete Connection */
+    delete: operations["delete_connection_api_v1_admin_providers_connections__provider_id__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/admin/providers/policy": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Update Policy */
+    post: operations["update_policy_api_v1_admin_providers_policy_post"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/admin/providers/routes": {
     parameters: {
       query?: never;
@@ -1309,22 +1361,196 @@ export interface components {
        */
       note: string;
     };
+    /** ProviderConnectionCreate */
+    ProviderConnectionCreate: {
+      /**
+       * Adapter
+       * @enum {string}
+       */
+      adapter: "ollama" | "vllm" | "compatible" | "meta";
+      /** Api Key */
+      api_key?: string | null;
+      /**
+       * Api Key Action
+       * @default keep
+       * @enum {string}
+       */
+      api_key_action: "keep" | "replace" | "remove";
+      /**
+       * Audience
+       * @enum {string}
+       */
+      audience: "adult_only" | "mixed";
+      /** Base Url */
+      base_url: string;
+      /**
+       * Boundary
+       * @enum {string}
+       */
+      boundary: "local_network" | "cloud";
+      /**
+       * Configured Context Limit
+       * @default 32768
+       */
+      configured_context_limit: number;
+      /** Eligibility Record */
+      eligibility_record: string;
+      /**
+       * Enabled
+       * @default true
+       */
+      enabled: boolean;
+      /** Id */
+      id: string;
+      /**
+       * Image Input
+       * @default false
+       */
+      image_input: boolean;
+      /** Model */
+      model: string;
+      /**
+       * Structured Output Mode
+       * @default native
+       * @enum {string}
+       */
+      structured_output_mode: "native" | "json_prompt";
+    };
+    /** ProviderConnectionInput */
+    ProviderConnectionInput: {
+      /**
+       * Adapter
+       * @enum {string}
+       */
+      adapter: "ollama" | "vllm" | "compatible" | "meta";
+      /** Api Key */
+      api_key?: string | null;
+      /**
+       * Api Key Action
+       * @default keep
+       * @enum {string}
+       */
+      api_key_action: "keep" | "replace" | "remove";
+      /**
+       * Audience
+       * @enum {string}
+       */
+      audience: "adult_only" | "mixed";
+      /** Base Url */
+      base_url: string;
+      /**
+       * Boundary
+       * @enum {string}
+       */
+      boundary: "local_network" | "cloud";
+      /**
+       * Configured Context Limit
+       * @default 32768
+       */
+      configured_context_limit: number;
+      /** Eligibility Record */
+      eligibility_record: string;
+      /**
+       * Enabled
+       * @default true
+       */
+      enabled: boolean;
+      /**
+       * Image Input
+       * @default false
+       */
+      image_input: boolean;
+      /** Model */
+      model: string;
+      /**
+       * Structured Output Mode
+       * @default native
+       * @enum {string}
+       */
+      structured_output_mode: "native" | "json_prompt";
+    };
+    /** ProviderPolicyInput */
+    ProviderPolicyInput: {
+      /** Acknowledge Data Boundary */
+      acknowledge_data_boundary: boolean;
+      /** Allow Cloud Inference */
+      allow_cloud_inference: boolean;
+      /**
+       * App Audience
+       * @enum {string}
+       */
+      app_audience: "adult_only" | "mixed";
+    };
+    /** ProviderPolicyPublic */
+    ProviderPolicyPublic: {
+      /** Allow Cloud Inference */
+      allow_cloud_inference: boolean;
+      /**
+       * App Audience
+       * @enum {string}
+       */
+      app_audience: "adult_only" | "mixed";
+      /** Audience Locked */
+      audience_locked: boolean;
+      /** Cloud Locked */
+      cloud_locked: boolean;
+      /** Demo Mode */
+      demo_mode: boolean;
+    };
     /** ProviderPublic */
     ProviderPublic: {
       /** Adapter */
       adapter: string;
       /** Audience */
       audience: string;
+      /** Base Url */
+      base_url?: string | null;
       /** Boundary */
       boundary: string;
+      /**
+       * Configured Context Limit
+       * @default 8192
+       */
+      configured_context_limit: number;
+      /**
+       * Eligibility Record
+       * @default
+       */
+      eligibility_record: string;
       /** Enabled */
       enabled: boolean;
       /** Id */
       id: string;
       /** Image Input */
       image_input: boolean;
+      /**
+       * Key Configured
+       * @default false
+       */
+      key_configured: boolean;
+      /**
+       * Key Needs Replacement
+       * @default false
+       */
+      key_needs_replacement: boolean;
+      /**
+       * Managed
+       * @default false
+       */
+      managed: boolean;
       /** Model */
       model: string;
+      /**
+       * Requires Approval
+       * @default false
+       */
+      requires_approval: boolean;
+      /**
+       * Structured Output Mode
+       * @default native
+       * @enum {string}
+       */
+      structured_output_mode: "native" | "json_prompt";
       /** Tutor Probed */
       tutor_probed: boolean;
       /** Vision Probed */
@@ -1332,6 +1558,7 @@ export interface components {
     };
     /** ProvidersPublic */
     ProvidersPublic: {
+      policy: components["schemas"]["ProviderPolicyPublic"];
       /** Providers */
       providers: components["schemas"]["ProviderPublic"][];
       routes: components["schemas"]["Routes"];
@@ -1801,6 +2028,138 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["ProvidersPublic"];
+        };
+      };
+    };
+  };
+  create_connection_api_v1_admin_providers_connections_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ProviderConnectionCreate"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Acknowledged"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_connection_api_v1_admin_providers_connections__provider_id__put: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        provider_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ProviderConnectionInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Acknowledged"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  delete_connection_api_v1_admin_providers_connections__provider_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        provider_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Acknowledged"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  update_policy_api_v1_admin_providers_policy_post: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["ProviderPolicyInput"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Acknowledged"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
         };
       };
     };

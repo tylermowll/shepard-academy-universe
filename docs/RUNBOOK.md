@@ -2,9 +2,16 @@
 
 ## Native local host
 
-Follow the README setup. Export settings locally; the application does not parse
-`.env` automatically. Run one API and one worker under `make dev` for local use.
-Ctrl+C stops both. `make dev-api` alone is a development API reload process;
+Follow the README setup. `make start` loads private `.env`
+settings through uv without executing shell content, creates only missing setup,
+and runs one API and one worker. First start asks locally for an adult account
+only if none exists; subsequent starts never reset credentials. An old retained
+database stops startup before building: stop all API/worker writes, back up data,
+then explicitly run `make migrate start`. Ctrl+C stops both services and preserves
+the persistent data. `make demo` is different: its temporary data is deleted when
+it stops. `make start` supports loopback HTTP or a configured private HTTPS
+gateway; `make dev` is loopback-only, and `make serve` requires the gateway.
+`make dev-api` alone is a development API reload process;
 `make dev-web` alone is a frontend development server. Use the combined same-origin
 application for end-to-end practice. `/health/live` reports process liveness;
 `/health/ready` returns unavailable if the database or recent worker heartbeat is
@@ -69,9 +76,11 @@ probe or request readiness through the gateway. Do not change the configured
 origin merely to pass a health check. `make down` retains the host data directory.
 Do not use a destructive volume removal as a routine restart.
 
-Compose reads operator `.env` itself. Set an absolute container path for
-`PROVIDER_CONFIG` and add an explicit **read-only** mount of the reviewed private
-provider YAML to both services. For host-local Ollama/vLLM, localhost inside the
+Compose reads operator `.env` itself. Browser-managed AI connections are stored
+in the shared private database and configured through adult Settings. For optional
+file-managed connections, set an absolute container path for `PROVIDER_CONFIG`
+and add an explicit **read-only** mount of the reviewed private provider YAML to
+both services. For host-local Ollama/vLLM, localhost inside the
 container is not the host: use a private reachable interface or a reviewed Linux
 host-gateway mapping, and block public model ports. No provider config or secrets
 are baked into the image. Supply cloud credentials through workload identity or
@@ -133,6 +142,9 @@ make restore INPUT=/private/backup/tutor-2026-09-06.enc OUTPUT=/private/restore-
 ```
 
 Both targets acknowledge that you stopped writes. The destination must not exist.
+They load the same private `.env` as `make start`, including a custom database
+path, and refuse to run while the native launcher holds that database's lock.
+Stop independently supervised services too; the lock cannot stop those writers.
 Supply the **current** deletion ledger, even when restoring an old archive. If no
 learner was ever deleted, explicitly create an empty private ledger. Never replace
 a missing current ledger with an old empty one to bypass deletion preservation.
@@ -142,9 +154,13 @@ the restored WAL, revokes sessions/pairings, and cancels pending jobs. Test a ne
 isolated restore directory before changing production paths. Re-pair devices after
 cutover. Retention sweeps resume with the worker.
 
-Operator configuration, certificate material, and session/provider secrets are
-**not** in application archives. Recover them separately from your secret manager,
-rotate session secrets where appropriate, and export the new database path. Keep
+Browser-managed connections and their encrypted API-key values are included in
+the database archive. Operator environment/YAML, certificates, and the deployment
+session secret are **not** included. Recover those separately from your secret
+manager. Saved API keys require the original session secret for decryption; if
+you rotate it, replace the affected keys in adult Settings and retest connections.
+Encryption does not protect against someone who has both the database and that
+secret. Export the new database path after restore. Keep
 encrypted backups for at most seven days by default and keep the passphrase in a
 separate secure location. An adult must account for exported downloads and old
 backup retention when fulfilling deletion requests.

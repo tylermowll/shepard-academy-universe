@@ -436,7 +436,26 @@ For structured output, prefer the provider's native schema mechanism when availa
 
 ## 8. Configuration contract
 
-Keep secrets outside Git. Supply `.env.example` and `config/providers.example.yaml` with no usable credentials. Administrator UI can select preconfigured routes and display redacted health; it cannot accept an arbitrary learner-supplied URL.
+Keep secrets outside Git. Supply `.env.example` and `config/providers.example.yaml`
+with no usable credentials. Under D010/T27 the authenticated adult can add, edit,
+test, select and remove browser-managed AI connections in Settings. API keys are
+write-only inputs stored encrypted in the private database; responses report only
+whether a key is configured. File-managed connections remain read-only. The
+learner cannot supply an endpoint, credential or policy override.
+
+Saving a connection must not call a model or change active routes. Synthetic
+tests and route selection require separate explicit adult authorization. Changes
+to endpoints, models, credentials or policy invalidate prior capability evidence
+and pending request policy where applicable. API and worker see saved changes
+without a process restart. Global cloud/audience controls are available to the
+adult in Settings; deployment environment restrictions remain authoritative and
+are explained when they lock a control. Demo mode cannot be changed in the UI.
+
+The persistent local launcher generates only missing settings, loads them without
+shell evaluation, validates configuration before building, initializes a fresh
+database, and prompts locally for the first adult account. Restarting must not
+reset the account or replace settings/data. Upgrading retained databases requires
+an explicit stopped-write migration. See D010 for credential backup/recovery.
 
 ### Environment
 
@@ -528,6 +547,10 @@ and the separate raw-image endpoint. Generated OpenAPI defines exact schemas.
 | `POST /operations/{id}/cancel`                     | Operation owner/adult    | Cancel safely; ignore late output                                                     |
 | `GET /sessions/{id}`                               | Session owner/adult      | History excluding hidden material                                                     |
 | `GET /admin/providers`                             | Adult                    | Redacted capabilities and policy/health state                                         |
+| `POST /admin/providers/connections`                | Adult                    | Save validated connection metadata and encrypted write-only key; no model call or route activation |
+| `PUT/DELETE /admin/providers/connections/{id}`      | Adult                    | Edit/remove browser-managed connections; key retention is explicit and edits require retesting/reapproval |
+| `POST /admin/providers/policy`                     | Adult                    | Explicit cloud/audience consent bounded by operator environment restrictions          |
+| `POST /admin/providers/routes`                     | Adult                    | Select currently tested roles and approve their data boundaries                       |
 | `POST /admin/providers/{id}/probe`                 | Adult                    | Synthetic probe only; no learner work                                                 |
 | `POST /admin/learners/{id}/export`                 | Adult                    | Private, authenticated export                                                         |
 | `DELETE /admin/learners/{id}`                      | Adult                    | Immediate access revocation, cancel jobs, purge data                                  |

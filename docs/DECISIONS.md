@@ -1,5 +1,37 @@
 # Implementation decisions
 
+## D010 — Browser-managed AI connections and persistent local startup (2026-09-07)
+
+The maintainer explicitly requires entering an API key or connecting Ollama/vLLM
+through the adult Settings page. T26's route-selection-only UI was incomplete.
+This supersedes the configuration contract's restriction to preconfigured routes,
+not the restriction against learner-controlled destinations or credentials.
+
+- Keep the existing single-host SQLite architecture and provider transports.
+  Store browser-managed connection definitions and encrypted credentials in
+  private database tables. File-managed connections remain read-only; the UI
+  does not rewrite operator YAML or environment files.
+- Credential inputs are write-only. The adult response exposes a configured/not
+  configured status, never the saved value. Use the existing cryptography library
+  with a purpose-derived key from the deployment session secret. Backups need the
+  original deployment secret to recover saved credentials; changing that secret
+  requires re-entering them. Encryption protects a database-only copy, not a
+  compromised host that has both database and secret.
+- Save, test and select are distinct actions. Saving sends no network request to
+  the model and does not select it for learner work. Tests require explicit
+  synthetic-call authorization, disclose possible cost and validate capabilities.
+  Key/configuration changes invalidate probe and pending-operation fingerprints.
+- Explicitly saved cloud and audience policy fills the previous terminal-only
+  setup gap. Operator environment restrictions remain enforced and visible;
+  the UI cannot lift a deployment restriction or enable live calls in demo mode.
+- A local launcher may load private settings at application runtime without
+  executing a shell file. Coding agents still must not inspect real operator
+  settings, credentials or data. Missing settings may be generated exclusively;
+  existing settings, accounts and data must not be replaced on restart.
+- No model installation, cloud provisioning, secret-return endpoint, new service,
+  or automatic local-to-cloud fallback is introduced. CLI-only adult bootstrap
+  remains an intentional local security boundary, with a prompt on first start.
+
 ## D009 — AI tutoring is the primary product (2026-09-07)
 
 The maintainer explicitly corrected the product scope and authorized implementing

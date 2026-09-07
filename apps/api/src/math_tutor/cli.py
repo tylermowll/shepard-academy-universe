@@ -15,12 +15,14 @@ import sys
 import warnings
 from pathlib import Path
 
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from math_tutor import auth as auth_service
 from math_tutor import settings
 from math_tutor.adapters.db.engine import create_engine_for_url, verify_connection_settings
+from math_tutor.adapters.db.models import Administrator
 
 
 def run_db() -> int:
@@ -87,13 +89,11 @@ def run_setup(destination: Path) -> int:
             "error: cannot create settings file; check its directory permissions.", file=sys.stderr
         )
         return 1
-    print(
-        f"Created private settings at {destination}. Export them before running application commands."
-    )
+    print(f"Created private settings at {destination}. Run `make start` to continue.")
     return 0
 
 
-def run_admin() -> int:
+def run_admin(*, only_if_missing: bool = False) -> int:
     """Interactively create (or reset) the adult administrator.
 
     The password is read with :func:`getpass.getpass` so it never appears in
@@ -114,6 +114,25 @@ def run_admin() -> int:
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
+
+    if only_if_missing:
+        engine = create_engine_for_url(url)
+        try:
+            with Session(engine) as db:
+                if db.scalar(select(Administrator.id).limit(1)) is not None:
+                    print("Administrator already set up; keeping the existing login.")
+                    return 0
+        except SQLAlchemyError, OSError:
+            print(
+                "error: cannot check administrator setup; run `make migrate` first.",
+                file=sys.stderr,
+            )
+            return 1
+        finally:
+            engine.dispose()
+        print(
+            "Create your adult administrator login. This account can also have a learner profile."
+        )
 
     try:
         login_name = input("Administrator login name: ")
@@ -139,6 +158,11 @@ def run_admin() -> int:
     try:
         with Session(engine) as db:
             try:
+                if only_if_missing:
+                    db.connection(execution_options={"sqlite_begin_immediate": True})
+                    if db.scalar(select(Administrator.id).limit(1)) is not None:
+                        print("Administrator was already created; keeping the existing login.")
+                        return 0
                 admin = auth_service.create_or_reset_admin(db, login_name, password)
                 db.commit()
                 login_label = admin.login_name

@@ -26,28 +26,48 @@ endpoint/model from the disabled example.
 
 ## Activate one reviewed route
 
-1. Copy `config/providers.example.yaml` to private operator configuration. Select
-   the exact installed/approved model ID, endpoint or region. Document eligibility,
-   model license, intended audience and retention/data handling in
-   `eligibility_record`. Explicitly declare image capability and context limits;
-   a text-only route cannot receive images.
-2. Export `PROVIDER_CONFIG` to that file. Local routes stay local; no automatic
-   cloud fallback exists. Cloud requires `ALLOW_CLOUD_INFERENCE=true`. Adult-only
-   routes require `APP_AUDIENCE=adult_only` and an adult learner. Meta is always
-   adult-only; unknown/minor/mixed access is rejected by backend policy.
-3. Restart API/worker after configuration changes. From the adult provider panel,
-   explicitly authorize the synthetic probe for each required stage. Vision must
-   return the known synthetic `1/2` transcription; mere HTTP success is insufficient.
-   A matching probe lasts seven days and is invalidated by capability/config changes.
+1. In adult **Settings → Add AI connection**, select Ollama, vLLM, a compatible
+   API, or Meta. Enter the exact installed/approved model ID and endpoint, and an
+   API key if required. Review model/provider terms, intended audience and data
+   handling. Declare image capability and context limits honestly; a text-only
+   route cannot receive images. Save sends no model request and changes no route.
+2. Review **App privacy & audience** in Settings. Enable cloud processing only
+   deliberately. Adult-only routes also require an adults-only app audience and
+   an adult learner; Meta retains that restriction. Explicit deployment
+   `ALLOW_CLOUD_INFERENCE` and `APP_AUDIENCE` values lock their UI controls; absent
+   values allow saved Settings policy, defaulting to cloud off and mixed ages.
+   Local routes stay local and never fall back to cloud.
+3. Saved changes are visible to API and worker without restarting. Explicitly
+   authorize the synthetic test for each required stage. The tutor test makes
+   two bounded sample calls, checking activity generation and feedback. The photo
+   test makes one call using the current work-reading schema and must
+   return the known synthetic `1/2` transcription as a clear, unambiguous reading;
+   mere HTTP success is insufficient. A matching probe lasts seven days and is
+   invalidated by capability/configuration/key changes.
 4. Select the eligible route with the displayed data-boundary acknowledgment.
    Test only synthetic material first. Record exact runtime/model/config/prompt
    versions, date, sample counts, failures, latency, token usage and human review.
    A failed local route never invokes an alternate provider.
 
+Saved keys are encrypted in the private SQLite database and never returned in
+responses, errors or learner exports. Edit a connection to keep, replace or
+remove its key. Changing the endpoint cannot silently reuse the old credential.
+Connection/key changes invalidate prior tests and require renewed route-selection
+approval before learner use; a successful test alone never activates changed
+settings. If the deployment secret changes,
+replace unreadable keys in Settings and retest; preserve that secret separately
+when backing up the database (D010).
+
+Advanced operators may still set `PROVIDER_CONFIG` to a reviewed private file
+using `config/providers.example.yaml`. These connections appear read-only in
+Settings and require restarting after file changes. Bedrock remains configured
+this way, with workload IAM credentials rather than a browser form for static
+AWS keys. File-managed and browser-managed connection identifiers cannot collide.
+
 Select both **tutor** and **vision** for the T25 experience. They may point to the
-same model or to separate local/API models. The basic probes establish transport
-and modality only. T25 also uses typed activity-generation, full-work reading,
-and conceptual-guidance schemas. Exercise the actual application loop using
+same model or to separate local/API models. The probes establish transport,
+current activity/feedback/reading schema support and the known photo reading,
+not teaching or general handwriting quality. Exercise the actual application loop using
 [TUTOR_EVALUATION](TUTOR_EVALUATION.md) before claiming those tasks work well on
 your model. Increase the explicitly configured context budget to match your
 actual server when needed; the app rejects over-budget work rather than silently

@@ -18,22 +18,21 @@ Install the toolchain listed in README. In the checkout:
 
 ```bash
 make bootstrap
-make setup
-set -a
-. ./.env
-set +a
-make db
-make migrate
-make admin
+make start
 ```
 
-If already set up, keep your existing `.env`, database and account; do not rerun
-`make setup`. Stop API/worker writes and back up retained data before running
-`make migrate`. T24 introduced `0009_phone_upload`; T25 adds the tutoring metadata
-migration. This does not upgrade historical
-pre-cutover schemas; the README's earlier migration warning still applies to those.
-Configuration/key entry below is for you to perform locally, not for a
-coding agent to read. Never paste the private files or keys into chat.
+The launcher creates missing private settings and a fresh database, asks for your
+first adult login/password locally, and starts the persistent app. Existing
+settings, accounts and data are preserved; no shell-export sequence is needed.
+Open http://127.0.0.1:8000 and sign in.
+
+For an existing installation, stop all app/worker writes and back up retained
+data before upgrading. If startup reports an old database schema, run
+`make migrate start`. T27 adds persisted AI connection settings; it does not
+replace earlier migrations or recreate retained data.
+
+Configuration/key entry below is for you to perform in your trusted local app,
+not for a coding agent to read. Never paste private files or keys into chat.
 
 ## 2. Give the phone a reachable HTTPS address
 
@@ -74,100 +73,66 @@ successfully in Safari before trying its QR links; do not bypass certificate err
 
 ## 3. Configure actual tutoring and handwriting models
 
-The default `demo` provider is a mock and intentionally does not read handwriting.
-Use the existing adapter for either Spark or vLLM. Copy the public example to
-the ignored private configuration **only if you do not already have one**:
+In the signed-in adult app, open **Settings → Add AI connection**:
+
+1. Select **Ollama**, **vLLM**, or your API type.
+2. Enter the model server address and exact installed/approved model name.
+   For Ollama on the same computer, use `http://127.0.0.1:11434` and the name
+   from `ollama list`. For vLLM, use its serving address ending in `/v1`.
+   It needs a different port from this app's default port 8000.
+3. Enter the API key if the endpoint requires one. Saved keys are encrypted on
+   the app server, never displayed again, and can be replaced or removed later.
+4. Choose the correct processing boundary and allowed users. Enable photo input
+   only if the installed model actually supports images; a checkbox cannot add
+   that capability. Review the model/provider terms and save the connection.
+5. Under **App privacy & audience**, explicitly enable cloud processing if needed.
+   Meta requires adults-only app policy and an adult learner. An operator policy
+   lock is shown and cannot be overridden by this page.
+6. Explicitly run **Test tutor** and **Test photo reader** as needed. Tests send
+   sample data, not learner work, and API providers may charge. The tutor test
+   uses two calls (activity generation and feedback); the photo test uses one and
+   must correctly read the known synthetic fraction.
+7. Choose the tested connection as **Tutor** and/or **Photo reader**, acknowledge
+   where work will go, and **Save AI settings**.
+
+Saving a connection alone makes no inference call and changes no active route.
+Saved connections are available to both API and worker without restarting.
+The app does not install models or start Ollama/vLLM. Start your model server
+separately, reachable from the app computer. The iPhone never calls it directly.
+
+The same image-capable model may handle both roles. A cloud tutor receives text
+read from photos even when the photo reader is local. The default `demo` provider
+is a mock; it does not teach or read handwriting. Tests are not evidence of
+general model quality. See [provider verification](PROVIDER_STATUS.md) for
+capability expiry, context limits and evaluation guidance.
+
+File-managed connections remain an optional advanced deployment path and are
+read-only in Settings; see [the public example](../config/providers.example.yaml).
+Bedrock uses that path and workload credentials. Never expose a model server
+publicly as a phone-access shortcut.
+
+## 4. Launch with phone access and start practice
+
+After configuring the private HTTPS gateway and setting `APP_PUBLIC_ORIGIN`
+as in section 2, stop the local app with Ctrl+C and run:
 
 ```bash
-cp -n config/providers.example.yaml config/providers.yaml
-chmod 600 config/providers.yaml
-```
-
-Edit this file locally. Keep `routes` on `demo` initially; use the adult UI to
-probe and select the live route. In `.env`, set `PROVIDER_CONFIG` to the **absolute
-path** of this private YAML file. API and worker must receive the same settings.
-
-### Spark 1.3 API
-
-Under `providers.spark`, set the account-approved exact model ID (expected
-`muse-spark-1.3`; verify against your Meta account documentation), confirm the
-base URL, set `enabled: true`, and declare `capabilities.image_input: true` only
-for an image-capable route. Fill `eligibility_record` with your reviewed intended
-use/audience and provider data handling. The backend reads `META_API_KEY` from
-its environment; the key never goes into the YAML or browser.
-
-Set `APP_AUDIENCE=adult_only` and `ALLOW_CLOUD_INFERENCE=true` in your local `.env`.
-For a key that lasts only in the current Bash terminal, after exporting `.env`:
-
-```bash
-read -r -s -p 'Meta API key: ' META_API_KEY
-export META_API_KEY
-```
-
-This hides key entry and avoids putting the key in shell history. Repeat in a
-new terminal, or use your own secret manager. Sending photos to Spark is cloud
-processing and may incur your account's API charges. This does not require AWS
-or Cloudflare hosting. The current app restricts Meta to adult learners.
-
-The Meta image/structured-output contract still needs a live probe against your
-account. `structured_output_mode: native` is the existing default. If the endpoint
-does not support that wire schema, select the adapter's explicit `json_prompt`
-mode under `capabilities.structured_output_mode` after reviewing the endpoint
-documentation, and probe that exact configuration;
-all returned JSON remains locally validated. A failed probe is a setup failure,
-not evidence the model read the photo.
-
-### Local vLLM
-
-Under `providers.local_vllm`, set your exact served model name and reachable `/v1`
-base URL, `enabled: true`, an appropriate `eligibility_record`, and
-`capabilities.image_input: true`. Your installed model must actually accept images;
-a text-only model cannot be made visual through this flag. Keep
-`ALLOW_CLOUD_INFERENCE=false` for local-only processing. No model download or
-inference-server installation is performed by this application.
-
-Start vLLM separately. If it runs on another computer, allow private access from
-the app host; the iPhone never calls vLLM directly. For container deployments,
-use the host reachability guidance in RUNBOOK rather than container `localhost`.
-
-## 4. Launch and enable vision
-
-In the same terminal with your private environment exported:
-
-```bash
-set -a
-. ./.env
-set +a
 make serve
 ```
 
-This builds the PWA and supervises one API on `127.0.0.1:8000` and one worker.
-It requires an HTTPS `APP_PUBLIC_ORIGIN` and the separately configured gateway.
-Ctrl+C stops the app/worker and preserves your data; it does not stop Tailscale
-Serve or Caddy. `make dev` remains the computer-only HTTP development command.
+This loads your existing private settings, builds the app and supervises one API
+on `127.0.0.1:8000` and one worker behind the gateway. Ctrl+C stops the app/worker
+and preserves data; it does not stop Tailscale Serve or Caddy. For computer-only
+HTTP use `make start`.
 
-Open your HTTPS address on the computer and sign in:
+Open your configured HTTPS address on the computer and sign in. Add yourself
+or a child under **Learners & devices**, then open **Practice**, select the
+learner and enter a topic. **Tutor options** controls how much the tutor leads.
+Choose **Start session**, then **Create practice activity**. No grade level or
+skill catalog is required.
 
-1. Open **Learners & devices** and add/select your learner. For Spark, choose
-   **18 or older** as the age group.
-2. Open **Settings → Connection tests & provider details** and choose
-   **Test photo reader** for
-   `spark` or `local_vllm`. It must correctly transcribe the synthetic `1/2` image.
-   This is a real model call, potentially billed for an API provider.
-3. Select that provider as **Photo reader** and acknowledge where the photo is
-   processed. Also test and select a real **Tutor**, then **Save AI settings**;
-   a mock cannot teach.
-   The same image-capable model may serve both routes. A cloud tutor receives
-   extracted text even if vision
-   runs locally. Selection is persisted; a prior selection overrides YAML routes.
-4. Open **Practice**, select the learner, and enter a topic. **Tutor options**
-   controls how much the tutor leads. Choose **Start session**, then
-   **Create practice activity**. No grade level or skill catalog is required.
-   To study from homework, paste it or use the reference-photo option; the tutor
-   creates different practice instead of answering the original.
-
-The [provider runbook](PROVIDER_STATUS.md) covers probe expiry (seven days), exact
-configuration changes, model evaluation and safe error handling.
+To study from homework, paste it or use the reference-photo option. The tutor
+creates distinct practice rather than answering the original.
 
 ## 5. Use your iPhone
 

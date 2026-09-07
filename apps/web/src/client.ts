@@ -21,6 +21,7 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    readonly code?: string,
   ) {
     super(message);
   }
@@ -69,6 +70,12 @@ export async function api<T>(
         ? error.detail
         : "Request failed. Your saved work is available in session history.",
       response.status,
+      error &&
+        typeof error === "object" &&
+        "code" in error &&
+        typeof error.code === "string"
+        ? error.code
+        : undefined,
     );
   }
   const result = (await response.json()) as T;
@@ -107,6 +114,12 @@ export async function imageRequest(
         ? data.detail
         : "Photo could not be submitted. Try typed input.",
       response.status,
+      data &&
+        typeof data === "object" &&
+        "code" in data &&
+        typeof data.code === "string"
+        ? data.code
+        : undefined,
     );
   }
   return response;

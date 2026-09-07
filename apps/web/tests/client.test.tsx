@@ -104,3 +104,52 @@ it("discards private response data if identity changes while its body is read", 
   respond([{ id: "previous-learner-session" }]);
   await expect(request).rejects.toThrow("Session changed");
 });
+
+it.each(["json", "photo"])(
+  "preserves structured error codes from a failed %s request",
+  async (kind) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({
+              detail: "Safe authentication error.",
+              code: "authentication",
+            }),
+            { status: 422 },
+          ),
+        ),
+      ),
+    );
+    const request =
+      kind === "json"
+        ? api("/admin/providers/local/probe", "POST", {})
+        : imageRequest("/images/preview", new Blob(["synthetic"]));
+    await expect(request).rejects.toMatchObject({
+      status: 422,
+      code: "authentication",
+      message: "Safe authentication error.",
+    });
+  },
+);
+
+it.each([null, 12, ["unavailable"], { name: "authentication" }])(
+  "ignores a non-string API error code (%j)",
+  async (code) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({ detail: "Safe request error.", code }),
+            { status: 422 },
+          ),
+        ),
+      ),
+    );
+    await expect(
+      api("/admin/providers/local/probe", "POST", {}),
+    ).rejects.toMatchObject({ status: 422, code: undefined });
+  },
+);

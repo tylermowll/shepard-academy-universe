@@ -18,6 +18,13 @@ const learner: Schema<"LearnerPublic"> = {
 };
 const pairId = "c50a2621-21eb-4670-9269-d9c491479635";
 const providers: Schema<"ProvidersPublic"> = {
+  policy: {
+    allow_cloud_inference: false,
+    app_audience: "mixed",
+    cloud_locked: false,
+    audience_locked: false,
+    demo_mode: false,
+  },
   routes: { tutor: "demo", vision: "demo" },
   providers: [
     {
@@ -30,6 +37,13 @@ const providers: Schema<"ProvidersPublic"> = {
       image_input: true,
       tutor_probed: true,
       vision_probed: true,
+      managed: false,
+      key_configured: false,
+      key_needs_replacement: false,
+      requires_approval: false,
+      eligibility_record: "Synthetic test fixture.",
+      configured_context_limit: 8192,
+      structured_output_mode: "native",
     },
     {
       id: "local-text",
@@ -39,8 +53,15 @@ const providers: Schema<"ProvidersPublic"> = {
       audience: "mixed",
       enabled: true,
       image_input: false,
-      tutor_probed: false,
+      tutor_probed: true,
       vision_probed: false,
+      managed: false,
+      key_configured: false,
+      key_needs_replacement: false,
+      requires_approval: false,
+      eligibility_record: "Synthetic test fixture.",
+      configured_context_limit: 8192,
+      structured_output_mode: "native",
     },
   ],
 };
@@ -273,6 +294,84 @@ describe("learner and device page", () => {
 });
 
 describe("AI settings page", () => {
+  it("requires successful current tests before assigning a connection to a role", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          response({
+            ...providers,
+            routes: { tutor: "local-text", vision: "demo" },
+            providers: providers.providers.map((provider) =>
+              provider.id === "local-text"
+                ? { ...provider, tutor_probed: false }
+                : provider,
+            ),
+          }),
+        ),
+      ),
+    );
+    render(<AdultPanel {...props()} page="settings" />);
+    const tutor = await screen.findByRole("combobox", { name: "Tutor" });
+    expect(
+      within(tutor).getByRole("option", { name: "local-text" }),
+    ).toBeDisabled();
+    expect(
+      screen.getByText(/successful tutor test before it can be used/),
+    ).toBeVisible();
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: "I authorize sending text and photos to the providers selected above.",
+      }),
+    );
+    expect(
+      screen.getByRole("button", { name: "Save AI settings" }),
+    ).toBeDisabled();
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it("lets an adult explicitly reapprove a changed, successfully tested connection", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        Promise.resolve(
+          response({
+            ...providers,
+            routes: { tutor: "local-text", vision: "demo" },
+            providers: providers.providers.map((provider) =>
+              provider.id === "local-text"
+                ? { ...provider, requires_approval: true }
+                : provider,
+            ),
+          }),
+        ),
+      ),
+    );
+    render(<AdultPanel {...props()} page="settings" />);
+    const tutor = await screen.findByRole("combobox", { name: "Tutor" });
+    expect(
+      within(tutor).getByRole("option", { name: "local-text" }),
+    ).toBeEnabled();
+    expect(
+      screen.getByText(
+        /This connection changed. Test it, then save AI settings/,
+      ),
+    ).toBeVisible();
+    fireEvent.click(
+      screen.getByRole("checkbox", {
+        name: "I authorize sending text and photos to the providers selected above.",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Save AI settings" }));
+    await screen.findByText(
+      "AI settings saved. New requests use these providers.",
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/v1/admin/providers/routes",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
+
   it("loads on Settings only, filters photo capability, and requires fresh consent after a selection change", async () => {
     const handlers = props();
     const { rerender } = render(<AdultPanel {...handlers} />);
@@ -291,7 +390,9 @@ describe("AI settings page", () => {
     ).not.toBeInTheDocument();
     const save = screen.getByRole("button", { name: "Save AI settings" });
     expect(save).toBeDisabled();
-    const consent = screen.getByRole("checkbox");
+    const consent = screen.getByRole("checkbox", {
+      name: "I authorize sending text and photos to the providers selected above.",
+    });
     fireEvent.click(consent);
     expect(save).toBeEnabled();
     fireEvent.change(tutor, { target: { value: "local-text" } });

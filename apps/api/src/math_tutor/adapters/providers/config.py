@@ -8,7 +8,7 @@ from typing import Literal
 from urllib.parse import urlsplit
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
 from math_tutor.adapters.providers.contracts import Capabilities, ProviderError
 
@@ -40,6 +40,10 @@ class ProviderConfig(BaseModel):
     enabled: bool = False
     base_url: str | None = None
     api_key_env: str | None = None
+    api_key_secret: SecretStr | None = Field(default=None, exclude=True, repr=False)
+    credential_unavailable: bool = Field(default=False, exclude=True, repr=False)
+    credential_revision: str = ""
+    requires_approval: bool = False
     region: str | None = None
     data_boundary: Literal["synthetic", "local_network", "cloud"] = "local_network"
     audience: Literal["adult_only", "mixed"] = "adult_only"
@@ -95,6 +99,8 @@ class Routes(BaseModel):
 class Configuration(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     schema_version: Literal[1] = 1
+    allow_cloud_inference: bool | None = None
+    app_audience: Literal["adult_only", "mixed"] | None = None
     routes: Routes = Field(default_factory=Routes)
     providers: dict[str, ProviderConfig] = Field(
         default_factory=lambda: {
@@ -135,7 +141,11 @@ def load_configuration() -> Configuration:
 
 
 def route(
-    configuration: Configuration, stage: Literal["tutor", "vision"], eligibility: str
+    configuration: Configuration,
+    stage: Literal["tutor", "vision"],
+    eligibility: str,
+    *,
+    require_approval: bool = True,
 ) -> tuple[str, ProviderConfig]:
     name = getattr(configuration.routes, stage)
     provider = configuration.providers.get(name)
@@ -144,16 +154,23 @@ def route(
             "route_disabled",
             safe_message="The configured route is disabled. Ask an adult to configure it.",
         )
+    if require_approval and provider.requires_approval:
+        raise ProviderError(
+            "approval_required",
+            safe_message="An adult must test this connection and save its tutor/photo roles in Settings before practice can use it.",
+        )
     if provider.adapter != "mock":
         if os.getenv("APP_MODE", "private") == "demo":
             raise ProviderError("demo_policy")
-        if (
-            provider.data_boundary == "cloud"
-            and os.getenv("ALLOW_CLOUD_INFERENCE", "false") != "true"
+        if provider.data_boundary == "cloud" and not (
+            configuration.allow_cloud_inference
+            if configuration.allow_cloud_inference is not None
+            else os.getenv("ALLOW_CLOUD_INFERENCE", "false") == "true"
         ):
             raise ProviderError("cloud_disabled")
         if provider.audience == "adult_only" and (
-            eligibility != "adult" or os.getenv("APP_AUDIENCE", "mixed") != "adult_only"
+            eligibility != "adult"
+            or (configuration.app_audience or os.getenv("APP_AUDIENCE", "mixed")) != "adult_only"
         ):
             raise ProviderError(
                 "audience_blocked",

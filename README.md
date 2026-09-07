@@ -37,26 +37,32 @@ No paid hosting, native phone app, or public deployment is required by this desi
 
 ```bash
 make bootstrap
-make setup
-set -a
-. ./.env
-set +a
-make db
-make migrate
-make admin
-make dev
+make start
 ```
 
-`make setup` creates a private `.env` with an absolute SQLite path and a random
-session secret; it refuses to read or overwrite an existing file. Export its
-values in each new shell. Never share that file with coding agents. `make admin`
-accepts the password through a hidden interactive prompt. Password reset revokes
-that administrator's sessions.
+`make start` creates missing private settings, initializes a fresh database, and
+asks for your first adult login name and password locally. It loads `.env`
+without executing it as a shell script, validates setup before building, and
+starts the UI, API, and worker at <http://127.0.0.1:8000> by default. Existing
+settings, accounts and data are preserved. Never share `.env` with coding agents.
 
-`make dev` builds and serves the UI, API, and worker at the configured loopback
-origin (default <http://127.0.0.1:8000>). Sign in and open **Learners & devices**
-to add a learner. Select them, choose **Start practice**, enter a topic, and
-choose **Start session**, then **Create practice activity**.
+Use `make start` again after Ctrl+C. It also supports a configured private HTTPS
+gateway; `make dev` restricts the same persistent workflow to loopback HTTP.
+`make demo` is a separate disposable preview. If a retained database
+needs an upgrade, startup stops with instructions. Stop all app/worker writes,
+back up retained data, then run `make migrate start`. `make admin` is an explicit
+password-reset tool, not a routine restart step; resetting revokes sessions.
+
+Sign in and open **Settings → Add AI connection**. Choose Ollama, vLLM or an API
+type, enter its address and exact model name, and enter an API key if required.
+Review the audience/data boundary, save, explicitly test the required roles,
+then select your **Tutor** and **Photo reader** and **Save AI settings**. Saving
+a connection does not perform inference, choose a route, or download a model.
+Tests send synthetic material and may incur your provider's charges.
+
+Open **Learners & devices** to add yourself or a child. Select the profile, choose
+**Start practice**, enter a topic and choose **Start session**, then
+**Create practice activity**.
 
 The page tabs separate the workflow:
 
@@ -65,7 +71,8 @@ The page tabs separate the workflow:
 - **History**: reopen or review a saved session.
 - **Learners & devices** (adult): add learners, pair browsers, export saved work,
   revoke access, and delete learners.
-- **Settings** (adult): select/test the tutor and photo reader. The browser model
+- **Settings** (adult): add/edit AI connections and keys, review cloud/audience
+  policy, and test/select the tutor and photo reader. The browser model
   experiment is under **Advanced** and is not required for practice.
 - **Help**: setup, phone connection, model configuration, troubleshooting, and
   privacy. Contextual disclosures explain controls without leaving the page.
@@ -93,14 +100,20 @@ and personal uploads; use the private setup above to practice. The UI links from
 unavailable tutoring to setup help and Settings.
 
 The default mock routes return explicitly synthetic fixtures and do not provide
-real tutoring or read handwriting. Configure actual **tutor and vision** routes using
-[providers.example.yaml](config/providers.example.yaml) and follow
-[PROVIDER_STATUS](docs/PROVIDER_STATUS.md) before using them.
+real tutoring or read handwriting. Add actual **tutor and vision** connections in
+Settings and follow [PROVIDER_STATUS](docs/PROVIDER_STATUS.md) before using them.
+Keys entered in Settings are write-only and encrypted in the private database.
+Preserve the deployment secret separately when backing up; changing it requires
+re-entering saved API keys. Normal app setup does not require provider YAML.
+Advanced operators can still use [providers.example.yaml](config/providers.example.yaml);
+those connections are shown read-only. Explicit environment cloud/audience
+restrictions remain enforced and are identified in Settings.
 An unavailable model produces a visible error, not an authored-hint substitute.
 
-This is a pre-production hard cutover: recreate disposable databases from earlier
-revisions. Do not apply these corrected initial migrations to data you intend to
-retain. [RUNBOOK](docs/RUNBOOK.md) covers private HTTPS, containers, EC2/EBS,
+The historical D005 hard cutover applies only to databases from before that
+initial-schema correction; recreate those disposable development databases.
+Current-schema databases use normal migrations, including `0011` → `0012` for
+saved AI connections. [RUNBOOK](docs/RUNBOOK.md) covers private HTTPS, containers, EC2/EBS,
 retention, encrypted backups, and restore rehearsals.
 
 ## Behavior and boundaries
@@ -155,7 +168,8 @@ The [Makefile](Makefile) is authoritative.
 | `make contracts` / `make contracts-check`                                | Regenerate OpenAPI/TypeScript or reject drift                                                               |
 | `make format`, `make lint`, `make typecheck`                             | Focused developer checks                                                                                    |
 | `make demo`, `make seed-demo`                                            | Disposable supervisor, or explicit empty demo database seed                                                 |
-| `make dev`, `make worker`                                                | Native foreground services, or worker alone                                                                 |
+| `make start`, `make dev`, `make worker`                                  | Persistent local setup/start, loopback-only start, or worker alone                                           |
+| `make migrate`                                                          | Upgrade a retained database with all app/worker writes stopped                                               |
 | `make serve`                                                             | API/worker behind your configured private HTTPS gateway; see PHONE_SETUP                                    |
 | `make down`                                                              | Stop Compose services while retaining data; native services use Ctrl+C                                      |
 | `make backup OUTPUT=...`, `make restore INPUT=... OUTPUT=... LEDGER=...` | Interactive encrypted backup/restore with writes stopped                                                    |

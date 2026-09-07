@@ -1038,6 +1038,297 @@
         "title": "ProgressPublic",
         "type": "object"
       },
+      "ProviderConnectionCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "adapter": {
+            "enum": [
+              "ollama",
+              "vllm",
+              "compatible",
+              "meta"
+            ],
+            "title": "Adapter",
+            "type": "string"
+          },
+          "api_key": {
+            "anyOf": [
+              {
+                "format": "password",
+                "maxLength": 8192,
+                "minLength": 1,
+                "type": "string",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "api_key_action": {
+            "default": "keep",
+            "enum": [
+              "keep",
+              "replace",
+              "remove"
+            ],
+            "title": "Api Key Action",
+            "type": "string"
+          },
+          "audience": {
+            "enum": [
+              "adult_only",
+              "mixed"
+            ],
+            "title": "Audience",
+            "type": "string"
+          },
+          "base_url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Base Url",
+            "type": "string"
+          },
+          "boundary": {
+            "enum": [
+              "local_network",
+              "cloud"
+            ],
+            "title": "Boundary",
+            "type": "string"
+          },
+          "configured_context_limit": {
+            "default": 32768,
+            "maximum": 131072.0,
+            "minimum": 2048.0,
+            "title": "Configured Context Limit",
+            "type": "integer"
+          },
+          "eligibility_record": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Eligibility Record",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "id": {
+            "pattern": "^[a-z0-9][a-z0-9_-]{0,63}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "image_input": {
+            "default": false,
+            "title": "Image Input",
+            "type": "boolean"
+          },
+          "model": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          },
+          "structured_output_mode": {
+            "default": "native",
+            "enum": [
+              "native",
+              "json_prompt"
+            ],
+            "title": "Structured Output Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "adapter",
+          "model",
+          "base_url",
+          "boundary",
+          "audience",
+          "eligibility_record",
+          "id"
+        ],
+        "title": "ProviderConnectionCreate",
+        "type": "object"
+      },
+      "ProviderConnectionInput": {
+        "additionalProperties": false,
+        "properties": {
+          "adapter": {
+            "enum": [
+              "ollama",
+              "vllm",
+              "compatible",
+              "meta"
+            ],
+            "title": "Adapter",
+            "type": "string"
+          },
+          "api_key": {
+            "anyOf": [
+              {
+                "format": "password",
+                "maxLength": 8192,
+                "minLength": 1,
+                "type": "string",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Api Key"
+          },
+          "api_key_action": {
+            "default": "keep",
+            "enum": [
+              "keep",
+              "replace",
+              "remove"
+            ],
+            "title": "Api Key Action",
+            "type": "string"
+          },
+          "audience": {
+            "enum": [
+              "adult_only",
+              "mixed"
+            ],
+            "title": "Audience",
+            "type": "string"
+          },
+          "base_url": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Base Url",
+            "type": "string"
+          },
+          "boundary": {
+            "enum": [
+              "local_network",
+              "cloud"
+            ],
+            "title": "Boundary",
+            "type": "string"
+          },
+          "configured_context_limit": {
+            "default": 32768,
+            "maximum": 131072.0,
+            "minimum": 2048.0,
+            "title": "Configured Context Limit",
+            "type": "integer"
+          },
+          "eligibility_record": {
+            "maxLength": 500,
+            "minLength": 1,
+            "title": "Eligibility Record",
+            "type": "string"
+          },
+          "enabled": {
+            "default": true,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "image_input": {
+            "default": false,
+            "title": "Image Input",
+            "type": "boolean"
+          },
+          "model": {
+            "maxLength": 2048,
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          },
+          "structured_output_mode": {
+            "default": "native",
+            "enum": [
+              "native",
+              "json_prompt"
+            ],
+            "title": "Structured Output Mode",
+            "type": "string"
+          }
+        },
+        "required": [
+          "adapter",
+          "model",
+          "base_url",
+          "boundary",
+          "audience",
+          "eligibility_record"
+        ],
+        "title": "ProviderConnectionInput",
+        "type": "object"
+      },
+      "ProviderPolicyInput": {
+        "additionalProperties": false,
+        "properties": {
+          "acknowledge_data_boundary": {
+            "title": "Acknowledge Data Boundary",
+            "type": "boolean"
+          },
+          "allow_cloud_inference": {
+            "title": "Allow Cloud Inference",
+            "type": "boolean"
+          },
+          "app_audience": {
+            "enum": [
+              "adult_only",
+              "mixed"
+            ],
+            "title": "App Audience",
+            "type": "string"
+          }
+        },
+        "required": [
+          "allow_cloud_inference",
+          "app_audience",
+          "acknowledge_data_boundary"
+        ],
+        "title": "ProviderPolicyInput",
+        "type": "object"
+      },
+      "ProviderPolicyPublic": {
+        "properties": {
+          "allow_cloud_inference": {
+            "title": "Allow Cloud Inference",
+            "type": "boolean"
+          },
+          "app_audience": {
+            "enum": [
+              "adult_only",
+              "mixed"
+            ],
+            "title": "App Audience",
+            "type": "string"
+          },
+          "audience_locked": {
+            "title": "Audience Locked",
+            "type": "boolean"
+          },
+          "cloud_locked": {
+            "title": "Cloud Locked",
+            "type": "boolean"
+          },
+          "demo_mode": {
+            "title": "Demo Mode",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "allow_cloud_inference",
+          "app_audience",
+          "cloud_locked",
+          "audience_locked",
+          "demo_mode"
+        ],
+        "title": "ProviderPolicyPublic",
+        "type": "object"
+      },
       "ProviderPublic": {
         "properties": {
           "adapter": {
@@ -1048,8 +1339,29 @@
             "title": "Audience",
             "type": "string"
           },
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Url"
+          },
           "boundary": {
             "title": "Boundary",
+            "type": "string"
+          },
+          "configured_context_limit": {
+            "default": 8192,
+            "title": "Configured Context Limit",
+            "type": "integer"
+          },
+          "eligibility_record": {
+            "default": "",
+            "title": "Eligibility Record",
             "type": "string"
           },
           "enabled": {
@@ -1064,8 +1376,37 @@
             "title": "Image Input",
             "type": "boolean"
           },
+          "key_configured": {
+            "default": false,
+            "title": "Key Configured",
+            "type": "boolean"
+          },
+          "key_needs_replacement": {
+            "default": false,
+            "title": "Key Needs Replacement",
+            "type": "boolean"
+          },
+          "managed": {
+            "default": false,
+            "title": "Managed",
+            "type": "boolean"
+          },
           "model": {
             "title": "Model",
+            "type": "string"
+          },
+          "requires_approval": {
+            "default": false,
+            "title": "Requires Approval",
+            "type": "boolean"
+          },
+          "structured_output_mode": {
+            "default": "native",
+            "enum": [
+              "native",
+              "json_prompt"
+            ],
+            "title": "Structured Output Mode",
             "type": "string"
           },
           "tutor_probed": {
@@ -1093,6 +1434,9 @@
       },
       "ProvidersPublic": {
         "properties": {
+          "policy": {
+            "$ref": "#/components/schemas/ProviderPolicyPublic"
+          },
           "providers": {
             "items": {
               "$ref": "#/components/schemas/ProviderPublic"
@@ -1106,7 +1450,8 @@
         },
         "required": [
           "routes",
-          "providers"
+          "providers",
+          "policy"
         ],
         "title": "ProvidersPublic",
         "type": "object"
@@ -1957,6 +2302,180 @@
           }
         },
         "summary": "Providers",
+        "tags": [
+          "provider administration"
+        ]
+      }
+    },
+    "/api/v1/admin/providers/connections": {
+      "post": {
+        "operationId": "create_connection_api_v1_admin_providers_connections_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderConnectionCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Acknowledged"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Create Connection",
+        "tags": [
+          "provider administration"
+        ]
+      }
+    },
+    "/api/v1/admin/providers/connections/{provider_id}": {
+      "delete": {
+        "operationId": "delete_connection_api_v1_admin_providers_connections__provider_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider_id",
+            "required": true,
+            "schema": {
+              "title": "Provider Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Acknowledged"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Delete Connection",
+        "tags": [
+          "provider administration"
+        ]
+      },
+      "put": {
+        "operationId": "update_connection_api_v1_admin_providers_connections__provider_id__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "provider_id",
+            "required": true,
+            "schema": {
+              "title": "Provider Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderConnectionInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Acknowledged"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Connection",
+        "tags": [
+          "provider administration"
+        ]
+      }
+    },
+    "/api/v1/admin/providers/policy": {
+      "post": {
+        "operationId": "update_policy_api_v1_admin_providers_policy_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProviderPolicyInput"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Acknowledged"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Policy",
         "tags": [
           "provider administration"
         ]

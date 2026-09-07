@@ -459,6 +459,21 @@ def test_resolved_metadata_is_blocked_and_allowed_address_is_pinned(
     assert pinned.path == url.path and pinned.scheme == "https"
 
 
+@pytest.mark.parametrize("address", ["8.8.8.8", "2606:4700:4700::1111"])
+def test_local_boundary_cannot_resolve_to_public_internet(
+    monkeypatch: pytest.MonkeyPatch, address: str
+) -> None:
+    monkeypatch.setattr(
+        socket,
+        "getaddrinfo",
+        lambda *args, **kwargs: [
+            (socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "", (address, 443))
+        ],
+    )
+    with pytest.raises(ProviderError, match="invalid_endpoint"):
+        pinned_endpoints(httpx.URL("https://synthetic.invalid/v1"), local_only=True)
+
+
 @pytest.mark.parametrize(
     ("failure", "expected_attempts", "expected_error"),
     [

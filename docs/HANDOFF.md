@@ -1,11 +1,18 @@
 # Current handoff
 
-The current task is **T26: simplify navigation and guide setup**, building on
-the T25 multi-subject AI tutoring loop. The maintainer authorized separate
-Practice, History, Learners & devices, Settings, and Help pages, plain wording,
-contextual help, and pushing the reviewed changes to `main`. See the T26 entry
+The current task is **T27: complete local setup and browser-managed AI connections**,
+building on the T26 navigation and T25 multi-subject AI tutoring loop. The
+maintainer found that Settings could not accept API keys or configure Ollama/vLLM
+and authorized closing that gap and related setup blockers, then pushing `main`
+before providing verified local run instructions. See the T27 entry
 in [TASKS](TASKS.md) for evidence. The product remains governed by
 [D009](DECISIONS.md#d009--ai-tutoring-is-the-primary-product-2026-09-07).
+Connection/credential persistence and safe first-run behavior are governed by
+[D010](DECISIONS.md#d010--browser-managed-ai-connections-and-persistent-local-startup-2026-09-07).
+T27 local gates passed: 145 unit, 80 component, 188 integration and 42 browser
+tests, plus an isolated first-run/restart rehearsal. Current-schema upgrades use
+`make migrate` with writes stopped; routine startup is `make start`. Actual model
+quality and physical phone verification remain external acceptance gates.
 The maintainer explicitly wants no fixed
 templates and no photo approval step. Clear readings continue automatically;
 unclear work receives concrete handwriting/organization advice. Uploaded/pasted

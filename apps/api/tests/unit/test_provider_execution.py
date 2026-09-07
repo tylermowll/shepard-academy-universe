@@ -19,6 +19,7 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
+from pydantic import SecretStr
 
 from math_tutor.adapters.providers.config import ProviderConfig
 from math_tutor.adapters.providers.contracts import (
@@ -35,12 +36,14 @@ class LoopbackProvider:
     base_url: str
     requests: Queue[dict[str, Any]]
     chunks_sent: Queue[int]
+    authorization: Queue[str | None]
 
 
 @pytest.fixture
 def loopback() -> Iterator[LoopbackProvider]:
     requests: Queue[dict[str, Any]] = Queue()
     chunks_sent: Queue[int] = Queue()
+    authorization: Queue[str | None] = Queue()
     stop = threading.Event()
 
     class Handler(BaseHTTPRequestHandler):
@@ -48,6 +51,7 @@ def loopback() -> Iterator[LoopbackProvider]:
             pass
 
         def do_POST(self) -> None:
+            authorization.put(self.headers.get("Authorization"))
             requests.put(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
             message = "Use equal-sized parts before adding fractions."
             if self.path.startswith("/unicode/"):
@@ -93,7 +97,9 @@ def loopback() -> Iterator[LoopbackProvider]:
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
-        yield LoopbackProvider(f"http://127.0.0.1:{server.server_port}", requests, chunks_sent)
+        yield LoopbackProvider(
+            f"http://127.0.0.1:{server.server_port}", requests, chunks_sent, authorization
+        )
     finally:
         stop.set()
         server.shutdown()
@@ -157,6 +163,18 @@ def test_unicode_result_fits_bounded_child_channel(loopback: LoopbackProvider) -
     result = complete(provider(loopback, "unicode"), request())
     assert isinstance(result.validated_payload, TutorPayload)
     assert result.validated_payload.message_markdown == "\U0001f4d0" * 6000
+
+
+def test_write_only_key_reaches_real_http_child_without_serialization_leak(
+    loopback: LoopbackProvider,
+) -> None:
+    key = "synthetic-provider-credential-for-loopback-only"
+    config = provider(loopback).model_copy(update={"api_key_secret": SecretStr(key)})
+    assert key not in config.model_dump_json() and key not in repr(config)
+    result = complete(config, request())
+    assert loopback.authorization.get_nowait() == "Bearer " + key
+    assert key not in result.model_dump_json()
+    assert key not in json.dumps(loopback.requests.get_nowait())
 
 
 def test_total_timeout_stops_a_child_receiving_regular_chunks(loopback: LoopbackProvider) -> None:

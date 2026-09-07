@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { api, newKey, type Schema } from "./client";
 import { ContextHelp } from "./Help";
 import { followPage, pageUrl, type Navigate } from "./navigation";
+import { ProviderConnections } from "./ProviderConnections";
 
 type Props = {
   learner: string;
@@ -77,6 +78,21 @@ export function AdultPanel({
     tutor: providers?.providers.find((p) => p.id === routes.tutor),
     vision: providers?.providers.find((p) => p.id === routes.vision),
   };
+  const routeAvailable = (
+    provider: Schema<"ProviderPublic"> | undefined,
+    stage: "tutor" | "vision",
+  ) =>
+    Boolean(
+      provider?.enabled &&
+      !provider.key_needs_replacement &&
+      (provider.boundary !== "cloud" ||
+        providers?.policy.allow_cloud_inference) &&
+      (provider.audience !== "adult_only" ||
+        providers?.policy.app_audience === "adult_only") &&
+      (stage === "tutor"
+        ? provider.tutor_probed
+        : provider.image_input && provider.vision_probed),
+    );
 
   return (
     <section className="admin">
@@ -332,25 +348,25 @@ export function AdultPanel({
             )
           ) : (
             <>
-              {!providers.providers.some(
-                (p) => p.enabled && p.adapter !== "mock",
-              ) && (
-                <p className="notice">
-                  {providers.providers.some((p) => p.enabled)
-                    ? "Only synthetic demo responses are available."
-                    : "No AI providers are enabled."}{" "}
-                  To use real tutoring or read handwriting, add a provider in
-                  the server configuration.{" "}
-                  <button onClick={() => onNavigate("help", "providers")}>
-                    Set up real AI
-                  </button>
-                </p>
-              )}
+              <ProviderConnections
+                configuration={providers}
+                onNavigate={onNavigate}
+                act={act}
+                onChanged={async () => {
+                  await refreshProviders();
+                  onProvidersChanged?.();
+                }}
+              />
               <form
                 className="card"
                 onSubmit={(e) => {
                   e.preventDefault();
-                  if (!acknowledged || !routes.tutor || !routes.vision) return;
+                  if (
+                    !acknowledged ||
+                    !routeAvailable(selectedProviders.tutor, "tutor") ||
+                    !routeAvailable(selectedProviders.vision, "vision")
+                  )
+                    return;
                   void act(async () => {
                     await api("/admin/providers/routes", "POST", {
                       ...routes,
@@ -365,6 +381,10 @@ export function AdultPanel({
                 }}
               >
                 <h2>Choose providers</h2>
+                <p>
+                  Use a connection that passed its test. Saving these roles
+                  changes where future learner work is sent.
+                </p>
                 <div className="grid">
                   {(["tutor", "vision"] as const).map((stage) => (
                     <div key={stage}>
@@ -398,7 +418,11 @@ export function AdultPanel({
                                 (stage === "tutor" || p.image_input),
                             )
                             .map((p) => (
-                              <option key={p.id} value={p.id}>
+                              <option
+                                key={p.id}
+                                value={p.id}
+                                disabled={!routeAvailable(p, stage)}
+                              >
                                 {p.id}
                                 {p.adapter === "mock"
                                   ? " (synthetic demo)"
@@ -414,6 +438,20 @@ export function AdultPanel({
                         Processing:{" "}
                         {processingLocation(selectedProviders[stage])}.
                       </p>
+                      {!routeAvailable(selectedProviders[stage], stage) && (
+                        <p className="notice">
+                          This connection needs an enabled, permitted model and
+                          a successful{" "}
+                          {stage === "tutor" ? "tutor" : "photo reader"} test
+                          before it can be used.
+                        </p>
+                      )}
+                      {selectedProviders[stage]?.requires_approval && (
+                        <p className="notice">
+                          This connection changed. Test it, then save AI
+                          settings to approve its use for this role.
+                        </p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -436,7 +474,11 @@ export function AdultPanel({
                 </label>
                 <button
                   className="primary"
-                  disabled={!acknowledged || !routes.tutor || !routes.vision}
+                  disabled={
+                    !acknowledged ||
+                    !routeAvailable(selectedProviders.tutor, "tutor") ||
+                    !routeAvailable(selectedProviders.vision, "vision")
+                  }
                 >
                   Save AI settings
                 </button>
@@ -450,76 +492,6 @@ export function AdultPanel({
                   </p>
                 </ContextHelp>
               </form>
-              <details>
-                <summary>Connection tests &amp; provider details</summary>
-                <p>
-                  Test a provider after configuring it on the server. Tests send
-                  sample text or an image; live providers may charge for them.
-                </p>
-                <div className="provider-list">
-                  {providers.providers.map((p) => (
-                    <article className="card" key={p.id}>
-                      <h3>
-                        {p.id}
-                        {!p.enabled && " (disabled)"}
-                      </h3>
-                      <p className="fine">
-                        {p.adapter} · {p.model}
-                        <br />
-                        {processingLocation(p)} ·{" "}
-                        {p.audience === "adult_only"
-                          ? "Adults only"
-                          : p.audience === "mixed"
-                            ? "Mixed ages"
-                            : p.audience}
-                      </p>
-                      <p>
-                        Tutor: {p.tutor_probed ? "test recorded" : "not tested"}
-                        . Photo reader:{" "}
-                        {!p.image_input
-                          ? "not supported"
-                          : p.vision_probed
-                            ? "test recorded"
-                            : "not tested"}
-                        .
-                      </p>
-                      <div className="actions">
-                        {(["tutor", "vision"] as const).map((stage) => (
-                          <button
-                            key={stage}
-                            disabled={
-                              !p.enabled ||
-                              (stage === "vision" && !p.image_input)
-                            }
-                            onClick={() => {
-                              if (
-                                p.adapter === "mock" ||
-                                window.confirm(
-                                  `Send one sample ${stage === "tutor" ? "text" : "photo"} request to ${p.id}? This provider may charge for the call.`,
-                                )
-                              )
-                                void act(async () => {
-                                  await api(
-                                    `/admin/providers/${p.id}/probe`,
-                                    "POST",
-                                    { stage, authorize_synthetic_call: true },
-                                  );
-                                  await refreshProviders();
-                                  onProvidersChanged?.();
-                                  setMessage(
-                                    `${p.id}: ${stage === "tutor" ? "tutor" : "photo reader"} test passed.`,
-                                  );
-                                });
-                            }}
-                          >
-                            Test {stage === "tutor" ? "tutor" : "photo reader"}
-                          </button>
-                        ))}
-                      </div>
-                    </article>
-                  ))}
-                </div>
-              </details>
             </>
           )}
         </>

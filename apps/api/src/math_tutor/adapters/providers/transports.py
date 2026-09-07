@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import ipaddress
 import json
 import os
 import socket
@@ -99,7 +100,7 @@ class BedrockResponse(WireObject):
     metrics: BedrockMetrics = Field(default_factory=BedrockMetrics)
 
 
-def pinned_endpoints(url: httpx.URL) -> list[httpx.URL]:
+def pinned_endpoints(url: httpx.URL, *, local_only: bool = False) -> list[httpx.URL]:
     """Resolve once and pin allowed addresses, preserving Host and TLS SNI separately."""
     try:
         addresses = socket.getaddrinfo(
@@ -109,7 +110,23 @@ def pinned_endpoints(url: httpx.URL) -> list[httpx.URL]:
         raise ProviderError("unavailable", True) from None
     if not addresses or any(blocked_destination(str(row[4][0])) for row in addresses):
         raise ProviderError("invalid_endpoint")
+    if local_only and any(not local_destination(str(row[4][0])) for row in addresses):
+        raise ProviderError(
+            "invalid_endpoint",
+            safe_message="A local connection must resolve to a private network address. Use the cloud boundary for a hosted provider.",
+        )
     return [url.copy_with(host=host) for host in dict.fromkeys(str(row[4][0]) for row in addresses)]
+
+
+def local_destination(host: str) -> bool:
+    address = ipaddress.ip_address(host)
+    if isinstance(address, ipaddress.IPv6Address) and address.ipv4_mapped:
+        address = address.ipv4_mapped
+    return (
+        address.is_private
+        or address.is_loopback
+        or address in ipaddress.ip_network("100.64.0.0/10")
+    )
 
 
 def validate_payload(
@@ -267,7 +284,16 @@ class HTTPProvider:
     def complete(self, request: ModelRequest) -> ModelResult:
         check_request(self.config, request)
         path, body = self.wire(request)
-        key = os.getenv(self.config.api_key_env, "") if self.config.api_key_env else ""
+        if self.config.credential_unavailable:
+            raise ProviderError(
+                "authentication",
+                safe_message="The saved API key cannot be unlocked. An adult must replace it in Settings.",
+            )
+        key = (
+            self.config.api_key_secret.get_secret_value()
+            if self.config.api_key_secret is not None
+            else (os.getenv(self.config.api_key_env, "") if self.config.api_key_env else "")
+        )
         if self.config.api_key_env and not key:
             raise ProviderError("authentication")
         headers = {"Authorization": "Bearer " + key} if key else {}
@@ -277,7 +303,13 @@ class HTTPProvider:
         )
         try:
             endpoint = httpx.URL((self.config.base_url or "").rstrip("/") + path)
-            targets = [endpoint] if self.client is not None else pinned_endpoints(endpoint)
+            targets = (
+                [endpoint]
+                if self.client is not None
+                else pinned_endpoints(
+                    endpoint, local_only=self.config.data_boundary == "local_network"
+                )
+            )
             headers["Host"] = endpoint.netloc.decode("ascii")
             with ExitStack() as stack:
                 response = None

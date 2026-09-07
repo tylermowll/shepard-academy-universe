@@ -34,7 +34,7 @@ from math_tutor.adapters.db.engine import (
 from math_tutor.adapters.db.models import Learner, PracticeSession, ProblemInstance
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
-HEAD_REVISION = "0011_photo_deletion"
+HEAD_REVISION = "0012_provider_connections"
 
 
 @pytest.fixture
@@ -136,6 +136,8 @@ def test_empty_file_migration_reaches_head(engine: Engine, db_url: str) -> None:
         "audit_event",
         "phone_upload",
         "photo_deletion",
+        "provider_connection",
+        "provider_policy",
     }
     assert columns["practice_session"] >= {"id", "learner_id", "status", "created_at"}
     assert columns["problem_instance"] >= {

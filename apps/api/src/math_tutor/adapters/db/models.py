@@ -407,6 +407,29 @@ class RouteSelection(Base):
     routes: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
 
 
+class ProviderConnection(Base):
+    """Admin-managed routing metadata and encrypted, never-public credentials."""
+
+    __tablename__ = "provider_connection"
+    id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    configuration: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    encrypted_api_key: Mapped[str | None] = mapped_column(Text)
+    credential_revision: Mapped[str] = mapped_column(String(36), nullable=False)
+
+
+class ProviderPolicy(Base):
+    __tablename__ = "provider_policy"
+    __table_args__ = (
+        CheckConstraint("name = 'active'", name="ck_provider_policy_name"),
+        CheckConstraint(
+            "app_audience IN ('adult_only', 'mixed')", name="ck_provider_policy_audience"
+        ),
+    )
+    name: Mapped[str] = mapped_column(String(32), primary_key=True)
+    allow_cloud_inference: Mapped[bool] = mapped_column(nullable=False)
+    app_audience: Mapped[str] = mapped_column(String(16), nullable=False)
+
+
 class ModelCall(Base):
     __tablename__ = "model_call"
     id: Mapped[uuid.UUID] = mapped_column(UUIDType, primary_key=True, default=uuid.uuid4)

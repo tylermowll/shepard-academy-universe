@@ -101,6 +101,24 @@ legend {
   min-height: 20px;
   margin: 0;
 }
+.connection-setup {
+  margin-bottom: 28px;
+}
+.connection-editor {
+  max-width: 780px;
+}
+.connection-editor fieldset {
+  margin-block: 18px;
+}
+.connection-editor .actions {
+  margin-top: 20px;
+}
+.connection-editor input[readonly] {
+  background: #eeeee7;
+}
+.connection-setup .provider-list {
+  margin-top: 16px;
+}
 h1,
 h2,
 h3,

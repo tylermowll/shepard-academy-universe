@@ -200,6 +200,13 @@ test("adult pairs a second browser and revocation clears its tutoring access", a
       learner.getByRole("button", { name: "Test tutor" }),
     ).toHaveCount(0);
     await expect(
+      learner.getByRole("button", { name: "Add AI connection" }),
+    ).toHaveCount(0);
+    const privateSettings = await learner.request.get(
+      "/api/v1/admin/providers",
+    );
+    expect(privateSettings.status()).toBe(403);
+    await expect(
       learner.getByRole("button", { name: "Approve device" }),
     ).toHaveCount(0);
     await navigate(learner, "Practice");

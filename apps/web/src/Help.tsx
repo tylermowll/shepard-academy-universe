@@ -222,10 +222,10 @@ export function HelpPage({
                   Set <code>APP_PUBLIC_ORIGIN</code> in your local{" "}
                   <code>.env</code> to the exact HTTPS address Tailscale
                   reports, without a trailing slash. Stop the app and restart it
-                  in the same terminal:
+                  with:
                 </p>
                 <pre>
-                  <code>{"set -a\n. ./.env\nset +a\nmake serve"}</code>
+                  <code>make serve</code>
                 </pre>
                 <p>
                   Open that HTTPS address on both devices and keep the computer
@@ -268,22 +268,22 @@ export function HelpPage({
                 installing the prerequisites in README:
               </p>
               <pre>
-                <code>
-                  {
-                    "make bootstrap\nmake setup\nset -a\n. ./.env\nset +a\nmake db\nmake migrate\nmake admin\nmake dev"
-                  }
-                </code>
+                <code>{"make bootstrap\nmake start"}</code>
               </pre>
               <p>
-                <code>make admin</code> asks you to create your own sign-in name
-                and password. Open <code>http://127.0.0.1:8000</code> on this
-                computer, sign in, and add a learner.
+                The first start creates missing private settings and asks for
+                your adult sign-in name and password in the terminal. Open{" "}
+                <code>http://127.0.0.1:8000</code>, sign in, and add a learner.
+                Future starts load your saved settings and keep your account and
+                practice history.
               </p>
               <p>
                 If you already have a private setup, keep your existing
-                settings, account, and data. Do not repeat setup or migrate
-                retained data while the app is running; use{" "}
-                <code>docs/RUNBOOK.md</code> in your checkout.
+                settings, account, and data. Use <code>make start</code> to
+                restart. If startup says the database needs an upgrade, stop the
+                app and worker, back up retained data, then run{" "}
+                <code>make migrate start</code>. Never migrate while another
+                copy is running.
               </p>
               <h3>Finish setup</h3>
               <p>
@@ -303,20 +303,23 @@ export function HelpPage({
               </p>
               <ol className="steps">
                 <li>
-                  The adult running the app configures an installed local model
-                  or an approved API in their private provider file, using{" "}
-                  <code>config/providers.example.yaml</code> as a reference. The
-                  app does not install a model.
+                  Open {link("settings", "Settings")} and choose{" "}
+                  <strong>Add AI connection</strong>. Select Ollama, vLLM, or
+                  your API type. Enter the server URL and exact model name.
+                  Enter an API key if your server requires one.
                 </li>
                 <li>
-                  Set <code>PROVIDER_CONFIG</code> to that private file’s
-                  absolute path in the local environment. Restart the app and
-                  worker with those settings.
+                  Review who may use the model and where work is processed.
+                  Enable cloud processing only if you intend to send work to a
+                  cloud provider. Save the connection. Saving alone does not
+                  call the model or send learner work.
                 </li>
                 <li>
-                  Open {link("settings", "Settings")}. Test the model for
-                  tutoring and, if needed, reading photos. Tests send synthetic
-                  material; API providers may charge.
+                  Test the connection for tutoring and, if needed, reading
+                  photos. Tests send sample material, not learner work; API
+                  providers may charge. The tutor test makes two sample calls;
+                  the photo test makes one. A photo test must read the known
+                  sample correctly, not just connect to the server.
                 </li>
                 <li>
                   Select the tutor and photo reader, review where your work will
@@ -324,16 +327,53 @@ export function HelpPage({
                 </li>
               </ol>
               <p>
-                If only <strong>demo</strong> is listed, an actual model has not
-                been enabled. Demo cannot teach or read handwriting.
+                If only <strong>demo</strong> is listed, add a real connection.
+                Demo cannot teach or read handwriting. The app does not install
+                or download models: start your local model server separately, or
+                use a provider account you already have.
               </p>
               <ContextHelp topic="Where do I enter an API key?">
                 <p>
-                  In the server environment or your secret manager, as described
-                  in <code>docs/PROVIDER_STATUS.md</code> and{" "}
-                  <code>docs/PHONE_SETUP.md</code>. The browser never asks for a
-                  provider key. Keep keys and private configuration out of chat
-                  and source control.
+                  In the adult <strong>Add AI connection</strong> form in{" "}
+                  {link("settings", "Settings")}. Saved keys are encrypted on
+                  the app server and are never returned to the browser. Editing
+                  lets you keep, replace, or remove a key. Keep keys out of chat
+                  and source control; only enter them into your own trusted app.
+                </p>
+              </ContextHelp>
+              <ContextHelp topic="What server URL and model name do I use?">
+                <p>
+                  For Ollama on this computer, the server URL is normally{" "}
+                  <code>http://127.0.0.1:11434</code>. Use the exact installed
+                  model name shown by <code>ollama list</code>. For vLLM, use
+                  your serving address ending in <code>/v1</code> and the model
+                  name it serves. Use a different port from this app, which
+                  normally uses port 8000.
+                </p>
+                <p>
+                  These addresses are reached from the app server, not from your
+                  phone. If the model runs elsewhere, use its reachable private
+                  address. A text-only model cannot read photos; enable photo
+                  support only for an image-capable model and test it.
+                </p>
+              </ContextHelp>
+              <ContextHelp topic="Why is a setting managed by the server?">
+                <p>
+                  An operator can lock cloud access or audience policy in the
+                  deployment environment. Settings shows those restrictions and
+                  cannot bypass them. Connections from an operator-managed
+                  provider file are read-only here; add a separate connection to
+                  manage one in the app. Bedrock continues to use the
+                  operator&apos;s workload credentials and provider file.
+                </p>
+              </ContextHelp>
+              <ContextHelp topic="What happens to keys after a restore?">
+                <p>
+                  Keep your deployment secret backed up privately with your
+                  operational settings. Saved API keys need that same secret to
+                  be decrypted. If it changes or is lost, edit each affected
+                  connection and enter its key again, then retest it. Never
+                  paste your settings file into chat.
                 </p>
               </ContextHelp>
               <ContextHelp topic="Why is a model unavailable for a learner?">
@@ -341,7 +381,10 @@ export function HelpPage({
                   The server checks the learner’s age category, the provider’s
                   allowed audience, image support, and whether cloud processing
                   was enabled by the adult. Check those settings and the failed
-                  test message before choosing a model.
+                  test message before choosing a model. Tests expire after seven
+                  days. After editing a connection, retest it and save your
+                  tutor/photo selections again to approve the changed settings
+                  before new learner requests use them.
                 </p>
               </ContextHelp>
             </>
