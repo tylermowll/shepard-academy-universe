@@ -145,3 +145,9 @@ exception; it is never silently ignored. See TASKS for the actual image scan res
 Browser-model files are pinned by exact public repository revision and individual
 hashes in `research-manifest.json`. These are metadata, not downloaded weights.
 Actual runtime/model/device interoperability remains a maintainer gate (T23).
+
+The first hosted image scan found inherited Debian 12 utilities and unused Python
+installer packages (60 OS and two installer findings). D007 replaces the runtime
+base with a pinned Distroless Debian 13 image and removes unused installer code.
+It retains the exact managed Python/SQLite runtime and locked app dependencies.
+The scan threshold and unfixed-vulnerability policy remain unchanged.

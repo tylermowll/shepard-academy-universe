@@ -682,3 +682,11 @@ image decoding: the upload originally accepted version 1 after another connectio
 advanced it to version 2. Post-decode authorization now expires cached ORM state
 inside the reacquired write transaction; the regression requires `409` and zero
 submissions. Provider probes likewise refresh authorization state after I/O.
+
+Hosted [run 34079742050](https://github.com/tylermowll/shepard-academy-universe/actions/runs/34079742050)
+passed the complete source job: 61 unit, 83 integration, 5 component and 14 browser
+tests, generated contracts, synthetic evaluation and dependency audits. Its package
+job built the image and passed non-root API/UI/worker/migration checks, then failed
+the strict image scan on inherited OS/installer packages. D007 records the minimal
+runtime correction. Public CI visibility and the checked-in synthetic-only job
+were verified before reading scanner output; no private application logs were read.

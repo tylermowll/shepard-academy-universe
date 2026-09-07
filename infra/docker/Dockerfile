@@ -18,16 +18,27 @@ COPY apps/api/pyproject.toml apps/api/uv.lock ./
 COPY .python-version /app/.python-version
 COPY apps/api/src src
 RUN uv sync --locked --no-dev --python 3.14.7 --python-preference only-managed
+# Installers are build tools. Remove their code and bundled wheels from the
+# standalone interpreter; application dependencies live in the separate venv.
+RUN .venv/bin/python - <<'PYTHON'
+import shutil
+import sys
+from pathlib import Path
+runtime = Path(sys.base_prefix)
+for directory in (runtime / "lib/python3.14/site-packages", runtime / "lib/python3.14/ensurepip"):
+    shutil.rmtree(directory)
+for installer in (runtime / "bin").glob("pip*"):
+    installer.unlink()
+PYTHON
 
-FROM python:3.14.7-slim-bookworm@sha256:9ab8d9c8514b44f90cf0029dd42fdd7e9e211e639c8b995304cc04568dee900f
-RUN groupadd --gid 10001 tutor && useradd --uid 10001 --gid tutor --create-home tutor
+FROM gcr.io/distroless/cc-debian13:nonroot@sha256:c31ff9abcb1910f3ab25c7957bdaf0bfe12a01eb546e8df2282f1c8f682b606c
 COPY --from=api /opt/python /opt/python
 COPY --from=api /app/apps/api/.venv /app/apps/api/.venv
 COPY --from=api /app/apps/api/src /app/apps/api/src
 COPY apps/api/migrations /app/apps/api/migrations
 COPY apps/api/alembic.ini /app/apps/api/alembic.ini
 COPY --from=web /src/apps/web/dist /app/web
-ENV PATH=/app/apps/api/.venv/bin:$PATH DATABASE_URL=sqlite+pysqlite:////app/data/math_tutor.sqlite3 MATH_TUTOR_DATA_DIR=/app/data PYTHONDONTWRITEBYTECODE=1
+ENV PATH=/app/apps/api/.venv/bin:/usr/bin DATABASE_URL=sqlite+pysqlite:////app/data/math_tutor.sqlite3 MATH_TUTOR_DATA_DIR=/app/data PYTHONDONTWRITEBYTECODE=1
 WORKDIR /app/apps/api
 USER 10001:10001
 EXPOSE 8000

@@ -37,7 +37,9 @@ results using ACCEPTANCE. An emulator does not replace these checks.
 
 ## Container package
 
-The Dockerfile builds public assets and a locked Python environment using the same
+The final image uses a digest-pinned Distroless Debian 13 runtime with no shell or
+package manager (D007). Use the explicit Python/CLI commands below; rebuild for
+dependency changes. The Dockerfile builds public assets and a locked Python environment using the same
 managed Python runtime as native checks. Runtime UID/GID is 10001. Compose mounts
 one host data directory into both services, makes root filesystems read-only,
 drops capabilities, and binds only `127.0.0.1:8000`.

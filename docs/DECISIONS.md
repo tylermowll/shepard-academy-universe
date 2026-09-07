@@ -227,3 +227,28 @@ separately managed configuration/secrets and a required current deletion ledger.
 A restore regression exposed uncheckpointed post-restore WAL changes; restore
 now closes/checkpoints before copying the validated restored file. The regression
 proves deleted learners and revoked sessions do not return from old backups.
+
+
+## D007 — Minimal immutable container runtime (2026-09-06)
+
+Hosted run 34079742050 passed all source checks and built/smoke-tested the original
+container, but its strict image scan reported 60 HIGH/CRITICAL Debian 12 package
+findings plus two unused Python installer dependencies. The final image inherited
+a second Python installation, package managers and system utilities that the app
+did not use. Keeping those components adds maintenance and attack surface.
+
+Use the digest-pinned `gcr.io/distroless/cc-debian13:nonroot` runtime, retaining only
+the tested uv-managed Python, locked application virtualenv and built public UI.
+The builder removes the standalone interpreter's installer code and bundled
+ensurepip wheels; application dependencies remain intact in their separate venv.
+No package metadata is stripped to conceal installed vulnerable code, and the
+HIGH/CRITICAL scan still includes unfixed findings without suppressions. This is
+packaging hardening, not a new application service or database engine.
+
+The runtime has no shell/package manager and runs as numeric UID/GID 10001.
+Operational commands use the explicit Python/CLI entrypoints; rebuild the image
+for dependency changes. Container checks additionally exercise HEIF normalization,
+cryptography, and absence of unused pip/setuptools. The registry index digest and
+supported platforms were verified from public registry metadata on September 6.
+See the [official Distroless documentation](https://github.com/GoogleContainerTools/distroless)
+for maintained Debian 13 images, vector entrypoints and signed-image verification.
