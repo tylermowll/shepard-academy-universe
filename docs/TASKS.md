@@ -7,10 +7,10 @@ specification gates pass.
 
 | Task | Status | Current evidence / next boundary |
 |---|---|---|
-| T00 | Complete locally | Fresh locked installs, backend/frontend checks/builds, commit hooks, and 4 browser smoke tests pass. Initial push authorized; hosted CI evidence pending (D002). |
-| T01 | Complete locally | SQLite/SQLAlchemy/Alembic foundation with migration 0001, public/private schemas, and on-disk integration gates pass. Hosted CI evidence pending; no push beyond the authorized one. |
-| T02 | Complete locally | Adult bootstrap/login and session/CSRF foundation with migration 0002, Argon2id hashes, opaque sessions, and `make admin`. Unit/integration gates pass. Hosted CI evidence pending; no push beyond the authorized one. |
-| T03 | Not started | Blocked by its roadmap dependency. |
+| T00 | Complete | Local gates and original hosted CI verified; review validation below. |
+| T01 | Reviewed; complete locally | Explicit transactional SQLite, stable/private storage, real rollback/migration/drift gates. Original hosted CI verified; review validation below. |
+| T02 | Reviewed; complete locally | Startup/setup, strict origins, expiring CSRF, reset/rotation/revocation, bounded login limits, and session constraints in migration 0003. Review validation below. |
+| T03 | Ready to start | T02 dependency satisfied by the reviewed foundation; implement pairing and two-learner isolation next. |
 | T04 | Not started | Blocked by its roadmap dependency. |
 | T05 | Not started | Blocked by its roadmap dependencies. |
 | T06 | Not started | Blocked by its roadmap dependency. |
@@ -419,3 +419,125 @@ cleanly. CI runs the real wrappers after push; no hosted result is claimed.
 
 Next bounded task: T03 learners, device pairing, and ownership boundaries
 per HANDOFF.md. The maintainer authorized this task's push to `main`.
+
+### 2026-09-06 — Independent T01/T02 review and gap closure
+
+The maintainer requested review of Spark 1.3's T01/T02 work, fixes, a push to
+`main`, a model assessment, and a T03 readiness decision. The starting tree was
+clean at `17308bb`; Spark's T01 commit was `bf54cc9`. Review addressed T01 first,
+then T02, without implementing T03. This request authorizes the review push.
+
+Original hosted evidence was independently observed with `gh run list`:
+
+- [T00: passed](https://github.com/tylermowll/shepard-academy-universe/actions/runs/34046875874).
+- [T01: passed](https://github.com/tylermowll/shepard-academy-universe/actions/runs/34067432542).
+- [T02: passed](https://github.com/tylermowll/shepard-academy-universe/actions/runs/34071452670).
+
+Findings and fixes, ordered by consequence:
+
+- **High, T01 — transaction guarantees were absent.** The engine retained
+  sqlite3's legacy transaction mode despite comments claiming explicit control.
+  A created table survived rollback and a read changed within its transaction.
+  `adapters/db/engine.py` now disables implicit BEGIN and lets SQLAlchemy issue
+  BEGIN; `migrations/env.py` explicitly enables transactional DDL and disposes
+  engines. New tests cover DDL/savepoint rollback, stable read snapshots, and a
+  deliberately failing migration preserving both schema and data. This follows
+  the [SQLAlchemy transaction documentation](https://docs.sqlalchemy.org/en/20/dialects/sqlite.html#enabling-non-legacy-sqlite-transactional-modes-with-the-sqlite3-or-aiosqlite-driver).
+- **High, T01 — path validation was disconnected from actual connections.**
+  Default paths changed with cwd, engines used relative URLs directly, and
+  rejected in-memory configurations still reached the engine factory. Settings
+  and every engine now resolve the same absolute file, enforce the runtime
+  floor and file-only configuration, and prepare mode-0700 storage with mode-0600
+  database/sidecars. SQL parameter values are hidden in database exceptions.
+- **High, T02 — Origin/Host and startup contracts were incomplete.** A matching
+  attacker-controlled Host was trusted, scheme differences were accepted, CSRF
+  bootstrap did not check Origin, non-loopback HTTP could issue insecure cookies,
+  and missing secrets did not stop startup. The API now validates startup
+  configuration and configured Host/full Origin, requires HTTPS off loopback,
+  rejects whitespace-only secrets, and prevents caching of API responses.
+  Native dev/smoke servers disable forwarded headers. Checks use the configured
+  target origin, consistent with the [OWASP CSRF guidance](https://cheatsheetseries.owasp.org/cheatsheets/Cross-Site_Request_Forgery_Prevention_Cheat_Sheet.html#checking-the-origin-header).
+- **Medium, T02 — authentication lifecycle gaps.** Anonymous CSRF expiry was
+  only a browser cookie lifetime; signed tokens now carry a server-checked time.
+  Password resets now revoke existing sessions, and reauthentication rotates
+  tokens/CSRF while revoking the old session. Login rechecks credentials in a
+  short write transaction so a concurrent reset cannot create a valid session.
+  Lock contention returns a bounded `503`/`Retry-After` without partial writes.
+- **Medium, T02 — credential and limiter edge cases.** Bootstrap accepted
+  passwords the API rejected (>256 characters), unknown users skipped password
+  hashing, and the in-process limiter had unsynchronized/unbounded state. Bounds
+  now agree, unknown users perform Argon2id verification, and the one-process
+  limiter has atomic admission, fixed windows, and a capped key count. Validation
+  errors do not echo credential inputs; CLI errors do not print SQL parameters,
+  and password entry refuses a terminal fallback that would echo the password.
+- **Medium, T02 — unconstrained session identity.** New migration
+  `0003_session_invariants.py` adds role/principal and expiration checks using
+  Alembic batch operations. Valid rows survive; invalid legacy rows stop and
+  roll back the migration without deletion. Named constraints and foreign keys
+  are verified. Migrations 0001 and 0002 were preserved.
+- **Setup and evidence gaps.** `cli.py`, `Makefile`, `.env.example`, and README
+  now provide `make setup` and explicit environment export instructions; the
+  old advice to copy `.env` alone did not load settings. Setup generates a random
+  secret and absolute URL, creates a private file exclusively, and never reads
+  or overwrites an existing one. `playwright.config.ts` supplies isolated
+  synthetic settings for startup; CI's `make db` uses a temporary path.
+  Database tests now hold two independent connections concurrently (the old
+  test reused one pooled connection) and compare all four tables and their
+  constraints, including failed-migration/data-preservation cases. The UTC
+  adapter also rejects tzinfo objects that supply no offset.
+
+Actual verification:
+
+- Before fixes, added T01 regressions produced **7 failures / 16 passes**;
+  added T02 checks reproduced **5 failures** for startup, Origin, reset,
+  cache headers, and password bounds. The first HTTP expiry test exercised
+  browser cookie expiration; it was corrected to replay a captured cookie and
+  complemented by direct server-token expiry/future-time tests.
+- After T01 fixes: `make check PNPM='pnpm --store-dir
+  /tmp/math-tutor-pnpm-store'` passed, and `make test-integration` passed
+  **42 tests** before the T02 review changes.
+- After all fixes: `apps/api/.venv/bin/python -m pytest apps/api/tests/unit
+  apps/api/tests/integration -q` passed **85 tests**, up from 45 original cases.
+  This is 22 unit tests and 63 on-disk integration tests; all data is synthetic.
+- Final `make check PNPM='pnpm --store-dir /tmp/math-tutor-pnpm-store'` passed
+  both locks, lint/format, strict mypy (19 files), TypeScript, 22 pytest unit
+  tests, 1 Vitest test, wheel/sdist, and Vite builds. Its first run caught seven
+  strict mypy import errors in new tests; those were fixed without suppressions.
+- `make test-integration`: **63 passed**. Coverage includes concurrent reset
+  during login, replay/revocation, untrusted Origin/Host, concurrent limiter
+  admission, a real five-second SQLite lock wait/retry, and migration rollback.
+- `make smoke`: **4 passed** (desktop/mobile Chromium, including the
+  JavaScript-disabled fallback). Temporary servers shut down after the tests.
+- `make db` and `make migrate` against an exclusively generated `/tmp` database:
+  SQLite **3.53.1**, WAL, foreign keys **1**, busy timeout **5000**, synchronous
+  **FULL**; empty-file upgrade through **0003** succeeded. The temporary files
+  were removed afterward.
+- Commands used the documented `/tmp` Node/Python/cache overrides. A sandboxed
+  ASGI run stalled and was interrupted; the synthetic integration/browser gates
+  passed with execution permission. No test policy was disabled. `git diff
+  --check` and `git diff --cached --check` passed. `make hooks-check` passed all
+  applicable file/privacy, lock, lint/format/type, and unit/component checks.
+  The review push and its hosted run are pending at the time of this entry.
+
+Assessment of Spark's original work: **5/10 overall for these two tasks**, a
+qualitative review judgment rather than a general model benchmark. It produced
+useful, organized code, real migrations, separate public schemas, maintained
+password hashing, locked dependencies, and passing CI. Its main weakness was
+verifying the difficult contracts: tests covered ordinary paths while missing
+transactions, trust boundaries, and lifecycle cases, and some comments/evidence
+claimed guarantees the implementation did not provide. The fixes were
+substantive. This sample supports using it for bounded implementation with
+independent review, especially for persistence and authentication. No inference
+speed, token use, or cost measurements were available for a throughput comparison.
+
+**T03 is ready to start after this reviewed foundation.** Its bounded work is
+managed aliases/eligibility, a real learner table plus ownership foreign keys,
+single-use expiring pairing bound to the requesting browser, adult approval,
+revocation, and two-learner read/mutation isolation with learner rejection from
+adult routes. Generate API contracts if a frontend consumer is introduced.
+T03 is not implemented by this review.
+
+Not run: live/paid provider inference, model downloads, deployment, real learner
+data, real-phone testing, or release vulnerability scans. These are outside
+T01/T02; the SQLite compatibility exception remains D001. No runtime/private
+configuration was opened, and no live database was migrated.

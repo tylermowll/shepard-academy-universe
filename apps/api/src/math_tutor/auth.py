@@ -17,10 +17,11 @@ import hmac
 import secrets
 import time
 from datetime import UTC, datetime, timedelta
+from threading import Lock
 
 from argon2 import PasswordHasher
-from argon2.exceptions import InvalidHash, VerifyMismatchError
-from sqlalchemy import select
+from argon2.exceptions import InvalidHash, VerificationError
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from math_tutor.adapters.db.models import Administrator, DeviceSession
@@ -33,6 +34,7 @@ ANON_CSRF_LIFETIME_SECONDS = 3600
 
 #: Minimum administrator password accepted by the bootstrap CLI.
 MIN_ADMIN_PASSWORD_LENGTH = 12
+MAX_ADMIN_PASSWORD_LENGTH = 256
 
 #: Maximum administrator login name length (matches the column width).
 MAX_LOGIN_NAME_LENGTH = 64
@@ -40,8 +42,11 @@ MAX_LOGIN_NAME_LENGTH = 64
 #: Login attempts allowed per client address before temporary rejection.
 LOGIN_RATE_LIMIT = 10
 LOGIN_RATE_WINDOW_SECONDS = 60.0
+MAX_LOGIN_RATE_KEYS = 4096
 
 _password_hasher = PasswordHasher()
+# Unknown users perform the same expensive verification as known users.
+_dummy_password_hash = _password_hasher.hash(secrets.token_urlsafe(32))
 
 
 def hash_password(password: str) -> str:
@@ -55,7 +60,7 @@ def verify_password(password_hash: str, password: str) -> bool:
 
     try:
         return _password_hasher.verify(password_hash, password)
-    except VerifyMismatchError, InvalidHash:
+    except VerificationError, InvalidHash:
         return False
 
 
@@ -80,18 +85,30 @@ def new_csrf_token() -> str:
 def sign_anon_csrf(nonce: str, secret: str) -> str:
     """Bind an anonymous CSRF nonce to this server's session secret."""
 
-    signature = hmac.new(secret.encode("utf-8"), nonce.encode("utf-8"), hashlib.sha256)
-    return f"{nonce}.{signature.hexdigest()}"
+    payload = f"{int(time.time())}.{nonce}"
+    signature = hmac.new(secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256)
+    return f"{payload}.{signature.hexdigest()}"
 
 
 def verify_anon_csrf(token: str, secret: str) -> bool:
     """Return True only for a token this server signed with this secret."""
 
-    nonce, separator, presented = token.partition(".")
-    if not separator or not nonce or not presented:
+    if not token.isascii() or len(token) > 256:
         return False
-    expected = sign_anon_csrf(nonce, secret)
-    return hmac.compare_digest(expected, token)
+    parts = token.split(".")
+    if len(parts) != 3 or not parts[1]:
+        return False
+    issued, nonce, signature = parts
+    try:
+        age = time.time() - int(issued)
+    except ValueError:
+        return False
+    if not 0 <= age < ANON_CSRF_LIFETIME_SECONDS:
+        return False
+    expected = hmac.new(
+        secret.encode("utf-8"), f"{issued}.{nonce}".encode("ascii"), hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(expected, signature)
 
 
 def utcnow() -> datetime:
@@ -119,15 +136,28 @@ def create_or_reset_admin(db: Session, login_name: str, password: str) -> Admini
         raise ValueError("Login name must be 1-64 characters.")
     if len(password) < MIN_ADMIN_PASSWORD_LENGTH:
         raise ValueError(f"Password must be at least {MIN_ADMIN_PASSWORD_LENGTH} characters.")
+    if len(password) > MAX_ADMIN_PASSWORD_LENGTH:
+        raise ValueError(f"Password must be at most {MAX_ADMIN_PASSWORD_LENGTH} characters.")
+    # Do expensive hashing before starting a database transaction.
+    password_hash = hash_password(password)
+    if not db.in_transaction():
+        db.connection(execution_options={"sqlite_begin_immediate": True})
     existing = db.scalar(select(Administrator).where(Administrator.login_name == name))
     if existing is not None:
-        existing.password_hash = hash_password(password)
+        existing.password_hash = password_hash
         existing.updated_at = utcnow()
+        db.execute(
+            update(DeviceSession)
+            .where(
+                DeviceSession.administrator_id == existing.id, DeviceSession.revoked_at.is_(None)
+            )
+            .values(revoked_at=utcnow())
+        )
         db.flush()
         return existing
     admin = Administrator(
         login_name=name,
-        password_hash=hash_password(password),
+        password_hash=password_hash,
         created_at=utcnow(),
         updated_at=utcnow(),
     )
@@ -145,9 +175,8 @@ def authenticate_admin(db: Session, login_name: str, password: str) -> Administr
 
     name = normalize_login_name(login_name)
     admin = db.scalar(select(Administrator).where(Administrator.login_name == name))
-    if admin is None:
-        return None
-    if not verify_password(admin.password_hash, password):
+    valid = verify_password(admin.password_hash if admin else _dummy_password_hash, password)
+    if admin is None or not valid:
         return None
     return admin
 
@@ -198,7 +227,8 @@ def revoke_session(db: Session, row: DeviceSession) -> None:
     db.flush()
 
 
-_login_attempts: dict[str, list[float]] = {}
+_login_attempts: dict[str, tuple[float, int]] = {}
+_login_attempts_lock = Lock()
 
 
 def register_login_attempt(key: str) -> float | None:
@@ -206,21 +236,26 @@ def register_login_attempt(key: str) -> float | None:
 
     At most :data:`LOGIN_RATE_LIMIT` attempts per
     :data:`LOGIN_RATE_WINDOW_SECONDS` are accepted per key (client address).
-    The over-budget attempt still counts, so continued guessing extends the
-    wait instead of resetting it.
+    Fixed windows, a bounded key count, and a lock bound memory and concurrent
+    admission. This process-local limiter matches the one-API-process contract.
     """
 
     now = time.monotonic()
-    cutoff = now - LOGIN_RATE_WINDOW_SECONDS
-    recent = [moment for moment in _login_attempts.get(key, []) if moment > cutoff]
-    recent.append(now)
-    _login_attempts[key] = recent
-    if len(recent) > LOGIN_RATE_LIMIT:
-        return recent[0] + LOGIN_RATE_WINDOW_SECONDS - now
-    return None
+    with _login_attempts_lock:
+        expired = [address for address, (end, _) in _login_attempts.items() if end <= now]
+        for address in expired:
+            del _login_attempts[address]
+        if key not in _login_attempts and len(_login_attempts) >= MAX_LOGIN_RATE_KEYS:
+            return min(end for end, _ in _login_attempts.values()) - now
+        end, count = _login_attempts.get(key, (now + LOGIN_RATE_WINDOW_SECONDS, 0))
+        if count >= LOGIN_RATE_LIMIT:
+            return end - now
+        _login_attempts[key] = (end, count + 1)
+        return None
 
 
 def clear_login_rate_limit() -> None:
     """Forget all recorded login attempts (tests only)."""
 
-    _login_attempts.clear()
+    with _login_attempts_lock:
+        _login_attempts.clear()

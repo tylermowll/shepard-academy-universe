@@ -12,10 +12,10 @@ introductory one-variable linear equations.
 | Area | Implemented today |
 |---|---|
 | Backend | Packaged Python 3.14 / FastAPI application with typed `GET /health` response and adult session endpoints (`GET /api/v1/auth/session`, `POST /api/v1/auth/login`, `POST /api/v1/auth/logout`) |
-| Database | SQLite/SQLAlchemy/Alembic foundation with migrations 0001–0002, UUID/UTC adapters, practice tables plus administrator/device-session tables, and public/private schemas |
+| Database | SQLite/SQLAlchemy/Alembic foundation with migrations 0001–0003, explicit transactions, private storage, UUID/UTC adapters, constrained practice/authentication tables, and public/private schemas |
 | Frontend | React/TypeScript/Vite preview with Tailwind, an availability notice, and a JavaScript-disabled fallback |
 | Quality checks | Locked dependencies, Python/frontend lint/format/types/tests/builds, on-disk SQLite integration tests, desktop/mobile browser smoke tests |
-| Development workflow | Pre-commit checks and a full-stack GitHub Actions workflow; hosted CI evidence is pending |
+| Development workflow | Pre-commit checks and a full-stack GitHub Actions workflow; T00–T02 hosted runs verified, with review evidence in the task log |
 | Authentication | Adult bootstrap via `make admin`, Argon2id password hashes, opaque sessions with CSRF/expiry/revocation; learner pairing arrives in T03 |
 | Tutoring, providers, deployment | Not implemented |
 
@@ -49,12 +49,39 @@ Open <http://127.0.0.1:5173> for the frontend preview. In a second terminal, run
 Bootstrap installs locked backend dependencies in `apps/api/.venv` and frontend
 workspace dependencies in `node_modules`; uv can download Python 3.14.7 if missing.
 The first install requires network access to package/runtime sources. There is no
-model or API key at this stage. The database is a local
-SQLite file: copy `.env.example` to `.env` to override `DATABASE_URL`, then run
-`make db` to validate settings and `make migrate` to apply migrations.
-Adult login additionally needs a generated `SESSION_SECRET` in `.env`
-(authentication rejects the placeholder); run `make admin` to create the
-administrator account interactively.
+model or API key at this stage. Before starting the API, run the following from
+the repository root:
+
+```bash
+make setup
+set -a
+. ./.env
+set +a
+make db
+make migrate
+make admin
+make dev-api
+```
+
+`make setup` generates a mode-0600 `.env` with an absolute SQLite path and a random
+session secret. It refuses to read or overwrite an existing file; if one already
+exists, configure it locally using `.env.example` and skip setup. The application
+reads exported environment variables, so repeat the export lines in each new
+shell. Never share the file or its contents with a coding agent.
+
+Without an override, storage resolves to the checkout's ignored `data/` directory
+regardless of working directory. Relative SQLite URLs resolve within that data
+directory. An installed package outside a checkout needs an absolute
+`DATABASE_URL` or `MATH_TUTOR_DATA_DIR`. All database entrypoints enforce private
+directory/file permissions. `make migrate` requires application writes stopped.
+`make admin` creates or resets the named administrator interactively; reset revokes
+that administrator's existing sessions. Passwords must contain 12–256 characters.
+
+Startup rejects missing/placeholder session secrets and invalid public origins.
+The development origin is `http://127.0.0.1:8000`; use that exact address for the
+API. Non-loopback origins require HTTPS. Requests must use the configured Host
+and, when supplied, the exact Origin. Native development disables proxy headers;
+a future gateway deployment must explicitly scope its trusted proxies.
 
 Open <http://127.0.0.1:8000/health>; the expected response is `{"status":"ok"}`.
 API documentation is at <http://127.0.0.1:8000/docs>. Stop the server with
@@ -83,6 +110,7 @@ The [Makefile](Makefile) is the authority for commands that exist today.
 | Command | Behavior |
 |---|---|
 | `make bootstrap` | Verify Node/pnpm and install both locked development environments |
+| `make setup` | Generate a private local settings file without reading or overwriting one |
 | `make toolchain-check` | Reject unsupported Node or mismatched pnpm versions with setup guidance |
 | `make hooks-install` | Install the local Git pre-commit hook; repeat for each clone |
 | `make hooks-check` | Run hook checks against all tracked files |
@@ -132,11 +160,10 @@ and dependency vulnerability scanning remain release requirements.
 [Project CI](.github/workflows/ci.yml) runs locked setup, the same hooks, and
 `make check` and `make smoke` on pushes and pull requests. It has read-only
 repository permissions, uses actions pinned to commit SHAs, and needs no provider
-credentials. The initial push is authorized; hosted CI results remain unverified
-until a run is observed. T01 added the SQLite runtime check and on-disk
-integration gate to CI; T02's auth tests run inside the existing unit and
-integration gates. Hosted evidence is still pending under
-[D002](docs/DECISIONS.md#d002--local-t00-completion-2026-09-06).
+credentials. The original T00, T01, and T02 hosted runs have been observed passing.
+T01 added the SQLite runtime check and on-disk integration gate to CI; T02's auth
+tests run inside the existing unit and integration gates. The task log separates
+those historical runs from the review changes and their validation.
 
 ## Architecture and implementation order
 
@@ -159,7 +186,8 @@ roadmap as one implementation task.
 The approved [SQLite decision](docs/DECISIONS.md#d004--sqlite-for-the-initial-deployment-2026-09-06)
 defines WAL, connection settings, migrations, job claims, and consistent backups.
 T01 implemented the foundation with migration 0001 and T02 added the
-administrator/device-session tables in migration 0002; the embedded SQLite floor
+administrator/device-session tables in migration 0002. Review migration 0003 adds
+session identity/lifetime constraints while preserving valid rows. The embedded SQLite floor
 is 3.53.1 with a documented exception (see D001). Multiple application hosts and
 network-mounted database files are outside this design.
 

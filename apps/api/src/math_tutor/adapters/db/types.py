@@ -48,7 +48,7 @@ class UTCDateTime(TypeDecorator[datetime]):
     def process_bind_param(self, value: datetime | None, dialect: Dialect) -> datetime | None:
         if value is None:
             return None
-        if value.tzinfo is None:
+        if value.tzinfo is None or value.utcoffset() is None:
             raise ValueError("Naive datetimes are rejected; pass an aware UTC value.")
         return value.astimezone(UTC)
 

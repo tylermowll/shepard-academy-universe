@@ -41,6 +41,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         render_as_batch=True,
+        transactional_ddl=True,
         dialect_opts={"paramstyle": "named"},
     )
     with context.begin_transaction():
@@ -51,14 +52,18 @@ def run_migrations_online() -> None:
     """Run migrations against the configured on-disk database."""
 
     engine = create_engine_for_url(database_url())
-    with engine.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            render_as_batch=True,
-        )
-        with context.begin_transaction():
-            context.run_migrations()
+    try:
+        with engine.connect() as connection:
+            context.configure(
+                connection=connection,
+                target_metadata=target_metadata,
+                render_as_batch=True,
+                transactional_ddl=True,
+            )
+            with context.begin_transaction():
+                context.run_migrations()
+    finally:
+        engine.dispose()
 
 
 if context.is_offline_mode():

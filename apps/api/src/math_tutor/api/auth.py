@@ -19,7 +19,7 @@ from __future__ import annotations
 import hmac
 import math
 import secrets
-from typing import cast
+from typing import Literal, cast
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
@@ -29,6 +29,7 @@ from sqlalchemy.orm import Session
 
 from math_tutor import auth as auth_service
 from math_tutor import settings
+from math_tutor.adapters.db.models import Administrator
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -50,7 +51,7 @@ class LoginRequest(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     login_name: str = Field(min_length=1, max_length=64)
-    password: str = Field(min_length=1, max_length=256)
+    password: str = Field(min_length=1, max_length=auth_service.MAX_ADMIN_PASSWORD_LENGTH)
 
 
 class SessionStatus(BaseModel):
@@ -62,7 +63,7 @@ class SessionStatus(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     authenticated: bool
-    role: str | None = None
+    role: Literal["adult", "learner"] | None = None
     login_name: str | None = None
     csrf_token: str
 
@@ -79,6 +80,7 @@ def require_secret() -> str:
     """Return the session secret or fail closed when it is unconfigured."""
 
     try:
+        settings.app_public_origin()
         return settings.session_secret()
     except ValueError:
         raise HTTPException(
@@ -96,22 +98,23 @@ def secure_cookies() -> bool:
 def origin_allowed(request: Request) -> bool:
     """Accept missing Origin (non-browser clients); otherwise same-origin only.
 
-    An explicit Origin must match the request Host or the configured public
-    origin. Anything else is rejected before credentials or sessions run.
+    Host must match configured authority. An explicit Origin must match the
+    full configured origin, including scheme and port; caller-controlled Host
+    and forwarding headers never expand the allowlist.
     """
 
-    origin = request.headers.get("origin")
-    if origin is None:
-        return True
-    try:
-        parsed = urlsplit(origin)
-    except ValueError:
-        return False
-    if parsed.scheme not in ("http", "https") or not parsed.netloc:
-        return False
-    host = request.headers.get("host", "").lower()
-    public = urlsplit(settings.app_public_origin()).netloc.lower()
-    return parsed.netloc.lower() in {host, public}
+    public = settings.app_public_origin()
+    return request.headers.get("host", "").lower() == urlsplit(public).netloc and (
+        request.headers.get("origin") in (None, public)
+    )
+
+
+def csrf_matches(presented: str | None, expected: str) -> bool:
+    """Reject malformed headers without compare_digest raising on Unicode."""
+
+    return (
+        presented is not None and presented.isascii() and hmac.compare_digest(presented, expected)
+    )
 
 
 def engine_for(request: Request) -> Engine:
@@ -162,6 +165,25 @@ def mint_anon_csrf(secret: str) -> str:
     return auth_service.sign_anon_csrf(secrets.token_urlsafe(24), secret)
 
 
+def login_csrf_valid(request: Request, secret: str) -> bool:
+    """Bind reauthentication to its current session, or login to its bootstrap."""
+
+    presented = request.headers.get(CSRF_HEADER)
+    token = request.cookies.get(SESSION_COOKIE)
+    if token:
+        with Session(engine_for(request)) as db:
+            row = auth_service.get_valid_session(db, token)
+            if row is not None:
+                return csrf_matches(presented, row.csrf_token)
+    bootstrap = request.cookies.get(ANON_CSRF_COOKIE)
+    return (
+        bootstrap is not None
+        and bootstrap.isascii()
+        and csrf_matches(presented, bootstrap)
+        and auth_service.verify_anon_csrf(bootstrap, secret)
+    )
+
+
 @router.get("/session", response_model=SessionStatus, response_model_exclude_none=True)
 def get_session(request: Request, response: Response) -> SessionStatus:
     """Report minimal session state and bootstrap a CSRF token."""
@@ -175,7 +197,7 @@ def get_session(request: Request, response: Response) -> SessionStatus:
                 login_name = row.administrator.login_name if row.administrator is not None else None
                 return SessionStatus(
                     authenticated=True,
-                    role=row.role,
+                    role=cast(Literal["adult", "learner"], row.role),
                     login_name=login_name,
                     csrf_token=row.csrf_token,
                 )
@@ -192,14 +214,7 @@ def login(credentials: LoginRequest, request: Request, response: Response) -> Se
     secret = require_secret()
     if not origin_allowed(request):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_ORIGIN_REJECTED)
-    presented = request.headers.get(CSRF_HEADER)
-    bootstrap = request.cookies.get(ANON_CSRF_COOKIE)
-    if (
-        presented is None
-        or bootstrap is None
-        or not hmac.compare_digest(presented, bootstrap)
-        or not auth_service.verify_anon_csrf(presented, secret)
-    ):
+    if not login_csrf_valid(request, secret):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_CSRF_FAILED)
     retry_after = auth_service.register_login_attempt(client_key(request))
     if retry_after is not None:
@@ -212,6 +227,19 @@ def login(credentials: LoginRequest, request: Request, response: Response) -> Se
         admin = auth_service.authenticate_admin(db, credentials.login_name, credentials.password)
         if admin is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_BAD_CREDENTIALS)
+        # End the read snapshot after password verification. The short write
+        # transaction rechecks the hash so a concurrent reset cannot be bypassed.
+        admin_id, password_hash = admin.id, admin.password_hash
+        db.rollback()
+        db.connection(execution_options={"sqlite_begin_immediate": True})
+        admin = db.get(Administrator, admin_id, populate_existing=True)
+        if admin is None or admin.password_hash != password_hash:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_BAD_CREDENTIALS)
+        previous = request.cookies.get(SESSION_COOKIE)
+        if previous:
+            old_session = auth_service.get_valid_session(db, previous)
+            if old_session is not None:
+                auth_service.revoke_session(db, old_session)
         row, token = auth_service.create_device_session(db, admin)
         name = admin.login_name
         csrf = row.csrf_token
@@ -238,7 +266,7 @@ def logout(request: Request, response: Response) -> LogoutResponse:
             response.delete_cookie(SESSION_COOKIE, path="/")
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_NOT_AUTHENTICATED)
         presented = request.headers.get(CSRF_HEADER)
-        if presented is None or not hmac.compare_digest(presented, row.csrf_token):
+        if not csrf_matches(presented, row.csrf_token):
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=_CSRF_FAILED)
         auth_service.revoke_session(db, row)
         db.commit()

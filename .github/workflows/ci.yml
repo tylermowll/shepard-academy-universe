@@ -40,6 +40,8 @@ jobs:
         run: make check
       - name: Verify SQLite runtime and database settings
         run: make db
+        env:
+          DATABASE_URL: sqlite+pysqlite:///${{ runner.temp }}/math-tutor-ci/test.sqlite3
       - name: Run on-disk SQLite integration tests
         run: make test-integration
       - name: Install smoke-test browser

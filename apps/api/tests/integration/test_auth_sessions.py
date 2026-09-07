@@ -8,6 +8,9 @@ live secret, or real credential is touched.
 
 from __future__ import annotations
 
+import shlex
+import time
+import uuid
 from collections.abc import Iterator
 from datetime import timedelta
 from pathlib import Path
@@ -30,10 +33,10 @@ from math_tutor.api.app import create_app
 from math_tutor.api.auth import ANON_CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
-HEAD_REVISION = "0002_auth_sessions"
+HEAD_REVISION = "0003_session_invariants"
 
 TEST_SECRET = "t02-synthetic-session-secret-0123456789abcdef"
-TEST_ORIGIN = "http://test"
+TEST_ORIGIN = "http://127.0.0.1:8000"
 ADMIN_LOGIN = "grownup"
 ADMIN_PASSWORD = "correct-horse-battery-99"
 
@@ -369,6 +372,7 @@ async def test_expired_and_tampered_sessions_are_rejected(engine: Engine) -> Non
     admin = create_admin(engine)
     with Session(engine) as db:
         row, token = auth_service.create_device_session(db, db.merge(admin))
+        row.created_at = auth_service.utcnow() - timedelta(hours=25)
         row.expires_at = auth_service.utcnow() - timedelta(seconds=1)
         csrf = row.csrf_token
         db.commit()
@@ -478,3 +482,236 @@ def test_cli_admin_points_at_migrations_when_tables_are_missing(
 
     assert cli.main(["admin"]) == 1
     assert "make migrate" in capsys.readouterr().err
+
+
+@pytest.mark.anyio
+async def test_startup_rejects_missing_secret(
+    engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(settings.SESSION_SECRET_ENV_VAR, raising=False)
+    application = create_app(engine)
+    with pytest.raises(ValueError, match="SESSION_SECRET"):
+        async with application.router.lifespan_context(application):
+            pass
+
+
+@pytest.mark.anyio
+async def test_origin_requires_exact_scheme_and_cannot_trust_arbitrary_host(engine: Engine) -> None:
+    create_admin(engine)
+    async with make_client(engine) as client:
+        assert (await attempt_login(client, origin="https://127.0.0.1:8000")).status_code == 403
+    async with make_client(engine, base_url="http://evil.example") as client:
+        assert (await client.get("/api/v1/auth/session")).status_code == 403
+
+
+@pytest.mark.anyio
+async def test_anonymous_csrf_expires_server_side(
+    engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    create_admin(engine)
+    async with make_client(engine) as client:
+        csrf = await bootstrap_csrf(client)
+        # Replay the captured token independently of browser cookie expiry.
+        client.cookies.clear()
+        client.cookies.set(ANON_CSRF_COOKIE, csrf)
+        later = time.time() + auth_service.ANON_CSRF_LIFETIME_SECONDS + 1
+        monkeypatch.setattr(time, "time", lambda: later)
+        assert (await attempt_login(client, csrf=csrf)).status_code == 403
+
+
+def test_password_reset_revokes_existing_sessions(engine: Engine) -> None:
+    admin = create_admin(engine)
+    with Session(engine) as db:
+        _, token = auth_service.create_device_session(db, db.merge(admin))
+        db.commit()
+    create_admin(engine, password="replacement-password-012345")
+    with Session(engine) as db:
+        assert auth_service.get_valid_session(db, token) is None
+
+
+@pytest.mark.anyio
+async def test_auth_responses_are_not_cacheable(engine: Engine) -> None:
+    async with make_client(engine) as client:
+        response = await client.get("/api/v1/auth/session")
+        assert response.headers.get("cache-control") == "no-store"
+        failure = await client.post("/api/v1/auth/logout")
+        assert failure.headers.get("cache-control") == "no-store"
+
+
+def test_bootstrap_rejects_password_that_login_cannot_accept(engine: Engine) -> None:
+    with Session(engine) as db, pytest.raises(ValueError, match="256"):
+        auth_service.create_or_reset_admin(db, ADMIN_LOGIN, "x" * 257)
+
+
+@pytest.mark.anyio
+async def test_reauthentication_rotates_and_revokes_old_token(engine: Engine) -> None:
+    create_admin(engine)
+    async with make_client(engine) as client:
+        csrf = await login_ok(client)
+        previous = client.cookies.get(SESSION_COOKIE)
+        assert previous is not None
+        response = await attempt_login(client, csrf=csrf)
+        assert response.status_code == 200
+        assert response.json()["csrf_token"] != csrf
+        assert client.cookies.get(SESSION_COOKIE) != previous
+        with Session(engine) as db:
+            assert auth_service.get_valid_session(db, previous) is None
+
+
+@pytest.mark.anyio
+async def test_password_reset_during_login_cannot_create_a_session(
+    engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    create_admin(engine)
+    original = auth_service.authenticate_admin
+
+    def authenticate_then_reset(db: Session, name: str, password: str) -> Administrator | None:
+        admin = original(db, name, password)
+        create_admin(engine, password="replacement-password-012345")
+        return admin
+
+    monkeypatch.setattr(auth_service, "authenticate_admin", authenticate_then_reset)
+    async with make_client(engine) as client:
+        assert (await attempt_login(client)).status_code == 401
+    with Session(engine) as db:
+        assert db.scalar(select(DeviceSession)) is None
+
+
+@pytest.mark.anyio
+async def test_lock_contention_returns_bounded_retry_without_creating_session(
+    engine: Engine,
+) -> None:
+    create_admin(engine)
+    async with make_client(engine) as client:
+        csrf = await bootstrap_csrf(client)
+        with engine.connect().execution_options(sqlite_begin_immediate=True) as writer:
+            writer.begin()
+            started = time.monotonic()
+            response = await attempt_login(client, csrf=csrf)
+            elapsed = time.monotonic() - started
+            assert response.status_code == 503
+            assert response.headers["retry-after"] == "1"
+            assert 4 <= elapsed < 10
+        assert (await attempt_login(client, csrf=csrf)).status_code == 200
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("origin", ["null", "http://127.0.0.1:8001", "http://127.0.0.1:8000/path"])
+async def test_csrf_bootstrap_and_logout_reject_bad_origins(engine: Engine, origin: str) -> None:
+    create_admin(engine)
+    async with make_client(engine) as client:
+        rejected = await client.get("/api/v1/auth/session", headers={"Origin": origin})
+        assert rejected.status_code == 403
+        assert not rejected.cookies
+        csrf = await login_ok(client)
+        response = await client.post(
+            "/api/v1/auth/logout", headers={CSRF_HEADER: csrf, "Origin": origin}
+        )
+        assert response.status_code == 403
+        assert (await client.get("/api/v1/auth/session")).json()["authenticated"]
+
+
+@pytest.mark.anyio
+async def test_invalid_credentials_are_not_echoed_and_forwarded_host_is_not_trusted(
+    engine: Engine,
+) -> None:
+    async with make_client(engine) as client:
+        password = "synthetic-sensitive-input" * 20
+        rejected = await client.post(
+            "/api/v1/auth/login", json={"login_name": "name", "password": password}
+        )
+        assert rejected.status_code == 422
+        assert password not in rejected.text
+        spoofed = await client.get(
+            "/api/v1/auth/session",
+            headers={
+                "Host": "evil.example",
+                "X-Forwarded-Host": "127.0.0.1:8000",
+                "X-Forwarded-Proto": "http",
+                "Origin": TEST_ORIGIN,
+            },
+        )
+        assert spoofed.status_code == 403
+
+
+@pytest.mark.parametrize("invalid", ["role", "administrator", "learner", "expiration"])
+def test_session_identity_and_expiry_constraints(engine: Engine, invalid: str) -> None:
+    admin = create_admin(engine)
+    with Session(engine) as db:
+        row, _ = auth_service.create_device_session(db, db.merge(admin))
+        if invalid == "role":
+            row.role = "superuser"
+        elif invalid == "administrator":
+            row.administrator_id = None
+        elif invalid == "learner":
+            row.learner_id = uuid.uuid4()
+        else:
+            row.expires_at = row.created_at
+        with pytest.raises(IntegrityError):
+            db.flush()
+
+
+@pytest.mark.parametrize("invalid_legacy_row", [False, True])
+def test_session_migration_preserves_data_or_rolls_back_invalid_rows(
+    engine: Engine, db_url: str, invalid_legacy_row: bool
+) -> None:
+    config = Config()
+    config.set_main_option("script_location", str(MIGRATIONS_DIR))
+    config.set_main_option("sqlalchemy.url", db_url)
+    command.downgrade(config, "0002_auth_sessions")
+    admin = create_admin(engine)
+    with Session(engine) as db:
+        row, token = auth_service.create_device_session(db, db.merge(admin))
+        if invalid_legacy_row:
+            row.role = "invalid"
+        db.commit()
+    if invalid_legacy_row:
+        with pytest.raises(IntegrityError):
+            command.upgrade(config, "head")
+    else:
+        command.upgrade(config, "head")
+        with Session(engine) as db:
+            assert auth_service.get_valid_session(db, token) is not None
+    with engine.connect() as connection:
+        expected = "0002_auth_sessions" if invalid_legacy_row else HEAD_REVISION
+        assert (
+            connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar()
+            == expected
+        )
+        assert not connection.exec_driver_sql("PRAGMA foreign_key_check").all()
+        assert connection.exec_driver_sql("SELECT count(*) FROM device_session").scalar() == 1
+        assert "_alembic_tmp_device_session" not in inspect(connection).get_table_names()
+
+
+def test_setup_generates_private_settings_once_without_disclosing_secret(
+    db_url: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    destination = tmp_path / "synthetic-settings"
+    assert cli.main(["setup", "--output", str(destination)]) == 0
+    values = dict(line.split("=", 1) for line in shlex.split(destination.read_text()))
+    secret = values[settings.SESSION_SECRET_ENV_VAR]
+    assert secret != TEST_SECRET
+    monkeypatch.setenv(settings.SESSION_SECRET_ENV_VAR, secret)
+    assert settings.session_secret() == secret
+    assert values[settings.DATABASE_URL_ENV_VAR] == db_url
+    assert destination.stat().st_mode & 0o777 == 0o600
+    assert secret not in capsys.readouterr().out
+    assert cli.main(["setup", "--output", str(destination)]) == 1
+    assert "refusing" in capsys.readouterr().err
+    assert secret in destination.read_text()
+
+
+def test_unknown_admin_still_verifies_a_password_hash(
+    engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen: list[str] = []
+    original = auth_service.verify_password
+
+    def verify(hashed: str, password: str) -> bool:
+        seen.append(hashed)
+        return original(hashed, password)
+
+    monkeypatch.setattr(auth_service, "verify_password", verify)
+    with Session(engine) as db:
+        assert auth_service.authenticate_admin(db, "unknown", ADMIN_PASSWORD) is None
+    assert len(seen) == 1 and seen[0].startswith("$argon2id$")

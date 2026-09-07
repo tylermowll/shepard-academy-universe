@@ -128,11 +128,21 @@ class DeviceSession(Base):
     """
 
     __tablename__ = "device_session"
-    __table_args__ = (UniqueConstraint("token_hash", name="uq_device_session_token_hash"),)
+    __table_args__ = (
+        UniqueConstraint("token_hash", name="uq_device_session_token_hash"),
+        CheckConstraint(
+            "(role = 'adult' AND administrator_id IS NOT NULL AND learner_id IS NULL) OR "
+            "(role = 'learner' AND administrator_id IS NULL AND learner_id IS NOT NULL)",
+            name="ck_device_session_principal",
+        ),
+        CheckConstraint("expires_at > created_at", name="ck_device_session_expiration"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUIDType, primary_key=True, default=uuid.uuid4)
     token_hash: Mapped[str] = mapped_column(String(64), nullable=False)
-    role: Mapped[str] = mapped_column(String(16), nullable=False, default="adult")
+    role: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="adult", server_default="adult"
+    )
     administrator_id: Mapped[uuid.UUID | None] = mapped_column(
         UUIDType,
         ForeignKey("administrator.id", ondelete="CASCADE", name="fk_device_session_administrator"),

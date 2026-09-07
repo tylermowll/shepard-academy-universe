@@ -7,6 +7,7 @@ these gates.
 
 from __future__ import annotations
 
+import shutil
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta, timezone
@@ -16,7 +17,9 @@ from typing import Any
 import pytest
 import sqlalchemy
 from alembic import command
+from alembic.autogenerate import compare_metadata
 from alembic.config import Config
+from alembic.migration import MigrationContext
 from sqlalchemy import inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError, StatementError
@@ -31,7 +34,7 @@ from math_tutor.adapters.db.engine import (
 from math_tutor.adapters.db.models import PracticeSession, ProblemInstance
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
-HEAD_REVISION = "0002_auth_sessions"
+HEAD_REVISION = "0003_session_invariants"
 
 
 @pytest.fixture
@@ -141,20 +144,130 @@ def test_migration_matches_model_metadata(engine: Engine, db_url: str, tmp_path:
         model_engine.dispose()
 
     assert set(migrated) == set(from_models) | {"alembic_version"}
-    for table in ("practice_session", "problem_instance"):
+    for table in from_models:
         assert migrated[table] == from_models[table], f"migration drift on {table}"
+    with engine.connect() as connection:
+        assert compare_metadata(MigrationContext.configure(connection), Base.metadata) == []
+    model_engine = create_engine_for_url(model_url)
+    try:
+        for table in from_models:
+            for method in ("get_check_constraints", "get_unique_constraints", "get_foreign_keys"):
+                actual = getattr(inspect(engine), method)(table)
+                expected = getattr(inspect(model_engine), method)(table)
+                assert sorted(actual, key=str) == sorted(expected, key=str), (table, method)
+    finally:
+        model_engine.dispose()
+
+
+def test_failed_migration_preserves_revision_schema_and_data(
+    engine: Engine, db_url: str, tmp_path: Path
+) -> None:
+    upgrade(db_url)
+    with Session(engine) as db:
+        db.add(make_session())
+        db.commit()
+    migrations = tmp_path / "failing_migrations"
+    shutil.copytree(MIGRATIONS_DIR, migrations)
+    (migrations / "versions/review_failure.py").write_text(
+        "from alembic import op\n"
+        "import sqlalchemy as sa\n"
+        "revision = 'review_failure'\n"
+        f"down_revision = {HEAD_REVISION!r}\n"
+        "def upgrade():\n"
+        "    op.create_table('partial', sa.Column('value', sa.Integer()))\n"
+        "    op.execute(\"UPDATE practice_session SET status = 'completed'\")\n"
+        "    raise RuntimeError('synthetic migration failure')\n"
+    )
+    config = alembic_config(db_url)
+    config.set_main_option("script_location", str(migrations))
+    with pytest.raises(RuntimeError, match="synthetic migration failure"):
+        command.upgrade(config, "head")
+    with engine.connect() as connection:
+        assert "partial" not in inspect(connection).get_table_names()
+        assert connection.exec_driver_sql("SELECT status FROM practice_session").scalar() == "open"
+        assert (
+            connection.exec_driver_sql("SELECT version_num FROM alembic_version").scalar()
+            == HEAD_REVISION
+        )
 
 
 def test_production_connection_settings_on_every_connection(engine: Engine) -> None:
-    with engine.connect() as first:
+    with engine.connect() as first, engine.connect() as second:
         assert verify_connection_settings(first) == {
             "journal_mode": "wal",
             "foreign_keys": "1",
             "busy_timeout": "5000",
             "synchronous": "FULL",
         }
-    with engine.connect() as second:
+        assert first.connection.driver_connection is not second.connection.driver_connection
         assert verify_connection_settings(second)["foreign_keys"] == "1"
+
+
+def test_ddl_and_savepoint_roll_back_with_outer_transaction(engine: Engine) -> None:
+    with engine.connect() as connection:
+        transaction = connection.begin()
+        connection.exec_driver_sql("CREATE TABLE rolled_back (value INTEGER)")
+        transaction.rollback()
+        assert "rolled_back" not in inspect(connection).get_table_names()
+        connection.rollback()
+        with connection.begin():
+            connection.exec_driver_sql("CREATE TABLE savepoint_test (value INTEGER)")
+        transaction = connection.begin()
+        with connection.begin_nested():
+            connection.exec_driver_sql("INSERT INTO savepoint_test VALUES (1)")
+        transaction.rollback()
+        assert connection.exec_driver_sql("SELECT count(*) FROM savepoint_test").scalar() == 0
+
+
+def test_read_transaction_keeps_a_consistent_snapshot(engine: Engine) -> None:
+    with engine.begin() as connection:
+        connection.exec_driver_sql("CREATE TABLE snapshot_test (value INTEGER)")
+        connection.exec_driver_sql("INSERT INTO snapshot_test VALUES (1)")
+    with engine.connect() as reader, engine.begin() as writer:
+        assert reader.exec_driver_sql("SELECT value FROM snapshot_test").scalar() == 1
+        writer.exec_driver_sql("UPDATE snapshot_test SET value = 2")
+        writer.commit()
+        assert reader.exec_driver_sql("SELECT value FROM snapshot_test").scalar() == 1
+        reader.rollback()
+        assert reader.exec_driver_sql("SELECT value FROM snapshot_test").scalar() == 2
+
+
+def test_relative_engine_url_uses_resolved_private_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    private = tmp_path / "private"
+    monkeypatch.setenv(settings.DATA_DIR_ENV_VAR, str(private))
+    monkeypatch.chdir(tmp_path)
+    eng = create_engine_for_url("sqlite:///relative.sqlite3")
+    try:
+        with eng.connect() as connection:
+            connection.exec_driver_sql("CREATE TABLE permissions_test (value INTEGER)")
+            actual = connection.exec_driver_sql("PRAGMA database_list").one()[2]
+            assert Path(actual) == private / "relative.sqlite3"
+            assert private.stat().st_mode & 0o777 == 0o700
+            for suffix in ("", "-wal", "-shm"):
+                assert Path(actual + suffix).stat().st_mode & 0o777 == 0o600
+    finally:
+        eng.dispose()
+
+
+@pytest.mark.parametrize(
+    "url",
+    ["sqlite:///:memory:", "sqlite://", "sqlite:///file:test?mode=memory&uri=true"],
+)
+def test_engine_itself_rejects_non_file_databases(url: str) -> None:
+    with pytest.raises(ValueError):
+        create_engine_for_url(url)
+
+
+def test_default_path_does_not_depend_on_working_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv(settings.DATA_DIR_ENV_VAR, raising=False)
+    monkeypatch.delenv(settings.DATABASE_URL_ENV_VAR, raising=False)
+    original = settings.database_path()
+    monkeypatch.chdir(tmp_path)
+    assert settings.database_path() == original
 
 
 def test_downgrade_removes_tables_and_reupgrade_recovers(engine: Engine, db_url: str) -> None:
@@ -328,6 +441,7 @@ def test_settings_default_uses_private_data_dir(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.delenv(settings.DATABASE_URL_ENV_VAR, raising=False)
+    monkeypatch.setenv(settings.DATA_DIR_ENV_VAR, str(tmp_path / "data"))
     monkeypatch.chdir(tmp_path)
 
     assert settings.database_path() == (tmp_path / "data" / settings.DEFAULT_DB_FILENAME)
