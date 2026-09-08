@@ -38,6 +38,7 @@ const session = (problems: unknown[] = []) => ({
   learner_id: learner,
   topic: "Persuasive writing",
   initiative: "balanced",
+  difficulty: "standard",
   status: "open",
   problems,
 });
@@ -101,6 +102,34 @@ afterEach(() => {
 });
 
 describe("AI learning conversation", () => {
+  it("requests easier practice directly and keeps response controls before next steps", async () => {
+    const fetcher = installSession(session([activity()]));
+    render(<Tutor learner={learner} offline={false} act={run} />);
+    const easier = await screen.findByRole("button", {
+      name: "Easier next activity",
+    });
+    const reply = screen.getByLabelText("Your work or question");
+    const photo = screen.getByText("Upload a photo");
+    const help = screen.getByText("Get help with this activity");
+    expect(
+      reply.compareDocumentPosition(photo) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      photo.compareDocumentPosition(help) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    fireEvent.click(easier);
+    await vi.waitFor(() => {
+      const sent = fetcher.mock.calls.find(([url]) =>
+        url.endsWith("/activities"),
+      );
+      expect(sent).toBeDefined();
+      expect(JSON.parse(sent![1].body as string)).toEqual({
+        source: "topic",
+        difficulty: "introductory",
+      });
+    });
+  });
+
   it("starts a non-math topic with no level, templates, or solution controls", async () => {
     const fetcher = vi.fn((url: string, options: RequestInit) => {
       if (url.endsWith("/features")) return response(capabilities);
@@ -119,6 +148,9 @@ describe("AI learning conversation", () => {
     fireEvent.change(screen.getByLabelText("Tutor style"), {
       target: { value: "learner_led" },
     });
+    fireEvent.change(screen.getByLabelText("Activity difficulty"), {
+      target: { value: "challenge" },
+    });
     await vi.waitFor(() =>
       expect(
         screen.getByRole("button", { name: "Start session" }),
@@ -136,6 +168,7 @@ describe("AI learning conversation", () => {
       learner_id: learner,
       topic: "Persuasive writing",
       initiative: "learner_led",
+      difficulty: "challenge",
     });
     expect(screen.queryByLabelText(/level|skill|grade/i)).toBeNull();
     expect(screen.queryByText("Full solution")).toBeNull();
@@ -296,7 +329,12 @@ describe("AI learning conversation", () => {
     fireEvent.change(screen.getByLabelText("Tutor style for this session"), {
       target: { value: "tutor_led" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Save tutor style" }));
+    fireEvent.change(screen.getByLabelText("Activity difficulty"), {
+      target: { value: "introductory" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save session settings" }),
+    );
     await vi.waitFor(() =>
       expect(
         fetcher.mock.calls.some(([url]) => url.endsWith("/settings")),
@@ -305,6 +343,7 @@ describe("AI learning conversation", () => {
     const sent = fetcher.mock.calls.find(([url]) => url.endsWith("/settings"))!;
     expect(JSON.parse(sent[1].body as string)).toEqual({
       initiative: "tutor_led",
+      difficulty: "introductory",
     });
     expect(
       screen.getByText(/Supplied homework is used for related practice only/),
@@ -327,6 +366,16 @@ describe("AI learning conversation", () => {
     );
     render(<Tutor learner={learner} offline={false} act={run} />);
     expect(
+      await screen.findByText(
+        "Reading your photograph… Your session is saved.",
+      ),
+    ).toBeVisible();
+    expect(document.querySelector(".spinner")).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "AI tutor" })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+    expect(
       await screen.findByRole("button", { name: "Share my work" }),
     ).toBeDisabled();
     expect(screen.getByLabelText("Your work or question")).toHaveAttribute(
@@ -341,6 +390,27 @@ describe("AI learning conversation", () => {
     expect(
       screen.getByRole("button", { name: "Cancel this operation" }),
     ).toBeEnabled();
+  });
+
+  it("shows the persisted provider code and only offers valid retries", async () => {
+    const failure = operation({
+      status: "failed",
+      reading: null,
+      feedback: null,
+      interpretation: null,
+      safe_error:
+        "The photo reader rejected the request. Ask an adult to check the model and connection settings. Your work is saved.",
+      error_code: "invalid_request",
+      retryable: false,
+    });
+    installSession(session([activity([failure])]));
+    render(<Tutor learner={learner} offline={false} act={run} />);
+    expect(
+      await screen.findByText("Diagnostic code: invalid_request"),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("button", { name: "Retry tutor response" }),
+    ).toBeNull();
   });
 
   it("keeps the original session request and key when its acknowledgement is lost", async () => {

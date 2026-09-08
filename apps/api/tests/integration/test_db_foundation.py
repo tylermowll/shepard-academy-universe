@@ -7,6 +7,7 @@ these gates.
 
 from __future__ import annotations
 
+import json
 import shutil
 import uuid
 from collections.abc import Iterator
@@ -34,7 +35,7 @@ from math_tutor.adapters.db.engine import (
 from math_tutor.adapters.db.models import Learner, PracticeSession, ProblemInstance
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
-HEAD_REVISION = "0013_local_password_policy"
+HEAD_REVISION = "0016_reasoning_effort"
 
 
 @pytest.fixture
@@ -129,6 +130,7 @@ def test_empty_file_migration_reaches_head(engine: Engine, db_url: str) -> None:
         "worker_heartbeat",
         "tutor_profile_version",
         "provider_probe",
+        "provider_probe_result",
         "route_selection",
         "model_call",
         "interpretation",
@@ -190,6 +192,113 @@ def test_migration_matches_model_metadata(engine: Engine, db_url: str, tmp_path:
                 assert sorted(actual, key=str) == sorted(expected, key=str), (table, method)
     finally:
         model_engine.dispose()
+
+
+def test_probe_diagnostics_migration_rolls_back_without_losing_existing_work(
+    engine: Engine,
+    db_url: str,
+) -> None:
+    upgrade(db_url, "0013_local_password_policy")
+    with Session(engine) as db:
+        session = make_session()
+        db.add(session)
+        db.commit()
+        session_id = session.id
+    upgrade(db_url)
+    assert "provider_probe_result" in table_columns(engine)
+    command.downgrade(alembic_config(db_url), "0013_local_password_policy")
+    assert "provider_probe_result" not in table_columns(engine)
+    with Session(engine) as db:
+        assert db.get(PracticeSession, session_id) is not None
+    upgrade(db_url)
+    assert "provider_probe_result" in table_columns(engine)
+
+
+def test_normalized_jpeg_migration_updates_and_rolls_back_saved_connections(
+    engine: Engine, db_url: str
+) -> None:
+    upgrade(db_url, "0014_probe_results")
+    configuration = {
+        "adapter": "meta",
+        "model": "synthetic-model",
+        "enabled": True,
+        "base_url": "https://synthetic.invalid/v1",
+        "data_boundary": "cloud",
+        "audience": "mixed",
+        "eligibility_record": "Synthetic fixture",
+        "capabilities": {"image_input": True, "accepted_image_mime_types": ["image/png"]},
+    }
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "INSERT INTO provider_connection(id, configuration, credential_revision) VALUES (?, ?, ?)",
+            ("synthetic", json.dumps(configuration), str(uuid.uuid4())),
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO provider_probe_result(id, provider_id, stage, status, output_limit, requests_started, elapsed_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                str(uuid.uuid4()),
+                "synthetic",
+                "vision",
+                "passed",
+                1200,
+                1,
+                10,
+                datetime.now(UTC).isoformat(),
+            ),
+        )
+    upgrade(db_url)
+    with engine.connect() as connection:
+        stored = json.loads(
+            connection.exec_driver_sql(
+                "SELECT configuration FROM provider_connection WHERE id = 'synthetic'"
+            ).scalar_one()
+        )
+        assert (
+            connection.exec_driver_sql("SELECT count(*) FROM provider_probe_result").scalar_one()
+            == 1
+        )
+    assert stored["capabilities"]["accepted_image_mime_types"] == ["image/jpeg"]
+    with engine.connect() as connection:
+        assert (
+            connection.exec_driver_sql(
+                "SELECT reasoning_effort FROM provider_probe_result"
+            ).scalar_one()
+            == "default"
+        )
+    assert "reasoning_effort" in table_columns(engine)["model_call"]
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "INSERT INTO provider_probe(fingerprint, provider_id, stage, tested_at) VALUES (?, ?, ?, ?)",
+            ("a" * 64, "synthetic", "vision", datetime.now(UTC).isoformat()),
+        )
+        connection.exec_driver_sql(
+            "INSERT INTO provider_probe_result(id, provider_id, stage, status, output_limit, requests_started, elapsed_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                str(uuid.uuid4()),
+                "synthetic",
+                "vision",
+                "passed",
+                1200,
+                1,
+                10,
+                datetime.now(UTC).isoformat(),
+            ),
+        )
+    command.downgrade(alembic_config(db_url), "0014_probe_results")
+    assert "reasoning_effort" not in table_columns(engine)["model_call"]
+    assert "reasoning_effort" not in table_columns(engine)["provider_probe_result"]
+    with engine.connect() as connection:
+        assert connection.exec_driver_sql("SELECT count(*) FROM provider_probe").scalar_one() == 0
+        restored = json.loads(
+            connection.exec_driver_sql(
+                "SELECT configuration FROM provider_connection WHERE id = 'synthetic'"
+            ).scalar_one()
+        )
+        assert (
+            connection.exec_driver_sql("SELECT count(*) FROM provider_probe_result").scalar_one()
+            == 2
+        )
+    assert restored["capabilities"]["accepted_image_mime_types"] == ["image/png"]
 
 
 def test_failed_migration_preserves_revision_schema_and_data(

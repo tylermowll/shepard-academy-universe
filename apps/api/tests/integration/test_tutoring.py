@@ -32,6 +32,7 @@ from math_tutor.adapters.providers.contracts import (
     FeedbackPayload,
     ModelRequest,
     ModelResult,
+    ProviderError,
     ReadingPayload,
 )
 
@@ -131,6 +132,7 @@ async def test_any_topic_generates_without_level_or_answer_key(
     pending = await activity(adult, session)
     assert pending["activity_state"] == "generating"
     assert pending["operations"][0]["status"] == "queued"
+    assert pending["operations"][0]["kind"] == "generation"
     assert worker.run_once(engine)
     ready = await latest(adult, session)
     assert ready["activity_state"] == "ready"
@@ -149,6 +151,34 @@ async def test_any_topic_generates_without_level_or_answer_key(
             headers={"Idempotency-Key": str(uuid4())},
         )
     ).status_code == 409
+
+
+@pytest.mark.anyio
+async def test_next_activity_saves_difficulty_atomically_and_deduplicates(
+    adult: AsyncClient, engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    requests = install_tutor(monkeypatch)
+    session = await tutor_session(adult)
+    path = f"/api/v1/tutor/sessions/{session['id']}/activities"
+    body = {"source": "topic", "difficulty": "introductory"}
+    headers = {"Idempotency-Key": str(uuid4())}
+    first = await adult.post(path, json=body, headers=headers)
+    assert first.status_code == 201
+    duplicate = await adult.post(path, json=body, headers=headers)
+    assert duplicate.status_code == 201 and duplicate.json()["id"] == first.json()["id"]
+    blocked = await adult.post(
+        path,
+        json={"source": "topic", "difficulty": "challenge"},
+        headers={"Idempotency-Key": str(uuid4())},
+    )
+    assert blocked.status_code == 409
+    saved = (await adult.get(f"/api/v1/tutor/sessions/{session['id']}")).json()
+    assert saved["difficulty"] == "introductory" and len(saved["problems"]) == 1
+    assert worker.run_once(engine)
+    assert "Difficulty: easier" in requests[-1].system_instruction
+    await activity(adult, session, source="topic", difficulty="challenge")
+    assert worker.run_once(engine)
+    assert "Difficulty: harder" in requests[-1].system_instruction
 
 
 @pytest.mark.anyio
@@ -178,6 +208,9 @@ async def test_photo_guidance_revision_context_and_next_activity(
     assert reading["reading"]["can_continue"] is True
     assert reading["reading"]["organization_feedback"]
     assert reading["feedback"] is None and reading["verdict"] is None
+    read_request = requests[-1]
+    assert read_request.purpose == "read"
+    assert read_request.max_output_tokens == 16384
     assert (
         await adult.post(
             f"/api/v1/submissions/{reading['id']}/confirm-interpretation",
@@ -264,6 +297,38 @@ async def test_unclear_reading_rejects_without_tutoring_or_approval(
 
 
 @pytest.mark.anyio
+async def test_photo_provider_failure_exposes_safe_diagnostic_and_retryability(
+    adult: AsyncClient, engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    install_tutor(monkeypatch)
+    session = await tutor_session(adult)
+    await activity(adult, session)
+    assert worker.run_once(engine)
+    problem = await latest(adult, session)
+    uploaded = await adult.post(
+        f"/api/v1/problems/{problem['id']}/photos?version={problem['version']}",
+        content=photo_bytes(),
+        headers={"Idempotency-Key": str(uuid4())},
+    )
+    assert uploaded.status_code == 202
+
+    def reject(_provider: ProviderConfig, _request: ModelRequest) -> ModelResult:
+        raise ProviderError("invalid_request")
+
+    monkeypatch.setattr(worker, "complete", reject)
+    assert worker.run_once(engine)
+    result = (await latest(adult, session))["operations"][-1]
+    assert result["status"] == "failed"
+    assert result["error_code"] == "invalid_request"
+    assert result["retryable"] is False
+    assert result["safe_error"] == (
+        "The photo reader rejected the request. Ask an adult to check the model and "
+        "connection settings. Your work is saved."
+    )
+    assert (await adult.post(f"/api/v1/operations/{result['id']}/retry")).status_code == 409
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize("source", ["reference_text", "reference_photo"])
 async def test_reference_is_only_for_distinct_generation_never_review(
     adult: AsyncClient, engine: Engine, monkeypatch: pytest.MonkeyPatch, source: str
@@ -321,9 +386,12 @@ async def test_settings_export_ownership_and_demo_boundaries(
     await activity(adult, session)
     assert worker.run_once(engine)
     settings = await adult.post(
-        f"/api/v1/tutor/sessions/{session['id']}/settings", json={"initiative": "learner_led"}
+        f"/api/v1/tutor/sessions/{session['id']}/settings",
+        json={"initiative": "learner_led", "difficulty": "introductory"},
     )
-    assert settings.status_code == 200 and settings.json()["initiative"] == "learner_led"
+    assert settings.status_code == 200
+    assert settings.json()["initiative"] == "learner_led"
+    assert settings.json()["difficulty"] == "introductory"
     assert (
         await adult.post(
             f"/api/v1/tutor/sessions/{session['id']}/settings",
@@ -347,6 +415,7 @@ async def test_settings_export_ownership_and_demo_boundaries(
     ).status_code == 202
     assert worker.run_once(engine)
     assert "unsolicited" in requests[-1].system_instruction
+    assert "Difficulty: easier" in requests[-1].system_instruction
     exported = await adult.post(f"/api/v1/admin/learners/{session['learner_id']}/export")
     assert exported.status_code == 200
     assert exported.json()["sessions"][-1]["topic"] == session["topic"]

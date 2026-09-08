@@ -77,7 +77,8 @@ export function HelpPage({
                 <li>
                   Enter a topic, such as “writing a persuasive paragraph.” Start
                   the session, then create an activity from your topic or
-                  reference material.
+                  reference material. Choose Easier, Standard, or Harder to set
+                  the level; you can change it during the session.
                 </li>
                 <li>
                   Write your response in the box, upload a photo, or use{" "}
@@ -127,8 +128,9 @@ export function HelpPage({
                   {link("learners", "Learners & devices")}.
                 </li>
                 <li>
-                  Choose <strong>Add yourself (adult)</strong>. Edit the name if
-                  you want, then choose <strong>Add learner</strong>.
+                  Choose <strong>Create my practice profile</strong>. Edit the
+                  prefilled name if you want, then choose{" "}
+                  <strong>Add learner</strong>.
                 </li>
                 <li>
                   Choose <strong>Start practice</strong>. Your own profile is
@@ -498,6 +500,14 @@ export function HelpPage({
                 photos expire within 24 hours by default. Later review uses the
                 saved text. Session history is kept for 30 days by default; the
                 operator may change retention.
+              </p>
+              <p>
+                Troubleshooting records keep the model, operation, outcome,
+                timing, and available token counts. They do not copy your
+                questions, answers, photos, or API keys. Submitted conversation
+                content remains in session history under the retention rules
+                above. The app does not make special copies of concerning
+                messages or send safety alerts.
               </p>
               <p>
                 Practice shows where text and photos are processed. A cloud

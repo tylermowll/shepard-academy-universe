@@ -41,7 +41,9 @@ function blankDraft(): Draft {
     eligibility_record: "",
     image_input: false,
     configured_context_limit: 32768,
+    configured_output_limit: 16384,
     structured_output_mode: "native",
+    reasoning_effort: "default",
     api_key_action: "keep",
     api_key: "",
   };
@@ -58,12 +60,15 @@ function inputFor(provider: Schema<"ProviderPublic">): ConnectionInput {
     eligibility_record: provider.eligibility_record,
     image_input: provider.image_input,
     configured_context_limit: provider.configured_context_limit,
+    configured_output_limit: provider.configured_output_limit ?? 16384,
     structured_output_mode: provider.structured_output_mode,
+    reasoning_effort: provider.reasoning_effort ?? "default",
     api_key_action: "keep",
   };
 }
 
 const knownSafeConnectionDetails = new Set([
+  "Thinking effort is currently supported only for Meta connections.",
   "An enabled Meta connection needs an API key.",
   "A changed server or provider needs a replacement key, or explicitly remove the old key.",
   "Use the cloud boundary for a public Internet endpoint.",
@@ -143,20 +148,80 @@ const probeMessages = {
     "The model server is limiting requests. Wait before testing again, and check the provider's usage limits.",
   probe_reading_failed:
     "The model could not clearly read the test photo. Check that the selected model and server support images, then try the photo-reader test again.",
+  output_limit:
+    "The model reached the response token limit before finishing. Increase Model response limit under Advanced connection options. The provider may charge for this incomplete response.",
+  incomplete_output:
+    "The model stopped without a complete response. The provider may charge even though the test did not pass.",
+  refusal:
+    "The model declined the sample request. The test did not pass; no automatic retry was made.",
+  adapter_failure:
+    "The app could not process the model server's response. This is an adapter error; the provider may have completed and charged for the request.",
 } as const;
 
 function probeError(cause: unknown) {
   if (cause instanceof ApiError) {
+    const step = cause.probeStep
+      ? {
+          generate: "Activity creation (step 1 of 2): ",
+          review: "Tutor feedback (step 2 of 2): ",
+          read: "Photo reading: ",
+        }[cause.probeStep]
+      : "";
     if (cause.code && Object.hasOwn(probeMessages, cause.code))
-      return probeMessages[cause.code as keyof typeof probeMessages];
+      return `${step}${probeMessages[cause.code as keyof typeof probeMessages]} (HTTP ${cause.status}; ${cause.code})`;
     if (cause.status === 401 || cause.status === 403)
       return "Your adult sign-in is no longer authorized. Sign in again before testing this connection.";
     if (cause.status === 409)
       return "The connection or app permissions changed during the test. Refresh connections, then test the current settings again.";
     if (cause.status === 429)
       return "Too many requests were made. Wait a minute before testing again.";
+    return `${step}The app returned HTTP ${cause.status} without a recognized test result. No successful test was confirmed.`;
   }
-  return "The connection test could not be completed. Check that the app and model servers are reachable, then retry. No successful test was confirmed.";
+  return "The browser did not receive a usable test result from the app. Refresh status before retrying; the provider may have completed and charged for the request. No successful test was confirmed.";
+}
+
+function RecentTests({ tests }: { tests: Schema<"ProbeResultPublic">[] }) {
+  const latest = tests[0];
+  if (!latest) return null;
+  const describe = (test: Schema<"ProbeResultPublic">) =>
+    test.status === "passed"
+      ? "Passed."
+      : test.status === "running"
+        ? "No final result recorded yet. The test may still be running or was interrupted. Refresh status before retrying."
+        : probeError(
+            new ApiError(
+              "",
+              test.http_status ?? 422,
+              test.code ?? undefined,
+              test.step,
+            ),
+          );
+  const metadata = (test: Schema<"ProbeResultPublic">) =>
+    `${new Date(test.created_at).toLocaleString()} · ${test.stage === "tutor" ? "Tutor" : "Photo reader"} · ${(test.elapsed_ms / 1000).toFixed(1)} seconds · ${test.requests_started} request(s) started · ${test.output_limit.toLocaleString()} output-token limit · thinking: ${test.reasoning_effort === "default" || !test.reasoning_effort ? "provider default" : test.reasoning_effort}`;
+  return (
+    <section aria-label="Recent connection tests">
+      <p className={latest.status === "failed" ? "error" : "notice"}>
+        Last test: {describe(latest)}
+      </p>
+      <p className="fine">{metadata(latest)}</p>
+      {latest.completion_reason && (
+        <p className="fine">Model finish reason: {latest.completion_reason}</p>
+      )}
+      {tests.length > 1 && (
+        <details>
+          <summary>Earlier test results ({tests.length - 1})</summary>
+          <ul>
+            {tests.slice(1).map((test, index) => (
+              <li key={`${test.created_at}-${index}`}>
+                <p>{describe(test)}</p>
+                <p className="fine">{metadata(test)}</p>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
+    </section>
+  );
 }
 
 export function ProviderConnections({
@@ -255,7 +320,7 @@ export function ProviderConnections({
           }
         : blankDraft(),
     );
-    setTerms(false);
+    setTerms(Boolean(provider?.eligibility_record.trim()));
     setMessage("");
     setError("");
     setSaveFailure("");
@@ -449,6 +514,7 @@ export function ProviderConnections({
                               : "keep",
                           api_key: "",
                           image_input: adapter === "meta",
+                          reasoning_effort: "default",
                           configured_context_limit:
                             adapter === "meta" ? 1_048_576 : 32768,
                         });
@@ -723,9 +789,10 @@ export function ProviderConnections({
                   above.
                 </label>
                 <p className="fine">
-                  This stays checked while you adjust technical options.
-                  Changing the model, server, connection type, or allowed users
-                  requires a fresh review.
+                  Your saved review stays checked when you reopen this
+                  connection or adjust technical options. Changing the model,
+                  server, connection type, or allowed users requires a fresh
+                  review.
                 </p>
               </fieldset>
               <details>
@@ -764,6 +831,63 @@ export function ProviderConnections({
                     budgeting limit, not a response length or a memory
                     allocation.
                   </p>
+                  <label>
+                    Model response limit
+                    <input
+                      type="number"
+                      min={64}
+                      max={131072}
+                      step={1}
+                      value={draft.configured_output_limit}
+                      onChange={(event) =>
+                        change(
+                          "configured_output_limit",
+                          Number(event.target.value),
+                        )
+                      }
+                      required
+                    />
+                  </label>
+                  <p className="fine">
+                    Maximum output tokens for tutor tests and real practice,
+                    including photo reading and reasoning where the provider
+                    counts it. The photo test still sends only one small image.
+                    Higher limits can increase time and cost; match your model's
+                    supported output limit.
+                  </p>
+                  {draft.adapter === "meta" && (
+                    <>
+                      <label>
+                        Thinking effort
+                        <select
+                          value={draft.reasoning_effort}
+                          onChange={(event) =>
+                            change(
+                              "reasoning_effort",
+                              event.target.value as Draft["reasoning_effort"],
+                            )
+                          }
+                        >
+                          <option value="default">Provider default</option>
+                          <option value="minimal">Minimal</option>
+                          <option value="low">Low</option>
+                          <option value="medium">Medium</option>
+                          <option value="high">High</option>
+                          <option value="xhigh">
+                            Xhigh (currently same as High)
+                          </option>
+                        </select>
+                      </label>
+                      <p className="fine">
+                        Applies to tests and practice, including photo reading.
+                        Provider default leaves the choice to Meta; it does not
+                        mean High. More thinking can take longer and use more
+                        output tokens. This does not change practice difficulty.
+                        Save, retest both roles, and assign active connections
+                        after changing it.
+                      </p>
+                    </>
+                  )}
                   <label>
                     Structured output
                     <select
@@ -932,6 +1056,16 @@ export function ProviderConnections({
                         .
                       </p>
                       <p className="fine">{provider.eligibility_record}</p>
+                      {provider.adapter === "meta" && (
+                        <p className="fine">
+                          Thinking effort:{" "}
+                          {provider.reasoning_effort &&
+                          provider.reasoning_effort !== "default"
+                            ? provider.reasoning_effort
+                            : "Provider default"}
+                          .
+                        </p>
+                      )}
                       {provider.managed ? (
                         <>
                           <div className="actions">
@@ -1012,7 +1146,8 @@ export function ProviderConnections({
           <p className="fine">
             A tutor test sends up to two sample text requests; a photo-reader
             test sends one sample image. Cloud providers may charge for these
-            calls. Tests run only when you press a test button and confirm.
+            calls even if a response fails validation. Tests run only when you
+            press a test button and confirm.
           </p>
           <div className="provider-list">
             {providers.map((provider) => {
@@ -1050,6 +1185,7 @@ export function ProviderConnections({
                       </dd>
                     </div>
                   </dl>
+                  <RecentTests tests={provider.recent_tests ?? []} />
                   {provider.key_needs_replacement && (
                     <p className="notice">
                       The saved API key must be replaced before testing.{" "}
@@ -1135,6 +1271,16 @@ export function ProviderConnections({
                                   ? "The test completed, but its results could not be refreshed. Refresh status before assigning active connections."
                                   : `${provider.id} test failed. ${probeError(cause)}`,
                               );
+                              if (!tested) {
+                                try {
+                                  await onChanged();
+                                } catch {
+                                  setError(
+                                    (current) =>
+                                      `${current} Saved test history could not refresh; use Refresh status.`,
+                                  );
+                                }
+                              }
                             } finally {
                               setBusy(false);
                             }

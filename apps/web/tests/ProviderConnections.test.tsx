@@ -23,6 +23,8 @@ const saved: Schema<"ProviderPublic"> = {
   requires_approval: false,
   eligibility_record: "Operator reviewed model terms.",
   configured_context_limit: 32768,
+  configured_output_limit: 16384,
+  reasoning_effort: "default",
   structured_output_mode: "native",
 };
 const configuration: Schema<"ProvidersPublic"> = {
@@ -100,6 +102,66 @@ function fillNew() {
 }
 
 describe("adult connection setup", () => {
+  it("reopens and saves Meta thinking effort without resetting the terms review", async () => {
+    show({
+      ...configuration,
+      providers: [
+        {
+          ...saved,
+          adapter: "meta",
+          boundary: "cloud",
+          reasoning_effort: "high",
+        },
+      ],
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Edit connection" }));
+    fireEvent.click(screen.getByText("Advanced connection options"));
+    expect(screen.getByLabelText("Thinking effort")).toHaveValue("high");
+    fireEvent.change(screen.getByLabelText("Thinking effort"), {
+      target: { value: "xhigh" },
+    });
+    expect(terms()).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Save connection" }));
+    await screen.findByText(/home-vision saved/);
+    const body = JSON.parse(
+      vi.mocked(fetch).mock.calls[0]?.[1]?.body as string,
+    ) as Schema<"ProviderConnectionInput">;
+    expect(body.reasoning_effort).toBe("xhigh");
+    expect(body.api_key_action).toBe("keep");
+  });
+
+  it("resets thinking to provider default when changing away from Meta", async () => {
+    show({
+      ...configuration,
+      providers: [
+        {
+          ...saved,
+          adapter: "meta",
+          boundary: "cloud",
+          reasoning_effort: "high",
+        },
+      ],
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Edit connection" }));
+    fireEvent.change(screen.getByLabelText("Connection type"), {
+      target: { value: "ollama" },
+    });
+    expect(screen.queryByLabelText("Thinking effort")).toBeNull();
+    fireEvent.change(screen.getByLabelText("Model name"), {
+      target: { value: "synthetic-model" },
+    });
+    fireEvent.change(screen.getByLabelText("API key action"), {
+      target: { value: "remove" },
+    });
+    fireEvent.click(terms());
+    fireEvent.click(screen.getByRole("button", { name: "Save connection" }));
+    await screen.findByText(/home-vision saved/);
+    const body = JSON.parse(
+      vi.mocked(fetch).mock.calls[0]?.[1]?.body as string,
+    ) as Schema<"ProviderConnectionInput">;
+    expect(body.reasoning_effort).toBe("default");
+  });
+
   it("shows the API key field immediately for hosted APIs while local servers default to no key", () => {
     show();
     fireEvent.click(screen.getByRole("button", { name: "Add AI connection" }));
@@ -130,6 +192,10 @@ describe("adult connection setup", () => {
     ],
     ["malformed_output", "Structured output under Advanced connection options"],
     ["probe_reading_failed", "selected model and server support images"],
+    ["output_limit", "response token limit"],
+    ["incomplete_output", "stopped without a complete response"],
+    ["refusal", "declined the sample request"],
+    ["adapter_failure", "adapter error"],
     ["unknown-provider-error", "No successful test was confirmed"],
     ["toString", "No successful test was confirmed"],
   ])(
@@ -157,10 +223,65 @@ describe("adult connection setup", () => {
       const error = await screen.findByRole("alert");
       expect(error).toHaveTextContent(expected);
       expect(error).not.toHaveTextContent("synthetic-secret-do-not-display");
-      expect(onChanged).not.toHaveBeenCalled();
+      expect(onChanged).toHaveBeenCalledOnce();
       expect(screen.queryByText(/test passed/)).toBeNull();
     },
   );
+
+  it("identifies the failed tutor step and response code without showing raw model content", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() =>
+        response(
+          {
+            detail: "synthetic-private-output",
+            code: "output_limit",
+            probe_step: "review",
+          },
+          422,
+        ),
+      ),
+    );
+    show(configuration, "tests");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    fireEvent.click(screen.getByRole("button", { name: "Test tutor" }));
+    const error = await screen.findByRole("alert");
+    expect(error).toHaveTextContent("Tutor feedback (step 2 of 2)");
+    expect(error).toHaveTextContent("HTTP 422; output_limit");
+    expect(error).toHaveTextContent("provider may charge");
+    expect(error).not.toHaveTextContent("synthetic-private-output");
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it("restores saved terms review after reopening and requires review for changed users", () => {
+    show();
+    fireEvent.click(screen.getByRole("button", { name: "Edit connection" }));
+    expect(terms()).toBeChecked();
+    fireEvent.change(screen.getByLabelText("Model context limit"), {
+      target: { value: "250000" },
+    });
+    expect(terms()).toBeChecked();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel connection" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit connection" }));
+    expect(terms()).toBeChecked();
+    fireEvent.change(screen.getByLabelText("Allowed users"), {
+      target: { value: "adult_only" },
+    });
+    expect(terms()).not.toBeChecked();
+    expect(
+      screen.getByRole("button", { name: "Save connection" }),
+    ).toBeDisabled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not infer a terms review for a connection with no saved record", () => {
+    show({
+      ...configuration,
+      providers: [{ ...saved, eligibility_record: "" }],
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Edit connection" }));
+    expect(terms()).not.toBeChecked();
+  });
 
   it("saves an exact local model without calling it or changing practice routes", async () => {
     const { onChanged, onSectionChange } = show();
@@ -188,7 +309,9 @@ describe("adult connection setup", () => {
             "Operator reviewed the model and provider terms for the mixed audience.",
           image_input: false,
           configured_context_limit: 32768,
+          configured_output_limit: 16384,
           structured_output_mode: "native",
+          reasoning_effort: "default",
           api_key_action: "keep",
           id: "local-tutor",
         }),

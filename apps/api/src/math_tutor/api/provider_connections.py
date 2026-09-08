@@ -10,9 +10,20 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError, model_validator
 from sqlalchemy import delete, func, select
 
-from math_tutor.adapters.db.models import ProviderConnection, ProviderPolicy, ProviderProbe
+from math_tutor.adapters.db.models import (
+    ProviderConnection,
+    ProviderPolicy,
+    ProviderProbe,
+    ProviderProbeResult,
+)
 from math_tutor.adapters.providers.config import ProviderConfig, load_configuration
-from math_tutor.adapters.providers.contracts import MAX_CONFIGURED_CONTEXT_LIMIT, Capabilities
+from math_tutor.adapters.providers.contracts import (
+    DEFAULT_TUTOR_OUTPUT_LIMIT,
+    MAX_CONFIGURED_CONTEXT_LIMIT,
+    MAX_OUTPUT_TOKENS,
+    Capabilities,
+    ReasoningEffort,
+)
 from math_tutor.adapters.providers.transports import local_destination
 from math_tutor.api.access import Adult, Database
 from math_tutor.api.learners import Acknowledged
@@ -33,7 +44,11 @@ class ProviderConnectionInput(BaseModel):
     eligibility_record: str = Field(min_length=1, max_length=500)
     image_input: bool = False
     configured_context_limit: int = Field(default=32768, ge=2048, le=MAX_CONFIGURED_CONTEXT_LIMIT)
+    configured_output_limit: int = Field(
+        default=DEFAULT_TUTOR_OUTPUT_LIMIT, ge=64, le=MAX_OUTPUT_TOKENS
+    )
     structured_output_mode: Literal["native", "json_prompt"] = "native"
+    reasoning_effort: ReasoningEffort = "default"
     api_key_action: Literal["keep", "replace", "remove"] = "keep"
     api_key: SecretStr | None = Field(default=None, min_length=1, max_length=8192, repr=False)
 
@@ -75,6 +90,10 @@ def private_setup() -> None:
 
 
 def connection_config(body: ProviderConnectionInput) -> ProviderConfig:
+    if body.adapter != "meta" and body.reasoning_effort != "default":
+        raise HTTPException(
+            422, "Thinking effort is currently supported only for Meta connections."
+        )
     try:
         parsed = urlsplit(body.base_url)
         if any(char.isspace() for char in body.base_url) or "\\" in body.base_url:
@@ -99,7 +118,9 @@ def connection_config(body: ProviderConnectionInput) -> ProviderConfig:
             capabilities=Capabilities(
                 image_input=body.image_input,
                 configured_context_limit=body.configured_context_limit,
+                configured_output_limit=body.configured_output_limit,
                 structured_output_mode=body.structured_output_mode,
+                reasoning_effort=body.reasoning_effort,
             ),
         )
         if body.boundary == "local_network":
@@ -190,6 +211,7 @@ def delete_connection(provider_id: str, db: Database, actor: Adult) -> Acknowled
         )
     db.execute(delete(ProviderProbe).where(ProviderProbe.provider_id == provider_id))
     db.delete(connection)
+    db.execute(delete(ProviderProbeResult).where(ProviderProbeResult.provider_id == provider_id))
     return Acknowledged()
 
 

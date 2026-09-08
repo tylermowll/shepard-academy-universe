@@ -3,11 +3,12 @@
 import json
 from datetime import timedelta
 from pathlib import Path
+from threading import Event, Thread
 from typing import Any
 from uuid import UUID
 
 import pytest
-from httpx2 import AsyncClient
+from httpx2 import AsyncClient, Client, MockTransport, Request, Response
 from sqlalchemy import select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
@@ -19,17 +20,25 @@ from test_workflows import engine as engine
 
 from math_tutor import worker
 from math_tutor.adapters.db.engine import create_engine_for_url
-from math_tutor.adapters.db.models import Job, ProviderConnection, ProviderPolicy, ProviderProbe
+from math_tutor.adapters.db.models import (
+    Job,
+    ModelCall,
+    ProviderConnection,
+    ProviderPolicy,
+    ProviderProbe,
+    ProviderProbeResult,
+)
 from math_tutor.adapters.db.types import utcnow
-from math_tutor.adapters.providers.config import ProviderConfig, Routes, route
+from math_tutor.adapters.providers.config import Configuration, ProviderConfig, Routes, route
 from math_tutor.adapters.providers.contracts import (
+    DEFAULT_TUTOR_OUTPUT_LIMIT,
     MAX_CONFIGURED_CONTEXT_LIMIT,
     ModelRequest,
     ModelResult,
     ProviderError,
     ReadingPayload,
 )
-from math_tutor.adapters.providers.transports import MockProvider
+from math_tutor.adapters.providers.transports import HTTPProvider, MockProvider
 from math_tutor.providers import effective_configuration, probe_fingerprint
 
 BASE = "/api/v1/admin/providers"
@@ -271,6 +280,10 @@ async def test_session_secret_rotation_leaves_settings_repairable(
         {"base_url": "https://8.8.8.8", "boundary": "local_network"},
         {"model": "latest"},
         {"eligibility_record": "   "},
+        {"configured_output_limit": 63},
+        {"configured_output_limit": 131073},
+        {"reasoning_effort": "high"},
+        {"reasoning_effort": "none"},
         {"api_key": KEY},
         {"api_key_action": "replace", "api_key": "\n" + KEY},
         {"adapter": "meta", "boundary": "local_network"},
@@ -423,7 +436,7 @@ async def test_current_schema_probes_require_explicit_consent_and_do_not_activat
 
     def complete(provider: ProviderConfig, request: ModelRequest) -> ModelResult:
         calls.append(request)
-        assert request.timeout_seconds <= 45
+        assert request.timeout_seconds <= 90
         assert provider.api_key_secret is not None
         if request.stage == "vision":
             assert request.purpose == "read" and request.private_image_bytes
@@ -471,6 +484,296 @@ async def test_current_schema_probes_require_explicit_consent_and_do_not_activat
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("finish_reason", "code"),
+    [
+        ("length", "output_limit"),
+        ("tool_calls", "incomplete_output"),
+        ("content_filter", "refusal"),
+    ],
+)
+async def test_photo_pass_survives_incomplete_tutor_with_safe_step_diagnostics(
+    adult: AsyncClient,
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+    finish_reason: str,
+    code: str,
+) -> None:
+    await add(adult, adapter="compatible", base_url="http://127.0.0.1:8081/v1")
+    calls: list[dict[str, Any]] = []
+    fail_review = True
+
+    def respond(request: Request) -> Response:
+        wire = json.loads(request.content)
+        calls.append(wire)
+        properties = wire["response_format"]["json_schema"]["schema"]["properties"]
+        if "transcription" in properties:
+            assert wire["messages"][-1]["content"][1]["image_url"]["url"].startswith(
+                "data:image/jpeg;base64,"
+            )
+            payload = {
+                "transcription": "1/2",
+                "quality": "clear",
+                "confidence": 1,
+                "ambiguities": [],
+                "organization_feedback": [],
+                "rejection_reason": None,
+            }
+        else:
+            assert wire["max_tokens"] == DEFAULT_TUTOR_OUTPUT_LIMIT == 16384
+            if "strengths" in properties and fail_review:
+                return Response(
+                    200,
+                    json={
+                        "choices": [{"finish_reason": finish_reason, "message": {"content": KEY}}]
+                    },
+                )
+            payload = (
+                {"problem_text": "Compare observations of two plants.", "concept_focus": "Evidence"}
+                if "problem_text" in properties
+                else {
+                    "strengths": [],
+                    "guidance": ["Explain your observation."],
+                    "next_step": "Name one observation.",
+                    "concepts": [],
+                    "uncertainty_note": None,
+                }
+            )
+        return Response(
+            200,
+            json={
+                "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(payload)}}]
+            },
+        )
+
+    def complete(provider: ProviderConfig, request: ModelRequest) -> ModelResult:
+        with Client(transport=MockTransport(respond)) as transport:
+            return HTTPProvider(provider, transport).complete(request)
+
+    monkeypatch.setattr("math_tutor.api.providers.complete", complete)
+    consent = {"authorize_synthetic_call": True}
+    assert (
+        await adult.post(BASE + "/local/probe", json={**consent, "stage": "vision"})
+    ).status_code == 200
+    response = await adult.post(BASE + "/local/probe", json={**consent, "stage": "tutor"})
+    assert response.status_code == 422
+    assert response.json()["code"] == code
+    assert response.json()["probe_step"] == "review"
+    assert KEY not in response.text
+    assert len(calls) == 3  # One image, activity, incomplete feedback; no automatic retry.
+    saved = next(p for p in (await adult.get(BASE)).json()["providers"] if p["id"] == "local")
+    assert saved["vision_probed"] and not saved["tutor_probed"]
+    latest = saved["recent_tests"][0]
+    assert latest["status"] == "failed" and latest["code"] == code
+    assert latest["http_status"] == 422 and latest["step"] == "review"
+    if code != "refusal":
+        assert latest["completion_reason"] == finish_reason
+    assert latest["requests_started"] == 2 and latest["output_limit"] == 16384
+    assert latest["elapsed_ms"] >= 0
+    assert KEY not in json.dumps(saved["recent_tests"])
+    with Session(engine) as db:
+        assert [p.stage for p in db.scalars(select(ProviderProbe))] == ["vision"]
+    fail_review = False
+    assert (
+        await adult.post(BASE + "/local/probe", json={**consent, "stage": "tutor"})
+    ).status_code == 200
+    assert len(calls) == 5
+
+
+@pytest.mark.anyio
+async def test_probe_diagnostics_do_not_upgrade_a_stale_read_snapshot(
+    adult: AsyncClient, engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await add(adult)
+    committed = Event()
+    errors: list[Exception] = []
+
+    def other_writer() -> None:
+        try:
+            with Session(engine) as db:
+                db.add(ProviderProbe(fingerprint="b" * 64, provider_id="unrelated", stage="vision"))
+                db.commit()
+        except Exception as error:
+            errors.append(error)
+        finally:
+            committed.set()
+
+    writer = Thread(target=other_writer)
+    reads = 0
+
+    def read_configuration(db: Session) -> Configuration:
+        nonlocal reads
+        result = effective_configuration(db)
+        reads += 1
+        if reads == 2:
+            # Another worker writes after this probe revalidates its policy.
+            # A deferred read snapshot would become stale; an immediate
+            # transaction makes that writer wait until diagnostic commit.
+            writer.start()
+            committed.wait(0.5)
+        return result
+
+    monkeypatch.setattr("math_tutor.api.providers.effective_configuration", read_configuration)
+    monkeypatch.setattr(
+        "math_tutor.api.providers.complete",
+        lambda provider, request: MockProvider().complete(request),
+    )
+    try:
+        result = await adult.post(
+            BASE + "/local/probe",
+            json={"stage": "tutor", "authorize_synthetic_call": True},
+        )
+        assert result.status_code == 200, result.text
+    finally:
+        if writer.ident is not None:
+            writer.join(timeout=5)
+    assert committed.is_set() and not errors
+    saved = next(p for p in (await adult.get(BASE)).json()["providers"] if p["id"] == "local")
+    assert saved["recent_tests"][0]["status"] == "passed"
+    assert saved["recent_tests"][0]["requests_started"] == 2
+
+
+@pytest.mark.anyio
+async def test_provider_http_failure_status_survives_safe_probe_translation(
+    adult: AsyncClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    await add(adult)
+
+    def reject(provider: ProviderConfig, request: ModelRequest) -> ModelResult:
+        raise ProviderError("authentication", http_status=401)
+
+    monkeypatch.setattr("math_tutor.api.providers.complete", reject)
+    result = await adult.post(
+        BASE + "/local/probe",
+        json={"stage": "tutor", "authorize_synthetic_call": True},
+    )
+    assert result.status_code == 422 and result.json()["code"] == "authentication"
+    saved = next(p for p in (await adult.get(BASE)).json()["providers"] if p["id"] == "local")
+    assert saved["recent_tests"][0]["http_status"] == 401
+
+
+@pytest.mark.anyio
+async def test_meta_effort_persists_reaches_probes_and_worker_and_invalidates_readiness(
+    adult: AsyncClient, engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ALLOW_CLOUD_INFERENCE", "true")
+    body = connection(
+        adapter="meta",
+        base_url="https://synthetic.invalid/v1",
+        boundary="cloud",
+        api_key_action="replace",
+        api_key=KEY,
+        reasoning_effort="high",
+    )
+    await add(adult, **body)
+    purposes: list[str] = []
+
+    def complete(provider: ProviderConfig, request: ModelRequest) -> ModelResult:
+        assert provider.capabilities.reasoning_effort == "high"
+        assert request.max_output_tokens == 16384
+        purposes.append(request.purpose)
+        if request.purpose == "read":
+            return ModelResult(
+                model_id=request.model_id,
+                validated_payload=ReadingPayload(
+                    transcription="1/2",
+                    quality="clear",
+                    confidence=1,
+                    ambiguities=[],
+                    organization_feedback=[],
+                    rejection_reason=None,
+                ),
+            )
+        return MockProvider().complete(request)
+
+    monkeypatch.setattr("math_tutor.api.providers.complete", complete)
+    monkeypatch.setattr(worker, "complete", complete)
+    for stage in ("tutor", "vision"):
+        response = await adult.post(
+            BASE + "/local/probe", json={"stage": stage, "authorize_synthetic_call": True}
+        )
+        assert response.status_code == 200, response.text
+    saved = next(p for p in (await adult.get(BASE)).json()["providers"] if p["id"] == "local")
+    assert saved["reasoning_effort"] == "high"
+    assert all(
+        test["reasoning_effort"] == "high" and test["output_limit"] == 16384
+        for test in saved["recent_tests"]
+    )
+    roles = {"tutor": "local", "vision": "local", "acknowledge_data_boundary": True}
+    assert (await adult.post(BASE + "/routes", json=roles)).status_code == 200
+    await activity(adult, await tutor_session(adult))
+    assert worker.run_once(engine)
+    assert purposes == ["generate", "review", "read", "generate"]
+    with Session(engine) as db:
+        call = db.scalar(select(ModelCall).where(ModelCall.provider_id == "local"))
+        assert call is not None and call.reasoning_effort == "high"
+    body.pop("api_key")
+    body.update(api_key_action="keep", reasoning_effort="low")
+    assert (await adult.put(BASE + "/connections/local", json=body)).status_code == 200
+    saved = next(p for p in (await adult.get(BASE)).json()["providers"] if p["id"] == "local")
+    assert saved["reasoning_effort"] == "low"
+    assert not saved["tutor_probed"] and not saved["vision_probed"]
+    assert saved["recent_tests"][0]["reasoning_effort"] == "high"
+    assert (await adult.post(BASE + "/routes", json=roles)).status_code == 422
+
+
+@pytest.mark.anyio
+async def test_test_history_is_bounded_expires_and_is_deleted_with_connection(
+    adult: AsyncClient,
+    engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from math_tutor.retention import sweep
+
+    await add(adult, configured_output_limit=24576, configured_context_limit=100000)
+
+    def complete(provider: ProviderConfig, request: ModelRequest) -> ModelResult:
+        assert request.max_output_tokens == 24576
+        return MockProvider().complete(request)
+
+    monkeypatch.setattr("math_tutor.api.providers.complete", complete)
+    with Session(engine) as db:
+        for index in range(25):
+            db.add(
+                ProviderProbeResult(
+                    provider_id="local",
+                    stage="tutor",
+                    status="failed",
+                    code="incomplete_output",
+                    output_limit=1200,
+                    requests_started=1,
+                    elapsed_ms=100,
+                    created_at=utcnow() - timedelta(minutes=index + 1),
+                )
+            )
+        db.commit()
+    assert (
+        await adult.post(
+            BASE + "/local/probe", json={"stage": "tutor", "authorize_synthetic_call": True}
+        )
+    ).status_code == 200
+    with Session(engine) as db:
+        results = list(db.scalars(select(ProviderProbeResult)))
+        assert len(results) == 20
+        for result in results:
+            result.created_at = utcnow() - timedelta(days=8)
+        db.commit()
+    saved = next(p for p in (await adult.get(BASE)).json()["providers"] if p["id"] == "local")
+    assert saved["recent_tests"] == []
+    sweep(engine)
+    with Session(engine) as db:
+        assert list(db.scalars(select(ProviderProbeResult))) == []
+    assert (
+        await adult.post(
+            BASE + "/local/probe", json={"stage": "tutor", "authorize_synthetic_call": True}
+        )
+    ).status_code == 200
+    assert (await adult.delete(BASE + "/connections/local")).status_code == 200
+    with Session(engine) as db:
+        assert list(db.scalars(select(ProviderProbeResult))) == []
+
+
+@pytest.mark.anyio
 async def test_edit_selected_local_to_cloud_requires_fresh_learner_data_consent(
     adult: AsyncClient, engine: Engine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -508,7 +811,8 @@ async def test_edit_selected_local_to_cloud_requires_fresh_learner_data_consent(
 
 @pytest.mark.anyio
 @pytest.mark.parametrize(
-    "failure", ["second_schema", "late_change", "authentication", "uncertain_photo"]
+    "failure",
+    ["second_schema", "late_change", "deleted", "authentication", "uncertain_photo", "unsafe_code"],
 )
 async def test_failed_or_stale_probe_does_not_record_success(
     adult: AsyncClient, engine: Engine, monkeypatch: pytest.MonkeyPatch, failure: str
@@ -521,6 +825,16 @@ async def test_failed_or_stale_probe_does_not_record_success(
         calls += 1
         if failure == "authentication":
             raise ProviderError("authentication", safe_message="vendor accidentally echoed " + KEY)
+        if failure == "unsafe_code":
+            raise ProviderError(KEY, safe_message=KEY, completion_reason=KEY)
+        if failure == "deleted" and calls == 1:
+            with Session(engine) as db:
+                row = db.get(ProviderConnection, "local")
+                assert row is not None
+                db.delete(row)
+                for attempt in db.scalars(select(ProviderProbeResult)):
+                    db.delete(attempt)
+                db.commit()
         if failure == "late_change" and calls == 1:
             with Session(engine) as db:
                 row = db.get(ProviderConnection, "local")
@@ -551,7 +865,7 @@ async def test_failed_or_stale_probe_does_not_record_success(
             "authorize_synthetic_call": True,
         },
     )
-    assert response.status_code == (409 if failure == "late_change" else 422)
+    assert response.status_code == (409 if failure in {"late_change", "deleted"} else 422)
     assert KEY not in response.text
     if failure == "authentication":
         assert "API key" in response.text
@@ -562,6 +876,13 @@ async def test_failed_or_stale_probe_does_not_record_success(
         assert calls == 1  # Every provider call revalidates the current policy.
     with Session(engine) as db:
         assert list(db.scalars(select(ProviderProbe))) == []
+        results = list(db.scalars(select(ProviderProbeResult)))
+        if failure == "deleted":
+            assert not results
+        else:
+            assert len(results) == 1 and results[0].status == "failed"
+            assert KEY not in (results[0].code or "")
+            assert KEY not in (results[0].completion_reason or "")
 
 
 @pytest.mark.anyio

@@ -31,6 +31,27 @@ from math_tutor.adapters.providers.contracts import (
 # A routing threshold, not a calibrated probability of correct recognition.
 READING_THRESHOLD = 0.85
 
+DIFFICULTY_GUIDANCE = {
+    "introductory": (
+        "Difficulty: easier. Teach one foundational idea at a time, use plain language, "
+        "minimize prerequisites, and keep the activity short."
+    ),
+    "standard": (
+        "Difficulty: standard. Use the central concept with ordinary prerequisite knowledge "
+        "and enough challenge to require an explanation."
+    ),
+    "challenge": (
+        "Difficulty: harder. Require deeper reasoning or connection of multiple ideas while "
+        "remaining within the requested topic and avoiding obscure trivia."
+    ),
+}
+
+
+def difficulty_guidance(session: PracticeSession) -> str:
+    value = session.profile_settings.get("difficulty", "standard")
+    return DIFFICULTY_GUIDANCE.get(str(value), DIFFICULTY_GUIDANCE["standard"])
+
+
 TEACHING = (
     "You are a helpful tutor across mathematics, writing, reading, history, social studies, science and other subjects. "
     "Guide thinking, explain concepts, and use relevant examples with DISTINCT content. Never give the final answer, "
@@ -196,6 +217,7 @@ def make_request(
             "its text; ask the learner to supply an excerpt or make a general reading-skill activity. No grade or "
             "level is required; adapt challenge to the topic and observed work."
         )
+        instruction += " " + difficulty_guidance(session)
         history = recent_learning(db, session, problem)
         if history:
             messages.append(
@@ -226,6 +248,7 @@ def make_request(
             "Socratic questions. Any example must be different from both the assigned task and pasted homework. "
             "Your observations are fallible guidance, not a verified grade."
         )
+        instruction += " " + difficulty_guidance(session)
         pacing = {
             "tutor_led": "Actively propose a useful next step and explain why; adapt the next activity to observed work.",
             "balanced": "Offer one next step while inviting the learner's question or preference.",
@@ -268,7 +291,7 @@ def make_request(
                 safe_message="Submit a shorter section of work; your input was not clipped.",
             )
         messages.append(Message(role="user", content=content))
-    output = 1600 if purpose != "read" else 1200
+    output = provider.capabilities.configured_output_limit
     messages = bounded_messages(
         messages, instruction, schema, provider, image=image is not None, output=output
     )

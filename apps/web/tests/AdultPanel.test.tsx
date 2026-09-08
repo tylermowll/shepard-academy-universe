@@ -43,6 +43,8 @@ const providers: Schema<"ProvidersPublic"> = {
       requires_approval: false,
       eligibility_record: "Synthetic test fixture.",
       configured_context_limit: 8192,
+      configured_output_limit: 16384,
+      reasoning_effort: "default",
       structured_output_mode: "native",
     },
     {
@@ -61,6 +63,8 @@ const providers: Schema<"ProvidersPublic"> = {
       requires_approval: false,
       eligibility_record: "Synthetic test fixture.",
       configured_context_limit: 8192,
+      configured_output_limit: 16384,
+      reasoning_effort: "default",
       structured_output_mode: "native",
     },
   ],
@@ -162,33 +166,37 @@ describe("learner and device page", () => {
   });
 
   it("prefills an editable adult profile for the parent without creating it until submitted", async () => {
-    const ownProfile = { ...learner, alias: "Me", eligibility: "adult" };
+    const ownProfile = {
+      ...learner,
+      alias: "parent-login",
+      eligibility: "adult",
+    };
     vi.stubGlobal(
       "fetch",
       vi.fn(() => Promise.resolve(response(ownProfile))),
     );
     const handlers = props();
-    render(<AdultPanel {...handlers} />);
+    render(<AdultPanel {...handlers} adultLoginName="parent-login" />);
     expect(
       screen.getByText(/Your adult sign-in manages this app/),
     ).toBeVisible();
     fireEvent.click(
-      screen.getByRole("button", { name: "Add yourself (adult)" }),
+      screen.getByRole("button", { name: "Create my practice profile" }),
     );
     const name = screen.getByLabelText("Learner name");
-    expect(name).toHaveValue("Me");
+    expect(name).toHaveValue("parent-login");
     expect(name).toHaveFocus();
     expect(name).not.toHaveAttribute("readonly");
     expect(screen.getByLabelText("Age group")).toHaveValue("adult");
     expect(fetch).not.toHaveBeenCalled();
     expect(handlers.onLearner).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Add learner" }));
-    await screen.findByText("Me added. You can start practice now.");
+    await screen.findByText("parent-login added. You can start practice now.");
     expect(fetch).toHaveBeenCalledWith(
       "/api/v1/admin/learners",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ alias: "Me", eligibility: "adult" }),
+        body: JSON.stringify({ alias: "parent-login", eligibility: "adult" }),
       }),
     );
     expect(handlers.onLearner).toHaveBeenCalledWith(ownProfile.id);

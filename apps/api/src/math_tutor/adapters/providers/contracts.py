@@ -6,11 +6,17 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from math_tutor.adapters.images import NORMALIZED_IMAGE_MIME_TYPE
+
 # Context sizes cross the JSON API and are persisted in SQLite JSON. A signed
 # 32-bit ceiling is exact in browser numbers, comfortably inside SQLite's signed
 # 64-bit integer range, and leaves Python's request-budget arithmetic unbounded by
 # machine-word overflow while accommodating current million-token models.
 MAX_CONFIGURED_CONTEXT_LIMIT = 2_147_483_647
+DEFAULT_TUTOR_OUTPUT_LIMIT = 16384
+MAX_OUTPUT_TOKENS = 131072
+DEFAULT_PROVIDER_ERROR_MESSAGE = "Provider could not complete this operation. Your work is saved."
+ReasoningEffort = Literal["default", "minimal", "low", "medium", "high", "xhigh"]
 
 
 class Capabilities(BaseModel):
@@ -19,8 +25,14 @@ class Capabilities(BaseModel):
     image_input: bool = False
     structured_output_mode: Literal["native", "json_prompt"] = "native"
     max_images: int = Field(default=1, ge=0, le=1)
-    accepted_image_mime_types: list[str] = Field(default_factory=lambda: ["image/png"])
-    configured_context_limit: int = Field(default=8192, ge=2048, le=MAX_CONFIGURED_CONTEXT_LIMIT)
+    accepted_image_mime_types: list[str] = Field(
+        default_factory=lambda: [NORMALIZED_IMAGE_MIME_TYPE]
+    )
+    configured_context_limit: int = Field(default=32768, ge=2048, le=MAX_CONFIGURED_CONTEXT_LIMIT)
+    configured_output_limit: int = Field(
+        default=DEFAULT_TUTOR_OUTPUT_LIMIT, ge=64, le=MAX_OUTPUT_TOKENS
+    )
+    reasoning_effort: ReasoningEffort = "default"
 
 
 class Message(BaseModel):
@@ -86,7 +98,7 @@ class ModelRequest(BaseModel):
     ordered_messages: list[Message] = Field(max_length=12)
     private_image_bytes: bytes | None = Field(default=None, exclude=True)
     response_schema: dict[str, Any]
-    max_output_tokens: int = Field(default=1200, ge=64, le=4096)
+    max_output_tokens: int = Field(default=1200, ge=64, le=MAX_OUTPUT_TOKENS)
     timeout_seconds: int = Field(default=90, ge=1, le=90)
 
 
@@ -106,8 +118,10 @@ class ProviderError(Exception):
     code: str
     retryable: bool = False
     retry_after_seconds: int = 1
-    safe_message: str = "Provider could not complete this operation. Your work is saved."
+    safe_message: str = DEFAULT_PROVIDER_ERROR_MESSAGE
     provider_request_id: str | None = None
+    completion_reason: str | None = None
+    http_status: int | None = None
 
 
 class Provider(Protocol):

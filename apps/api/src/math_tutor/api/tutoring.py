@@ -11,7 +11,13 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from math_tutor.adapters.db.models import Job, PracticeSession, ProblemInstance, Submission
+from math_tutor.adapters.db.models import (
+    DEFAULT_PROFILE,
+    Job,
+    PracticeSession,
+    ProblemInstance,
+    Submission,
+)
 from math_tutor.adapters.db.types import utcnow
 from math_tutor.api.access import Database, Principal, owned_learner
 from math_tutor.api.practice import (
@@ -26,6 +32,14 @@ from math_tutor.providers import authorize_route, effective_configuration
 
 router = APIRouter(prefix="/api/v1/tutor", tags=["AI tutoring"])
 Initiative = Literal["tutor_led", "balanced", "learner_led"]
+Difficulty = Literal["introductory", "standard", "challenge"]
+
+
+def session_difficulty(row: PracticeSession) -> Difficulty:
+    value = row.profile_settings.get("difficulty", "standard")
+    return cast(
+        Difficulty, value if value in {"introductory", "standard", "challenge"} else "standard"
+    )
 
 
 class TutoringSessionInput(BaseModel):
@@ -33,15 +47,18 @@ class TutoringSessionInput(BaseModel):
     learner_id: UUID
     topic: str = Field(min_length=1, max_length=500)
     initiative: Initiative = "balanced"
+    difficulty: Difficulty = "standard"
 
 
 class TutorSettingsInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     initiative: Initiative
+    difficulty: Difficulty | None = None
 
 
 class TutorActivityInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    difficulty: Difficulty | None = None
     source: Literal["topic", "reference_text", "reference_photo"] = "topic"
     reference_text: str | None = Field(default=None, max_length=8000)
 
@@ -60,6 +77,7 @@ class TutoringSessionPublic(BaseModel):
     status: str
     topic: str
     initiative: Initiative
+    difficulty: Difficulty
     problems: list[ProblemPublic]
 
 
@@ -70,6 +88,7 @@ def public_session(db: Session, row: PracticeSession) -> TutoringSessionPublic:
         status=row.status,
         topic=row.topic,
         initiative=cast(Initiative, row.initiative),
+        difficulty=session_difficulty(row),
         problems=[
             problem_public(db, item)
             for item in db.scalars(
@@ -120,6 +139,7 @@ def create_session(
         mode="ai_tutor",
         topic=body.topic.strip(),
         initiative=body.initiative,
+        profile_settings={**DEFAULT_PROFILE, "difficulty": body.difficulty},
         request_key=key,
         payload_hash=payload,
     )
@@ -155,6 +175,8 @@ def settings(
     if row.status != "open":
         raise HTTPException(409, "This session is finished.")
     row.initiative = body.initiative
+    if body.difficulty is not None:
+        row.profile_settings = {**row.profile_settings, "difficulty": body.difficulty}
     row.updated_at = utcnow()
     return public_session(db, row)
 
@@ -199,6 +221,9 @@ def activity(
     photo = body.source == "reference_photo"
     if photo:
         authorize_route(db, config, "vision", session.learner_id)
+    if body.difficulty is not None:
+        session.profile_settings = {**session.profile_settings, "difficulty": body.difficulty}
+    session.updated_at = utcnow()
     row = ProblemInstance(
         session_id=session.id,
         template_id="ai-activity-v1",

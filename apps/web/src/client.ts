@@ -22,6 +22,7 @@ export class ApiError extends Error {
     message: string,
     readonly status: number,
     readonly code?: string,
+    readonly probeStep?: Schema<"ProbeFailurePublic">["probe_step"],
   ) {
     super(message);
   }
@@ -75,6 +76,14 @@ export async function api<T>(
         "code" in error &&
         typeof error.code === "string"
         ? error.code
+        : undefined,
+      error &&
+        typeof error === "object" &&
+        "probe_step" in error &&
+        (error.probe_step === "generate" ||
+          error.probe_step === "review" ||
+          error.probe_step === "read")
+        ? error.probe_step
         : undefined,
     );
   }

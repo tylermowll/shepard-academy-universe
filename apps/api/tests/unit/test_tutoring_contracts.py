@@ -173,8 +173,12 @@ def test_strict_response_schema_requires_nullable_defaults_without_mutating_cont
     assert schema["properties"]["uncertainty_note"]["default"] is None
 
 
-def test_mock_vision_only_recognizes_exact_original_public_fixture() -> None:
+@pytest.mark.parametrize("preview", [False, True])
+def test_mock_vision_only_recognizes_exact_original_public_fixture(preview: bool) -> None:
     fixture = Path(__file__).resolve().parents[4] / "evals/fixtures/work.png"
+    photo = normalize(fixture.read_bytes())
+    if preview:
+        photo = normalize(photo)
     request = ModelRequest(
         operation_id=uuid4(),
         stage="vision",
@@ -183,7 +187,7 @@ def test_mock_vision_only_recognizes_exact_original_public_fixture() -> None:
         system_instruction="Read visible work.",
         ordered_messages=[Message(role="user", content="Synthetic image")],
         response_schema=ReadingPayload.model_json_schema(),
-        private_image_bytes=normalize(fixture.read_bytes()),
+        private_image_bytes=photo,
     )
     payload = MockProvider().complete(request).validated_payload
     assert (

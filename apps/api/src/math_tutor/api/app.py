@@ -29,6 +29,7 @@ from math_tutor.api.phone import router as phone_router
 from math_tutor.api.photos import router as photo_router
 from math_tutor.api.practice import router as practice_router
 from math_tutor.api.profiles import router as profile_router
+from math_tutor.api.providers import ProbeFailure, ProbeFailurePublic
 from math_tutor.api.providers import router as provider_router
 from math_tutor.api.review import router as review_router
 from math_tutor.api.setup import router as setup_router
@@ -110,6 +111,16 @@ def create_app(engine: Engine | None = None) -> FastAPI:
 
     @application.exception_handler(ProviderError)
     async def provider_error(_request: Request, error: ProviderError) -> Response:
+        if isinstance(error, ProbeFailure):
+            return JSONResponse(
+                ProbeFailurePublic(
+                    detail=error.safe_message,
+                    code=error.code,
+                    probe_step=error.probe_step,
+                    completion_reason=error.completion_reason,
+                ).model_dump(),
+                status_code=422,
+            )
         return JSONResponse({"detail": error.safe_message, "code": error.code}, status_code=422)
 
     @application.exception_handler(RequestValidationError)

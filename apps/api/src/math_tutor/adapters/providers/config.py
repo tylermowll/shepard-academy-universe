@@ -52,6 +52,8 @@ class ProviderConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_route(self) -> ProviderConfig:
+        if self.adapter != "meta" and self.capabilities.reasoning_effort != "default":
+            raise ValueError("Thinking effort is currently supported only for Meta connections.")
         if not self.enabled:
             return self
         if "REPLACE" in self.model or self.model == "latest":

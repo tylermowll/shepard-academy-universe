@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from math_tutor import settings
 from math_tutor.adapters.db.models import DeviceSession, PhoneUpload, ProblemInstance, Submission
 from math_tutor.adapters.db.types import utcnow
-from math_tutor.adapters.images import delete_image
+from math_tutor.adapters.images import NORMALIZED_IMAGE_MIME_TYPE, delete_image
 from math_tutor.api.access import Database, Principal
 from math_tutor.api.auth import client_key
 from math_tutor.api.photos import enqueue_photo, receive_image
@@ -213,7 +213,9 @@ async def preview(request: Request, db: Database) -> Response:
     grant = presented_grant(request, db, rate_limit=False)
     if grant.submission_id is not None:
         raise HTTPException(409, "This photo has already been sent.")
-    return Response(image, media_type="image/png", headers={"Cache-Control": "no-store"})
+    return Response(
+        image, media_type=NORMALIZED_IMAGE_MIME_TYPE, headers={"Cache-Control": "no-store"}
+    )
 
 
 @router.post("/phone-upload/photos", response_model=PhoneReceipt, status_code=202)

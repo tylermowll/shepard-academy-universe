@@ -56,6 +56,18 @@ current product contract. Historical T00–T24 math/demo/evaluation descriptions
 below document earlier engineering work, not restrictions on the AI tutor.
 There are **no fixed-template problems and no photo approval gate** in the tutor.
 
+Activity difficulty is a learning preference: `introductory` (Easier), `standard`,
+or `challenge` (Harder), defaulting to Standard. Persist it with the session and
+apply it to activity and feedback instructions. Easier/Harder next-activity
+requests update difficulty and queue the activity in one idempotent transaction.
+This is separate from provider reasoning effort. Meta connections may explicitly
+select minimal/low/medium/high/xhigh; default omits the parameter. Other adapters
+reject non-default effort until their distinct wire contracts are implemented.
+Persist selected effort in model-call and probe diagnostics, not reasoning text.
+Keep Practice ordered as activity/discussion, grouped typed/photo input, hints
+and next-activity choices, followed by secondary material/session settings.
+Do not render internal successful activity-generation operations as learner chat.
+
 ### First usable release
 
 Deliver a complete, modest application with:
@@ -147,8 +159,9 @@ option.
 Account permissions and learner profiles are distinct. One adult account can
 manage the household and practice through its own learner profile; it does not
 need a second sign-in to study. Each child has a separate profile and paired
-browser access limited to that learner. The Add yourself action preselects adult
-eligibility explicitly and still requires submitting the learner form.
+browser access limited to that learner. The Create my practice profile action
+prefills the administrator login name and adult eligibility, while still requiring
+the administrator to submit a distinct learner profile.
 
 ### Tutor profile fields
 
@@ -552,9 +565,9 @@ and the separate raw-image endpoint. Generated OpenAPI defines exact schemas.
 | `GET/POST /admin/tutor-profiles`                   | Adult                    | Read/create profiles and versions                                                                         |
 | `POST /sessions`                                   | Authorized learner/adult | Start session with allowed profile version                                                                |
 | `POST /sessions/{id}/problems`                     | Session owner            | Create next deterministic problem                                                                         |
-| `POST /tutor/sessions`, `GET /tutor/sessions[/id]` | Authorized learner/adult | Primary multi-subject sessions with free-text topic and initiative                                        |
+| `POST /tutor/sessions`, `GET /tutor/sessions[/id]` | Authorized learner/adult | Primary multi-subject sessions with free-text topic, initiative and difficulty                             |
 | `POST /tutor/sessions/{id}/activities`             | Session owner            | AI generation from topic, pasted reference, or a reference-photo intake target                            |
-| `POST /tutor/sessions/{id}/settings`               | Session owner            | Adjust initiative for subsequent requests                                                                 |
+| `POST /tutor/sessions/{id}/settings`               | Session owner            | Adjust initiative and difficulty for subsequent requests                                                   |
 | `POST /problems/{id}/submissions`                  | Problem owner            | Typed answer/question/hint; persist then return 202                                                       |
 | `POST /submissions/{id}/confirm-interpretation`    | Submission owner         | Confirm/edit a specific version; queue checking/tutoring                                                  |
 | `POST /problems/{id}/photos`                       | Problem owner            | Bounded raw image; interpretation requires confirmation                                                   |
@@ -620,13 +633,25 @@ The operation result separates `answer_status`, `format_status`, `reasoning_stat
 
 ### Image processing
 
-Accept one JPEG, PNG, or WebP image per submission initially. For phone usability, add HEIC/HEIF via pinned, tested `pillow-heif` in the photo milestone [^S37]; unsupported files receive a clear conversion/retake option. Do not accept PDFs, SVGs, archives, or arbitrary remote image URLs in version 1.
+Accept one JPEG, PNG, WebP, HEIC, or HEIF image per submission. Decode with pinned,
+tested `pillow-heif` support where required, then strip metadata and create one
+bounded JPEG for preview, private storage, and the provider request [^S37].
+Unsupported files receive a clear conversion/retake option. Do not accept PDFs,
+SVGs, archives, or arbitrary remote image URLs in version 1.
 
 The application-specific defaults are 8 MiB upload size and 25 million decoded pixels, with a normalized image bounded to 2,048 pixels on its longer side. T24 raises the former 24,000,000-pixel cap slightly to admit 24 MP-class phone images (for example, 5712 × 4284 = 24,470,208 pixels); 48 MP originals remain outside the budget. Provider adapters may apply stricter documented bounds, but must report an incompatible upload rather than silently clipping work. Evaluate readability before reducing these defaults.
 
 Authenticate and authorize before accepting the body where feasible; cap size at both gateway and application. Validate file signatures and actual decoding, not just extensions/MIME headers. Use bounded decoding resources, apply orientation, flatten/re-encode to a safe raster format, strip metadata, generate a random storage key, and store outside the web root. A filename is never a filesystem path. Test corrupt, oversized, misleading, and decompression-bomb inputs. These controls follow the threat categories in OWASP's upload guidance. [^S23]
 
 Show the crop/rotation preview before submission. Avoid detecting or retaining faces, handwriting identity, or location. Do not infer that a photograph contains no personal data merely because obvious names were removed. The provider receives private image bytes through its supported API—not a permanently public object URL.
+
+The picker explicitly accepts JPEG, PNG, WebP, HEIC and HEIF MIME types and
+extensions; dragging a single file into the same control uses identical server
+validation. Decode HEIC/HEIF on the server before the browser preview. Normalize
+to metadata-free JPEG (quality 90, bounded to 5 MiB with quality 85/80 fallback)
+and declare JPEG consistently in provider payloads. Do not expand photographs
+into large lossless PNG/base64 requests. Display preparation and model-processing
+status with accessible text and a reduced-motion-aware spinner.
 
 ### Mathematical input for exact checks only
 

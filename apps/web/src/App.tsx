@@ -417,8 +417,8 @@ export function App({ setupAuthority }: { setupAuthority?: SetupAuthority }) {
                     </p>
                     <ContextHelp topic="Can I manage the app and study too?">
                       <p>
-                        Yes. Add yourself as a learner, then select your profile
-                        in Practice. Use the same adult sign-in for both.
+                        Yes. Create your practice profile, then select it in
+                        Practice. Use the same adult sign-in for both.
                       </p>
                       <button
                         type="button"
@@ -546,6 +546,7 @@ export function App({ setupAuthority }: { setupAuthority?: SetupAuthority }) {
             {isAdult && (page === "learners" || page === "settings") && (
               <AdultPanel
                 key={page}
+                adultLoginName={identity.login_name ?? ""}
                 learner={learner}
                 onLearner={chooseLearner}
                 learners={learners}

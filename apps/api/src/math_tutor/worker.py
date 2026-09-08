@@ -31,6 +31,7 @@ from math_tutor.adapters.db.types import utcnow
 from math_tutor.adapters.images import read_image
 from math_tutor.adapters.providers.config import ProviderConfig
 from math_tutor.adapters.providers.contracts import (
+    DEFAULT_PROVIDER_ERROR_MESSAGE,
     InterpretationPayload,
     Message,
     ModelRequest,
@@ -44,6 +45,25 @@ from math_tutor.retention import photo_expired, purge_completed_photo
 from math_tutor.tutoring import finish_model, make_request
 
 logger = logging.getLogger(__name__)
+
+
+def safe_failure_message(error: ProviderError, stage: str) -> str:
+    if error.safe_message != DEFAULT_PROVIDER_ERROR_MESSAGE:
+        return error.safe_message
+    subject = "photo reader" if stage == "interpreting" else "tutor"
+    details = {
+        "authentication": f"The {subject} rejected its saved credentials. Ask an adult to check the active connection. Your work is saved.",
+        "invalid_request": f"The {subject} rejected the request. Ask an adult to check the model and connection settings. Your work is saved.",
+        "context_limit": f"The {subject} could not fit this request in its configured context. Use a shorter submission or ask an adult to check the limits. Your work is saved.",
+        "output_limit": f"The {subject} reached its response limit before finishing. Ask an adult to increase the response limit. Your work is saved.",
+        "incomplete_output": f"The {subject} stopped before completing a usable response. Your work is saved.",
+        "malformed_output": f"The {subject} returned a response the app could not validate. Your work is saved.",
+        "timeout": f"The {subject} did not finish within 90 seconds. Your work is saved and can be retried.",
+        "throttled": f"The {subject} is temporarily rate-limited. Your work is saved and can be retried.",
+        "unavailable": f"The {subject} could not be reached. Your work is saved and can be retried.",
+        "adapter_failure": f"The {subject} adapter failed before producing a usable response. Your work is saved.",
+    }
+    return details.get(error.code, DEFAULT_PROVIDER_ERROR_MESSAGE)
 
 
 @dataclass(frozen=True)
@@ -265,6 +285,7 @@ def prepare(engine: Engine, work: Claim) -> Prepared | None:
             model_id=provider.model,
             stage=stage,
             status="started",
+            reasoning_effort=provider.capabilities.reasoning_effort,
         )
         db.add(call)
         db.flush()
@@ -297,7 +318,7 @@ def fail(engine: Engine, work: Claim, error: ProviderError) -> None:
             seconds=error.retry_after_seconds + secrets.randbelow(3)
         )
         job.lease_token, job.lease_expires_at = None, None
-        row.status, row.safe_error = "failed", error.safe_message
+        row.status, row.safe_error = "failed", safe_failure_message(error, job.stage)
         db.commit()
 
 

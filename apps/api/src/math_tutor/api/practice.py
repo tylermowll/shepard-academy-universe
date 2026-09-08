@@ -19,6 +19,7 @@ from math_tutor.adapters.db.models import (
     Evaluation,
     Interpretation,
     Job,
+    ModelCall,
     PracticeSession,
     ProblemInstance,
     ProgressEvent,
@@ -80,6 +81,8 @@ class OperationPublic(BaseModel):
     status: str
     work_text: str
     safe_error: str | None
+    error_code: str | None = None
+    retryable: bool = False
     created_at: datetime
     verdict: VerdictPublic | None = None
     message: str | None = None
@@ -164,14 +167,28 @@ def operation_public(db: Session, row: Submission) -> OperationPublic:
         .order_by(Interpretation.version.desc())
         .limit(1)
     )
+    job = db.scalar(select(Job).where(Job.submission_id == row.id))
+    call = db.scalar(
+        select(ModelCall)
+        .where(ModelCall.submission_id == row.id)
+        .order_by(ModelCall.created_at.desc())
+        .limit(1)
+    )
+    error_code = (
+        call.status
+        if row.status == "failed" and call and call.status not in {"started", "completed"}
+        else None
+    )
     return OperationPublic(
         id=row.id,
         problem_id=row.problem_id,
-        kind=row.kind,
+        kind="generation" if row.request_key == f"activity:{row.problem_id}" else row.kind,
         text=row.text,
         work_text=row.work_text,
         status=row.status,
         safe_error=row.safe_error,
+        error_code=error_code,
+        retryable=bool(row.status == "failed" and job and job.retryable and job.attempts < 6),
         created_at=row.created_at,
         verdict=VerdictPublic.model_validate(evaluation) if evaluation else None,
         message=turn.message if turn else None,

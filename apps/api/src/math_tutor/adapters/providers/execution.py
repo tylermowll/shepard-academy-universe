@@ -32,6 +32,8 @@ def _call(config: ProviderConfig, request: ModelRequest, sender: Connection) -> 
                         "retryable": error.retryable,
                         "retry_after_seconds": error.retry_after_seconds,
                         "safe_message": error.safe_message,
+                        "completion_reason": error.completion_reason,
+                        "http_status": error.http_status,
                     }
                 }
             ).encode()

@@ -13,7 +13,14 @@ from sqlalchemy.orm import Session
 
 from math_tutor.adapters.db.models import Interpretation, Job, ProblemInstance, Submission
 from math_tutor.adapters.db.types import utcnow
-from math_tutor.adapters.images import MAX_BYTES, delete_image, normalize, read_image, store_image
+from math_tutor.adapters.images import (
+    MAX_BYTES,
+    NORMALIZED_IMAGE_MIME_TYPE,
+    delete_image,
+    normalize,
+    read_image,
+    store_image,
+)
 from math_tutor.api.access import Database, Principal, principal
 from math_tutor.api.practice import (
     OperationPublic,
@@ -162,7 +169,7 @@ def photo(submission_id: UUID, db: Database, actor: Principal) -> Response:
         raise HTTPException(404, "Photo expired or unavailable.") from None
     return Response(
         data,
-        media_type="image/png",
+        media_type=NORMALIZED_IMAGE_MIME_TYPE,
         headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
     )
 
@@ -235,4 +242,6 @@ async def preview_image(request: Request, db: Database, actor: Principal) -> Res
         raise HTTPException(403, "Demo does not accept personal photographs.")
     db.commit()
     normalized, _ = await receive_image(request)
-    return Response(normalized, media_type="image/png", headers={"Cache-Control": "no-store"})
+    return Response(
+        normalized, media_type=NORMALIZED_IMAGE_MIME_TYPE, headers={"Cache-Control": "no-store"}
+    )

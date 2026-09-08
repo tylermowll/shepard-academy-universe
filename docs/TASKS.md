@@ -41,6 +41,186 @@ specification gates pass.
 | T31  | Implemented; automated gates passed                            | Visible connection repair, tab-scoped named failures, and current Meta direct-API defaults; 162 unit, 115 component and 10 affected browser tests passed.                                                                      |
 | T32  | Implemented; automated gates passed                            | Strict tutor schemas, separate role-test guidance, save toast and stable terms review; 163 unit, 120 component, 217 integration and 10 affected browser tests passed.                                                          |
 | T33  | Implemented; automated gates passed                            | Contextual connection-save errors, stale-process guidance, key-format validation and consistent notices; 163 unit, 123 component and 12 desktop/mobile browser cases passed.                                                   |
+| T34  | Implemented; automated gates passed; live retest pending       | Editable tutor response budget, durable SQLite test diagnostics, visible failure phase/finish reason and restored terms review; 163 unit, 130 component, 226 integration and 12 browser cases passed.                          |
+| T35  | Implemented; automated gates passed; live photo retest pending | Bounded JPEG/HEIC and drag/drop, simpler Practice, difficulty controls, pending indicators, adult profile clarity and Meta thinking effort; 179 unit, 137 component, 234 integration and 52 desktop/mobile browser tests passed. |
+
+### T35 — Photo submission and practice usability (2026-09-07)
+
+Authorized scope: HEIC/HEIF picker and server conversion, drag-and-drop photos,
+JPG failure repair, visible pending states, adjustable activity difficulty,
+clearer adult practice-profile creation, and saved-session/logging guidance.
+The maintainer also authorized API-supported thinking-effort controls.
+The maintainer clarified that Practice needs simpler ordering: activity and
+discussion first, grouped typed/photo response controls, hints and next-activity
+choices, then secondary material/settings. Easier/Harder next-activity actions
+save the selected difficulty atomically with the requested activity.
+
+Contracts and checks: image preview/download MIME and provider image payloads;
+migration `0015_normalized_jpeg` for saved image capabilities and invalidated
+old test evidence; typed tutor session/settings difficulty
+and selected Meta reasoning effort; migration `0016_reasoning_effort` for
+content-free model-call/probe effort metadata; operation error code
+and retryability; component and browser upload/practice/pairing tests; on-disk
+migration, worker failure, persistence and authorization tests. Required gates:
+`make check`, `make test-integration`, and affected browser workflows.
+
+Synthetic reproduction: a 4,070,467-byte JPEG expanded to a 12,574,813-byte PNG
+and a 16,766,420-byte base64 payload in the old path. Bounded JPEG normalization
+removes that expansion. This establishes a real request-size defect, but cannot
+prove the exact private live failure; no private logs or learner files were read.
+The small photo probe is intentionally only an acceptance check. Real model
+quality and physical phone/filesystem picker behavior require maintainer testing.
+
+Implemented behavior:
+
+- Explicit HEIC/HEIF extensions in the picker, shared single-file drag/drop and
+  selection handling, bounded server decoding, JPEG preview/storage/provider
+  payloads, and no unnecessary browser re-encoding without edits. Synthetic
+  direct-upload and preview/upload fixture hashes remain strictly allowlisted.
+- The configured Model response limit applies to all AI tutor calls and tests,
+  including photo readings (16,384 by default). The photo test still uses one
+  tiny synthetic image; its former 1,200-token cap no longer conflicts with
+  explicitly selected thinking effort.
+- Meta Thinking effort supports Provider default (omitted), Minimal, Low, Medium,
+  High and Xhigh. The [official Meta reasoning cookbook](https://github.com/meta-models/meta-model-cookbook/blob/main/01_api_fundamentals/06_reasoning_tokens.ipynb)
+  documents Xhigh as equivalent to High and does not assert a fixed default.
+  Unsupported adapters reject non-default effort rather than silently ignoring
+  it. Save/reopen, wire parameters, reported reasoning-token counts, diagnostic
+  persistence, worker selection and readiness invalidation have synthetic tests.
+- Practice groups text/photo input before hints and next-activity controls,
+  places material selection before secondary session settings, and hides
+  successful internal generation operations from the conversation. Failed
+  operations remain visible with safe codes and honest retry availability.
+- Easier/Standard/Harder persist with the session; direct next-activity controls
+  change difficulty atomically, preserve request identity on retry, reject
+  conflicting active work, and feed tested generator/reviewer instructions.
+- Accessible pending spinners identify preparing, reading and tutoring states.
+  Saved-session status is visible. Create my practice profile prefills the
+  administrator login and adult eligibility while preserving editable naming.
+- Operational SQLite records retain model IDs/errors and available timing/token
+  metadata; session text stays in History, not copied into diagnostic logs.
+  Help explains the existing 30-day history and photo retention, plus the absence
+  of a separate concerning-message archive or alert system. Phone pairing and
+  camera-only links retain their existing ownership/authorization boundaries.
+- Migration 0015 clears old readiness proofs while preserving test diagnostics
+  and sessions. Retest connections after upgrading. Old failed photos should be
+  submitted afresh under the updated approved route, not replayed across policy
+  changes.
+
+Validation:
+
+- `PATH=/home/mowll/.nvm/versions/node/v24.20.0/bin:$PATH
+  UV_CACHE_DIR=/tmp/shepard-uv-cache make check test-integration
+  PNPM='pnpm --store-dir /tmp/math-tutor-pnpm-store'`: passed all locked dependency,
+  formatting/lint, strict Python/TypeScript, build, regenerated-contract,
+  credential scan and IaC checks; **179 unit, 137 component and 234 integration
+  tests passed**. Migrations used temporary on-disk SQLite databases.
+  The existing Vite large-chunk warning remains non-blocking.
+- The sandbox blocked loopback socket setup; synthetic socket checks ran with
+  that restriction lifted. An overlapping browser setup rebuild temporarily
+  removed the shared frontend assets during integration tests; the final gates
+  ran sequentially and passed. No test requirement was weakened.
+- Initial browser validation caught a missing rendered space in the saved
+  difficulty label and stale `Me` expectations after login-name prefill. The
+  rendered text and explicit expected login name were corrected. Strict checks
+  also caught untyped JSON test assertions and incomplete generated-type fixtures;
+  these were corrected before the final passing gates.
+- Browser tests exposed an intermittent probe HTTP 503: a worker write between
+  deferred configuration reads and diagnostic updates invalidated the SQLite
+  snapshot. Probe revalidation and diagnostic updates now share a short immediate
+  write transaction, committed before inference. The deterministic concurrent-write
+  regression `test_probe_diagnostics_do_not_upgrade_a_stale_read_snapshot` failed
+  with HTTP 503 before the fix and passed with HTTP 200 afterward. The focused
+  pytest invocation (`-k stale_read_snapshot`) produced 1 failed before, 1 passed
+  after; the final full integration run includes it. Browser fixture cleanup now
+  removes its own synthetic connection even after a failed assertion.
+- `PATH=/home/mowll/.nvm/versions/node/v24.20.0/bin:$PATH
+  UV_CACHE_DIR=/tmp/shepard-uv-cache
+  PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome make smoke
+  PNPM='pnpm --store-dir /tmp/math-tutor-pnpm-store'`: **52 passed in 4.0 minutes**
+  with no retries. Includes native setup/restart, terms restoration, provider
+  errors, Meta thinking selector, desktop/mobile layout, separate adult practice,
+  learner-only pairing/revocation, phone-to-desktop photos, session/history resume,
+  drag/drop reference photos, difficulty and uncertain-image handling. Synthetic
+  desktop/mobile Practice screenshots were inspected as supplementary UI evidence.
+- No live provider calls, model downloads, deployment, or access to private
+  operator configuration, uploads, learner data, or logs was performed. Physical
+  HEIC picker/camera behavior and real provider quality remain unverified.
+
+### T34 — Observable tutor failures and configurable response budgets (2026-09-07)
+
+Restarting did not resolve the maintainer's Spark tutor failure.
+The supplied response was HTTP 422 with `code=incomplete_output`; this confirms
+a non-normal model completion, not a connectivity diagnosis. The former code
+conflated token exhaustion and other finish reasons and the UI hid that code.
+The exact remote finish reason was not retained, so token exhaustion remains a
+likely cause, not a verified live result. The T32 strict-schema correction did
+not establish that the maintainer's live request succeeded.
+
+Scope and acceptance:
+
+- Replace the 1,200-token tutor probe and 1,600-token practice budgets with one
+  saved, editable response limit (16,384 default; 64–131,072 bounds), enforced
+  alongside the configured context window. Keep photo reading independently
+  bounded. Preserve strict JSON validation and the two-request test budget;
+  align each probe's timeout with practice's 90 seconds (180 seconds total).
+- Distinguish output exhaustion, refusal and other incomplete responses, showing
+  the failed phase and safe code directly in Connection tests.
+- Persist content-free synthetic test attempts in SQLite via migration 0014:
+  role, phase, status/code, allowlisted finish reason, HTTP status, requests
+  started, response limit, timing.
+  Display recent results after reload, cap at 20 per connection and expire at
+  seven days. Never retain prompt/image/response content, keys or arbitrary
+  provider error strings in diagnostics. Delete results with their connection.
+- Restore saved terms review on reopening an unchanged connection; identity or
+  audience changes still require a fresh acknowledgment.
+- Verify HTTP adapter failures through the real API, durable outcome retention,
+  migrations/rollback, adult authorization, component and browser workflows.
+
+Implemented and verified:
+
+- `adapters/providers/contracts.py`, `transports.py`, `execution.py`,
+  `tutoring.py` and the provider API now share the saved response budget, preserve
+  safe finish reasons across the process boundary, distinguish token exhaustion
+  from other incomplete responses, and report which synthetic step failed.
+  The default provider context budget now matches the browser's 32,768 default;
+  explicitly saved context limits are preserved. Changing a saved budget
+  invalidates its prior capability evidence through the existing fingerprint.
+- `ProviderProbeResult`, migration `0014_probe_results`, retention and connection
+  deletion persist bounded diagnostics. A failed request commits its diagnostic
+  independently of the HTTP rollback. Deleting a connection during inference
+  returns the correct stale-configuration failure without recreating its records.
+  Hostile error codes and finish reasons are replaced with fixed safe values.
+- `ProviderConnections.tsx` and `client.ts` expose the response limit, show the
+  latest test on its connection card, refresh persisted diagnostics on failure,
+  retain earlier results across reloads and restore an existing terms review.
+  OpenAPI and TypeScript contracts were regenerated with `make contracts`.
+- `make check`: passed locks, formatting, lint, strict Python/TypeScript types,
+  **163 backend unit** and **130 component** tests, both builds, generated-contract
+  drift, tracked-secret scan and infrastructure lint. The existing non-fatal
+  Vite chunk-size warning remains. Tools used the installed Node 24.20.0 and
+  pnpm 12.3.4 via PATH; UV_CACHE_DIR pointed at a temporary writable cache.
+- Final `make test-integration`: **226/226 passed**, including migration
+  upgrade/downgrade preservation, metadata consistency, configurable limits,
+  failure persistence, seven-day expiry, bounded history and deletion races.
+- `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome pnpm exec playwright
+  test tests/smoke/connections.spec.ts`: **12/12 passed** on desktop and mobile.
+  The real API/subprocess/HTTP workflow verifies a photo pass followed by truncated
+  tutor feedback, retained error details after reload with no extra call,
+  successful explicit retest, and the checked acknowledgment on reopening.
+- Initial restricted checks could not create loopback sockets; approved synthetic
+  checks passed outside the sandbox. The bundled Playwright executable was absent,
+  so the checked-in executable override used installed Chrome. One browser
+  assertion initially observed an old photo pass before the new request ended;
+  it now waits for the new success acknowledgment before checking exact call counts.
+  Migration-head assertions were updated for 0014. A concurrent Vite rebuild
+  temporarily removed assets during one integration fixture setup; the final
+  integration run after the completed build passed without changing the test.
+- `git diff --check`: passed. No live Meta/other provider inference, private
+  configuration/log access, operator-database migration, model download, Git
+  push or deployment was performed. The maintainer must stop the app, apply
+  `make migrate start`, refresh and explicitly retest Spark; live success is
+  not claimed from synthetic fixtures.
 
 ### T33 — Contextual connection-save failures (2026-09-07)
 

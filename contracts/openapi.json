@@ -334,6 +334,17 @@
             "title": "Created At",
             "type": "string"
           },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
           "feedback": {
             "anyOf": [
               {
@@ -411,6 +422,11 @@
                 "type": "null"
               }
             ]
+          },
+          "retryable": {
+            "default": false,
+            "title": "Retryable",
+            "type": "boolean"
           },
           "safe_error": {
             "anyOf": [
@@ -607,6 +623,51 @@
         "title": "Preview",
         "type": "object"
       },
+      "ProbeFailurePublic": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "completion_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completion Reason"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "probe_step": {
+            "anyOf": [
+              {
+                "enum": [
+                  "generate",
+                  "review",
+                  "read"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Probe Step"
+          }
+        },
+        "required": [
+          "detail",
+          "code"
+        ],
+        "title": "ProbeFailurePublic",
+        "type": "object"
+      },
       "ProbeInput": {
         "properties": {
           "authorize_synthetic_call": {
@@ -627,6 +688,120 @@
           "stage"
         ],
         "title": "ProbeInput",
+        "type": "object"
+      },
+      "ProbeResultPublic": {
+        "properties": {
+          "code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Code"
+          },
+          "completion_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Completion Reason"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "elapsed_ms": {
+            "title": "Elapsed Ms",
+            "type": "integer"
+          },
+          "http_status": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Http Status"
+          },
+          "output_limit": {
+            "title": "Output Limit",
+            "type": "integer"
+          },
+          "reasoning_effort": {
+            "default": "default",
+            "enum": [
+              "default",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "title": "Reasoning Effort",
+            "type": "string"
+          },
+          "requests_started": {
+            "title": "Requests Started",
+            "type": "integer"
+          },
+          "stage": {
+            "enum": [
+              "tutor",
+              "vision"
+            ],
+            "title": "Stage",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "running",
+              "passed",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "step": {
+            "anyOf": [
+              {
+                "enum": [
+                  "generate",
+                  "review",
+                  "read"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step"
+          }
+        },
+        "required": [
+          "stage",
+          "status",
+          "step",
+          "code",
+          "completion_reason",
+          "http_status",
+          "output_limit",
+          "requests_started",
+          "elapsed_ms",
+          "created_at"
+        ],
+        "title": "ProbeResultPublic",
         "type": "object"
       },
       "ProblemInput": {
@@ -1105,6 +1280,13 @@
             "title": "Configured Context Limit",
             "type": "integer"
           },
+          "configured_output_limit": {
+            "default": 16384,
+            "maximum": 131072.0,
+            "minimum": 64.0,
+            "title": "Configured Output Limit",
+            "type": "integer"
+          },
           "eligibility_record": {
             "maxLength": 500,
             "minLength": 1,
@@ -1130,6 +1312,19 @@
             "maxLength": 2048,
             "minLength": 1,
             "title": "Model",
+            "type": "string"
+          },
+          "reasoning_effort": {
+            "default": "default",
+            "enum": [
+              "default",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "title": "Reasoning Effort",
             "type": "string"
           },
           "structured_output_mode": {
@@ -1221,6 +1416,13 @@
             "title": "Configured Context Limit",
             "type": "integer"
           },
+          "configured_output_limit": {
+            "default": 16384,
+            "maximum": 131072.0,
+            "minimum": 64.0,
+            "title": "Configured Output Limit",
+            "type": "integer"
+          },
           "eligibility_record": {
             "maxLength": 500,
             "minLength": 1,
@@ -1241,6 +1443,19 @@
             "maxLength": 2048,
             "minLength": 1,
             "title": "Model",
+            "type": "string"
+          },
+          "reasoning_effort": {
+            "default": "default",
+            "enum": [
+              "default",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "title": "Reasoning Effort",
             "type": "string"
           },
           "structured_output_mode": {
@@ -1359,6 +1574,11 @@
             "title": "Configured Context Limit",
             "type": "integer"
           },
+          "configured_output_limit": {
+            "default": 16384,
+            "title": "Configured Output Limit",
+            "type": "integer"
+          },
           "eligibility_record": {
             "default": "",
             "title": "Eligibility Record",
@@ -1394,6 +1614,26 @@
           "model": {
             "title": "Model",
             "type": "string"
+          },
+          "reasoning_effort": {
+            "default": "default",
+            "enum": [
+              "default",
+              "minimal",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "title": "Reasoning Effort",
+            "type": "string"
+          },
+          "recent_tests": {
+            "items": {
+              "$ref": "#/components/schemas/ProbeResultPublic"
+            },
+            "title": "Recent Tests",
+            "type": "array"
           },
           "requires_approval": {
             "default": false,
@@ -1873,6 +2113,22 @@
       "TutorActivityInput": {
         "additionalProperties": false,
         "properties": {
+          "difficulty": {
+            "anyOf": [
+              {
+                "enum": [
+                  "introductory",
+                  "standard",
+                  "challenge"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difficulty"
+          },
           "reference_text": {
             "anyOf": [
               {
@@ -1902,6 +2158,22 @@
       "TutorSettingsInput": {
         "additionalProperties": false,
         "properties": {
+          "difficulty": {
+            "anyOf": [
+              {
+                "enum": [
+                  "introductory",
+                  "standard",
+                  "challenge"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Difficulty"
+          },
           "initiative": {
             "enum": [
               "tutor_led",
@@ -1921,6 +2193,16 @@
       "TutoringSessionInput": {
         "additionalProperties": false,
         "properties": {
+          "difficulty": {
+            "default": "standard",
+            "enum": [
+              "introductory",
+              "standard",
+              "challenge"
+            ],
+            "title": "Difficulty",
+            "type": "string"
+          },
           "initiative": {
             "default": "balanced",
             "enum": [
@@ -1952,6 +2234,15 @@
       },
       "TutoringSessionPublic": {
         "properties": {
+          "difficulty": {
+            "enum": [
+              "introductory",
+              "standard",
+              "challenge"
+            ],
+            "title": "Difficulty",
+            "type": "string"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -1993,6 +2284,7 @@
           "status",
           "topic",
           "initiative",
+          "difficulty",
           "problems"
         ],
         "title": "TutoringSessionPublic",
@@ -2642,11 +2934,11 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ProbeFailurePublic"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Unprocessable Content"
           }
         },
         "summary": "Probe",

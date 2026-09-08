@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { readFile } from "node:fs/promises";
 import type { Schema } from "../../apps/web/src/client";
 import { createActivity, startTutor } from "./support";
 
@@ -129,7 +130,7 @@ test("the tutor continues from a phone photo through guidance, revision, discuss
       response.request().method() === "POST",
   );
   await page
-    .getByRole("button", { name: "Next activity", exact: true })
+    .getByRole("button", { name: "Harder next activity", exact: true })
     .click();
   await expect(
     page.getByRole("textbox", { name: "Your work or question", exact: true }),
@@ -137,10 +138,17 @@ test("the tutor continues from a phone photo through guidance, revision, discuss
   const nextActivity = (await (await next).json()) as Schema<"ProblemPublic">;
   expect(nextActivity.id).toMatch(/^[a-f0-9-]{36}$/);
   expect(nextActivity.id).not.toBe(firstActivity.id);
+  await expect(
+    page.getByText("Saved automatically · Harder difficulty"),
+  ).toBeVisible();
   await expect(page.locator(".tutor-activity")).toHaveCount(1);
   await expect(page.locator(".tutor-history")).toHaveCount(1);
   await expect(page.locator(".tutor-feedback")).toHaveCount(3);
   expect(errors).toEqual([]);
+  await page.screenshot({
+    path: test.info().outputPath("practice.png"),
+    fullPage: true,
+  });
 });
 
 test("reading and history reference material produces analogous practice instead of directly solving the supplied assignment", async ({
@@ -187,7 +195,7 @@ test("reading and history reference material produces analogous practice instead
     })
     .selectOption("learner_led");
   await page
-    .getByRole("button", { name: "Save tutor style", exact: true })
+    .getByRole("button", { name: "Save session settings", exact: true })
     .click();
   await page.reload();
   await page
@@ -249,9 +257,20 @@ test("a source photograph is read only to create distinct practice, not reviewed
     "Reference material",
   );
   await page.getByText("Upload a photo", { exact: true }).click();
+  const bytes = Array.from(await readFile("evals/fixtures/work.png"));
+  const transfer = await page.evaluateHandle((content) => {
+    const data = new DataTransfer();
+    data.items.add(
+      new File([new Uint8Array(content)], "synthetic-work.png", {
+        type: "image/png",
+      }),
+    );
+    return data;
+  }, bytes);
   await page
-    .getByLabel("Take or choose a photo")
-    .setInputFiles("evals/fixtures/work.png");
+    .getByRole("group", { name: "Photo upload" })
+    .dispatchEvent("drop", { dataTransfer: transfer });
+  await transfer.dispose();
   await page
     .getByRole("button", { name: "Submit this photograph", exact: true })
     .click();

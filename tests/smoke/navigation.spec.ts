@@ -233,10 +233,10 @@ test("an adult practices with their own learner profile and browser Back restore
   await login(page);
   await navigate(page, "Learners & devices");
   await page
-    .getByRole("button", { name: "Add yourself (adult)", exact: true })
+    .getByRole("button", { name: "Create my practice profile", exact: true })
     .click();
   const learnerName = page.getByLabel("Learner name", { exact: true });
-  await expect(learnerName).toHaveValue("Me");
+  await expect(learnerName).toHaveValue("demo");
   await expect(learnerName).toBeEditable();
   await expect(
     page.getByRole("combobox", { name: "Age group", exact: true }),

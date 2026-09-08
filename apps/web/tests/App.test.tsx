@@ -198,6 +198,7 @@ it("keeps the selected session when a previous session response arrives late", a
     problems: [],
     topic: id === first ? "Old session" : "Chosen session",
     initiative: "balanced",
+    difficulty: "standard",
   });
   const fetcher = vi.fn((url: string) => {
     if (url.endsWith(`/sessions/${first}`)) return oldResponse;
@@ -265,6 +266,7 @@ it("rejects a URL session belonging to a different selected learner", async () =
           problems: [],
           topic: "Previous learner private profile",
           initiative: "balanced",
+          difficulty: "standard",
         });
       if (url.endsWith("/progress"))
         return response({
@@ -341,6 +343,7 @@ it("does not restore an old learner's URL when its request completes after switc
           problems: [],
           topic: "Old private session",
           initiative: "balanced",
+          difficulty: "standard",
         }),
       ),
     );
@@ -360,6 +363,7 @@ it("allows a corrected request after its first attempt is definitively rejected"
     problems: [],
     topic: "Persuasive writing",
     initiative: "balanced",
+    difficulty: "standard",
   };
   const keys: unknown[] = [];
   const errors: unknown[] = [];

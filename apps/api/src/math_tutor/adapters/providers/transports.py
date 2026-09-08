@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from mypy_boto3_bedrock_runtime import BedrockRuntimeClient
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from math_tutor.adapters.images import NORMALIZED_IMAGE_MIME_TYPE
 from math_tutor.adapters.providers.config import ProviderConfig, blocked_destination
 from math_tutor.adapters.providers.contracts import (
     ActivityPayload,
@@ -51,10 +52,15 @@ class ChatChoice(WireObject):
     finish_reason: str | None = None
 
 
+class CompletionTokenDetails(WireObject):
+    reasoning_tokens: int = Field(default=0, ge=0)
+
+
 class ChatUsage(WireObject):
     prompt_tokens: int = Field(default=0, ge=0)
     completion_tokens: int = Field(default=0, ge=0)
     total_tokens: int = Field(default=0, ge=0)
+    completion_tokens_details: CompletionTokenDetails | None = None
 
 
 class ChatResponse(WireObject):
@@ -188,7 +194,7 @@ def check_request(config: ProviderConfig, request: ModelRequest) -> None:
     if request.private_image_bytes is not None and (
         not config.capabilities.image_input
         or config.capabilities.max_images < 1
-        or "image/png" not in config.capabilities.accepted_image_mime_types
+        or NORMALIZED_IMAGE_MIME_TYPE not in config.capabilities.accepted_image_mime_types
     ):
         raise ProviderError("unsupported_modality")
     # UTF-8 bytes are a conservative token upper bound, including schema overhead.
@@ -222,12 +228,14 @@ class MockProvider:
                 concept_focus="Synthetic example: observations and evidence",
             )
         elif request.purpose == "read":
-            # This exact, original public fixture contains only '2/5'. Never
+            # Exact encodings of the original public '2/5' fixture: direct
+            # upload and preview-then-upload. JPEG normalization is lossy, so
+            # those two supported paths have distinct byte hashes. Never
             # pretend the mock can recognize arbitrary learner handwriting.
-            known = (
-                hashlib.sha256(request.private_image_bytes or b"").hexdigest()
-                == "ba37eb35a8ed619379f6bd5d6cf69504efa1d408e359c170b3009afb270d09af"
-            )
+            known = hashlib.sha256(request.private_image_bytes or b"").hexdigest() in {
+                "7420130d9e680522a2ffd0a3b014794e9e9bbcaf3a2a5609359c33d31936767d",
+                "b8e617a2dc35adc3549d36602080f29c0bae9200d706d075f62da73a5efddc1b",
+            }
             payload = ReadingPayload(
                 transcription="2/5" if known else "",
                 quality="clear" if known else "unreadable",
@@ -287,7 +295,12 @@ class HTTPProvider:
             else:
                 messages[-1]["content"] = [
                     {"type": "text", "text": messages[-1]["content"]},
-                    {"type": "image_url", "image_url": {"url": "data:image/png;base64," + encoded}},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{NORMALIZED_IMAGE_MIME_TYPE};base64," + encoded
+                        },
+                    },
                 ]
         body: dict[str, Any] = {"model": request.model_id, "messages": messages, "stream": False}
         if config.adapter == "ollama":
@@ -299,6 +312,8 @@ class HTTPProvider:
             )
             return "/api/chat", body
         body["max_tokens"] = request.max_output_tokens
+        if config.adapter == "meta" and config.capabilities.reasoning_effort != "default":
+            body["reasoning_effort"] = config.capabilities.reasoning_effort
         if config.capabilities.structured_output_mode == "native":
             body["response_format"] = {
                 "type": "json_schema",
@@ -371,7 +386,10 @@ class HTTPProvider:
                     retry_after = response.headers.get("retry-after", "1")
                     delay = min(300, max(1, int(retry_after))) if retry_after.isdigit() else 1
                     raise ProviderError(
-                        code, response.status_code == 429 or response.status_code >= 500, delay
+                        code,
+                        response.status_code == 429 or response.status_code >= 500,
+                        delay,
+                        http_status=response.status_code,
                     )
                 chunks = bytearray()
                 for chunk in response.iter_bytes():
@@ -381,8 +399,10 @@ class HTTPProvider:
             usage: dict[str, int] = {}
             if self.config.adapter == "ollama":
                 ollama = OllamaResponse.model_validate_json(chunks)
+                if ollama.done_reason == "length":
+                    raise ProviderError("output_limit", completion_reason="length")
                 if not ollama.done or ollama.done_reason not in {"stop", None}:
-                    raise ProviderError("incomplete_output")
+                    raise ProviderError("incomplete_output", completion_reason=ollama.done_reason)
                 content = ollama.message.content
                 usage = ollama.model_dump(
                     include={"prompt_eval_count", "eval_count"}, exclude_unset=True
@@ -395,10 +415,23 @@ class HTTPProvider:
                         "refusal",
                         safe_message="The provider declined this request. Try built-in help.",
                     )
+                if choice.finish_reason == "length":
+                    raise ProviderError("output_limit", completion_reason="length")
                 if choice.finish_reason != "stop":
-                    raise ProviderError("incomplete_output")
+                    raise ProviderError(
+                        "incomplete_output", completion_reason=choice.finish_reason or "missing"
+                    )
                 content = choice.message.content
-                usage = chat.usage.model_dump(exclude_unset=True)
+                usage = chat.usage.model_dump(
+                    exclude_unset=True, exclude={"completion_tokens_details"}
+                )
+                if (
+                    chat.usage.completion_tokens_details is not None
+                    and "reasoning_tokens" in chat.usage.completion_tokens_details.model_fields_set
+                ):
+                    usage["reasoning_tokens"] = (
+                        chat.usage.completion_tokens_details.reasoning_tokens
+                    )
             if not isinstance(content, str):
                 raise ProviderError("malformed_output")
             return ModelResult(
@@ -438,7 +471,7 @@ class BedrockProvider:
         }
         if request.private_image_bytes:
             body["messages"][-1]["content"].append(
-                {"image": {"format": "png", "source": {"bytes": request.private_image_bytes}}}
+                {"image": {"format": "jpeg", "source": {"bytes": request.private_image_bytes}}}
             )
         if self.config.capabilities.structured_output_mode == "native":
             body["outputConfig"] = {
@@ -473,8 +506,10 @@ class BedrockProvider:
             reason = data.stopReason
             if reason in {"guardrail_intervened", "content_filtered"}:
                 raise ProviderError("refusal")
+            if reason == "max_tokens":
+                raise ProviderError("output_limit", completion_reason="max_tokens")
             if reason != "end_turn":
-                raise ProviderError("incomplete_output")
+                raise ProviderError("incomplete_output", completion_reason=reason)
             if data.output is None:
                 raise ProviderError("malformed_output")
             content = "".join(block.text or "" for block in data.output.message.content)

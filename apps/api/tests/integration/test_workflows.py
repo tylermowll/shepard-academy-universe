@@ -110,7 +110,8 @@ async def test_phone_photo_to_computer_confirmation(
         assert (await phone.get(f"/api/v1/sessions/{session_id}")).status_code == 401
         assert (await phone.get("/api/v1/admin/providers")).status_code == 401
         preview = await phone.post("/api/v1/phone-upload/preview", content=photo_bytes())
-        assert preview.status_code == 200 and preview.content.startswith(b"\x89PNG")
+        assert preview.status_code == 200 and preview.content.startswith(b"\xff\xd8")
+        assert preview.headers["content-type"] == "image/jpeg"
         headers = {"Idempotency-Key": str(uuid4())}
         first = await phone.post(
             "/api/v1/phone-upload/photos", content=preview.content, headers=headers

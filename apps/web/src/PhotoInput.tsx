@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiError, imageRequest, newKey } from "./client";
+import { BusyStatus } from "./BusyStatus";
 
 type Props = {
   problem: string;
@@ -35,6 +36,7 @@ export function PhotoInput({
   const [crop, setCrop] = useState(0);
   const [pending, setPending] = useState<PendingPhoto | null>(null);
   const [working, setWorking] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const uploading = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
@@ -56,6 +58,7 @@ export function PhotoInput({
   );
   async function transform(): Promise<Blob> {
     if (!blob) throw new Error("Choose a photograph first.");
+    if (!rotation && !crop) return blob;
     const image = await createImageBitmap(blob);
     const edge = crop / 100;
     const width = Math.round(image.width * (1 - edge * 2));
@@ -86,7 +89,8 @@ export function PhotoInput({
           result
             ? resolve(result)
             : reject(new Error("Could not prepare photograph.")),
-        "image/png",
+        "image/jpeg",
+        0.9,
       ),
     );
   }
@@ -121,6 +125,33 @@ export function PhotoInput({
       setWorking(false);
     }
   }
+  async function preparePhoto(files: File[]) {
+    if (disabled || working || pending || uploading.current || !files.length)
+      return;
+    if (files.length !== 1) throw new Error("Choose one photograph at a time.");
+    const file = files[0]!;
+    if (file.size > 8388608)
+      throw new Error("Choose a photograph under 8 MiB.");
+    uploading.current = true;
+    setWorking(true);
+    try {
+      const response = await imageRequest(
+        companionToken ? "/phone-upload/preview" : "/images/preview",
+        file,
+        undefined,
+        companionToken,
+      );
+      const normalized = await response.blob();
+      if (!mounted.current) return;
+      setBlob(normalized);
+      setUrl(URL.createObjectURL(normalized));
+      setRotation(0);
+      setCrop(0);
+    } finally {
+      uploading.current = false;
+      setWorking(false);
+    }
+  }
   return (
     <details
       open={companionToken ? true : undefined}
@@ -136,42 +167,46 @@ export function PhotoInput({
           : "Typed answers remain available if camera access is denied."}
       </p>
       <fieldset disabled={disabled || working || pending !== null}>
-        <label>
-          Take or choose a photo
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
-            capture="environment"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file)
-                void act(async () => {
-                  if (file.size > 8388608)
-                    throw new Error("Choose a photograph under 8 MiB.");
-                  setWorking(true);
-                  let normalized: Blob;
-                  try {
-                    const response = await imageRequest(
-                      companionToken
-                        ? "/phone-upload/preview"
-                        : "/images/preview",
-                      file,
-                      undefined,
-                      companionToken,
-                    );
-                    normalized = await response.blob();
-                  } finally {
-                    setWorking(false);
-                  }
-                  if (!mounted.current) return;
-                  setBlob(normalized);
-                  setUrl(URL.createObjectURL(normalized));
-                  setRotation(0);
-                  setCrop(0);
-                });
-            }}
-          />
-        </label>
+        <div
+          role="group"
+          aria-label="Photo upload"
+          className={`photo-dropzone${dragging ? " dragging" : ""}`}
+          onDragOver={(event) => {
+            event.preventDefault();
+            const available = !disabled && !working && !pending;
+            event.dataTransfer.dropEffect = available ? "copy" : "none";
+            setDragging(available);
+          }}
+          onDragLeave={(event) => {
+            if (
+              !event.currentTarget.contains(event.relatedTarget as Node | null)
+            )
+              setDragging(false);
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDragging(false);
+            const files = Array.from(event.dataTransfer.files);
+            void act(() => preparePhoto(files));
+          }}
+        >
+          <label>
+            Take or choose a photo
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.heic,.heif"
+              capture="environment"
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? []);
+                e.target.value = "";
+                void act(() => preparePhoto(files));
+              }}
+            />
+          </label>
+          <p className="hint">
+            Or drop one photo here. JPG, PNG, WebP, HEIC or HEIF · up to 8 MiB.
+          </p>
+        </div>
         {blob && (
           <>
             <div className="photo-preview">
@@ -237,6 +272,13 @@ export function PhotoInput({
           </>
         )}
       </fieldset>
+      {working && (
+        <BusyStatus
+          message={
+            pending ? "Sending your photograph…" : "Preparing your photograph…"
+          }
+        />
+      )}
       {blob && !pending && (
         <button
           type="button"

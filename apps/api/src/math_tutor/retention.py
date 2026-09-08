@@ -22,6 +22,7 @@ from math_tutor.adapters.db.models import (
     PhotoDeletion,
     PracticeSession,
     ProblemInstance,
+    ProviderProbeResult,
     Submission,
 )
 from math_tutor.adapters.db.types import utcnow
@@ -168,6 +169,11 @@ def sweep(engine: Engine) -> None:
         db.execute(delete(PairingRequest).where(PairingRequest.expires_at < utcnow()))
         db.execute(delete(PhoneUpload).where(PhoneUpload.expires_at < utcnow()))
         db.execute(delete(DeviceSession).where(DeviceSession.expires_at < utcnow()))
+        db.execute(
+            delete(ProviderProbeResult).where(
+                ProviderProbeResult.created_at < utcnow() - timedelta(days=7)
+            )
+        )
         db.commit()
     purge_queued_photos(engine)
     # A one-hour grace period protects freshly written objects not yet committed.

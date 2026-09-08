@@ -1034,6 +1034,8 @@ export interface components {
        * Format: date-time
        */
       created_at: string;
+      /** Error Code */
+      error_code?: string | null;
       feedback?: components["schemas"]["FeedbackPayload"] | null;
       /**
        * Id
@@ -1056,6 +1058,11 @@ export interface components {
        */
       problem_id: string;
       reading?: components["schemas"]["ReadingPublic"] | null;
+      /**
+       * Retryable
+       * @default false
+       */
+      retryable: boolean;
       /** Safe Error */
       safe_error: string | null;
       /** Source */
@@ -1150,6 +1157,17 @@ export interface components {
        */
       source: string;
     };
+    /** ProbeFailurePublic */
+    ProbeFailurePublic: {
+      /** Code */
+      code: string;
+      /** Completion Reason */
+      completion_reason?: string | null;
+      /** Detail */
+      detail: string;
+      /** Probe Step */
+      probe_step?: ("generate" | "review" | "read") | null;
+    };
     /** ProbeInput */
     ProbeInput: {
       /**
@@ -1162,6 +1180,45 @@ export interface components {
        * @enum {string}
        */
       stage: "tutor" | "vision";
+    };
+    /** ProbeResultPublic */
+    ProbeResultPublic: {
+      /** Code */
+      code: string | null;
+      /** Completion Reason */
+      completion_reason: string | null;
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /** Elapsed Ms */
+      elapsed_ms: number;
+      /** Http Status */
+      http_status: number | null;
+      /** Output Limit */
+      output_limit: number;
+      /**
+       * Reasoning Effort
+       * @default default
+       * @enum {string}
+       */
+      reasoning_effort:
+        "default" | "minimal" | "low" | "medium" | "high" | "xhigh";
+      /** Requests Started */
+      requests_started: number;
+      /**
+       * Stage
+       * @enum {string}
+       */
+      stage: "tutor" | "vision";
+      /**
+       * Status
+       * @enum {string}
+       */
+      status: "running" | "passed" | "failed";
+      /** Step */
+      step: ("generate" | "review" | "read") | null;
     };
     /** ProblemInput */
     ProblemInput: {
@@ -1411,6 +1468,11 @@ export interface components {
        * @default 32768
        */
       configured_context_limit: number;
+      /**
+       * Configured Output Limit
+       * @default 16384
+       */
+      configured_output_limit: number;
       /** Eligibility Record */
       eligibility_record: string;
       /**
@@ -1427,6 +1489,13 @@ export interface components {
       image_input: boolean;
       /** Model */
       model: string;
+      /**
+       * Reasoning Effort
+       * @default default
+       * @enum {string}
+       */
+      reasoning_effort:
+        "default" | "minimal" | "low" | "medium" | "high" | "xhigh";
       /**
        * Structured Output Mode
        * @default native
@@ -1466,6 +1535,11 @@ export interface components {
        * @default 32768
        */
       configured_context_limit: number;
+      /**
+       * Configured Output Limit
+       * @default 16384
+       */
+      configured_output_limit: number;
       /** Eligibility Record */
       eligibility_record: string;
       /**
@@ -1480,6 +1554,13 @@ export interface components {
       image_input: boolean;
       /** Model */
       model: string;
+      /**
+       * Reasoning Effort
+       * @default default
+       * @enum {string}
+       */
+      reasoning_effort:
+        "default" | "minimal" | "low" | "medium" | "high" | "xhigh";
       /**
        * Structured Output Mode
        * @default native
@@ -1531,6 +1612,11 @@ export interface components {
        */
       configured_context_limit: number;
       /**
+       * Configured Output Limit
+       * @default 16384
+       */
+      configured_output_limit: number;
+      /**
        * Eligibility Record
        * @default
        */
@@ -1558,6 +1644,15 @@ export interface components {
       managed: boolean;
       /** Model */
       model: string;
+      /**
+       * Reasoning Effort
+       * @default default
+       * @enum {string}
+       */
+      reasoning_effort:
+        "default" | "minimal" | "low" | "medium" | "high" | "xhigh";
+      /** Recent Tests */
+      recent_tests?: components["schemas"]["ProbeResultPublic"][];
       /**
        * Requires Approval
        * @default false
@@ -1776,6 +1871,8 @@ export interface components {
     };
     /** TutorActivityInput */
     TutorActivityInput: {
+      /** Difficulty */
+      difficulty?: ("introductory" | "standard" | "challenge") | null;
       /** Reference Text */
       reference_text?: string | null;
       /**
@@ -1787,6 +1884,8 @@ export interface components {
     };
     /** TutorSettingsInput */
     TutorSettingsInput: {
+      /** Difficulty */
+      difficulty?: ("introductory" | "standard" | "challenge") | null;
       /**
        * Initiative
        * @enum {string}
@@ -1795,6 +1894,12 @@ export interface components {
     };
     /** TutoringSessionInput */
     TutoringSessionInput: {
+      /**
+       * Difficulty
+       * @default standard
+       * @enum {string}
+       */
+      difficulty: "introductory" | "standard" | "challenge";
       /**
        * Initiative
        * @default balanced
@@ -1811,6 +1916,11 @@ export interface components {
     };
     /** TutoringSessionPublic */
     TutoringSessionPublic: {
+      /**
+       * Difficulty
+       * @enum {string}
+       */
+      difficulty: "introductory" | "standard" | "challenge";
       /**
        * Id
        * Format: uuid
@@ -2277,13 +2387,13 @@ export interface operations {
           "application/json": components["schemas"]["Acknowledged"];
         };
       };
-      /** @description Validation Error */
+      /** @description Unprocessable Content */
       422: {
         headers: {
           [name: string]: unknown;
         };
         content: {
-          "application/json": components["schemas"]["HTTPValidationError"];
+          "application/json": components["schemas"]["ProbeFailurePublic"];
         };
       };
     };

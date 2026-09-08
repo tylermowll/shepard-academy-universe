@@ -15,6 +15,10 @@ from math_tutor import settings
 MAX_BYTES = 8 * 1024 * 1024
 # Allow 24 MP-class phone photos such as 5712 × 4284, without admitting 48 MP originals.
 MAX_PIXELS = 25_000_000
+NORMALIZED_IMAGE_FORMAT = "JPEG"
+NORMALIZED_IMAGE_MIME_TYPE = "image/jpeg"
+NORMALIZED_IMAGE_QUALITY = 90
+MAX_NORMALIZED_BYTES = 5 * 1024 * 1024
 Image.MAX_IMAGE_PIXELS = MAX_PIXELS
 register_heif_opener()
 
@@ -40,9 +44,26 @@ def normalize(data: bytes) -> bytes:
                 # Creating a fresh image drops EXIF, ICC profiles, comments and metadata.
                 clean = Image.new("RGB", oriented.size, "white")
                 clean.paste(oriented)
-                output = BytesIO()
-                clean.save(output, "PNG")
-                return output.getvalue()
+                # A photographic JPEG or HEIC can expand several-fold when
+                # converted to PNG and then again when base64 encoded for a
+                # provider request. Re-encode at a high, fixed JPEG quality so
+                # the 2,048-pixel reading input stays legible and predictably
+                # bounded while still dropping all source metadata.
+                for quality in (NORMALIZED_IMAGE_QUALITY, 85, 80):
+                    output = BytesIO()
+                    clean.save(
+                        output,
+                        NORMALIZED_IMAGE_FORMAT,
+                        quality=quality,
+                        optimize=True,
+                        progressive=False,
+                    )
+                    normalized = output.getvalue()
+                    if len(normalized) <= MAX_NORMALIZED_BYTES:
+                        return normalized
+                raise ValueError(
+                    "This photograph remains too complex after safe processing. Crop it to the work or retake it at a lower camera resolution."
+                )
     except (
         UnidentifiedImageError,
         OSError,

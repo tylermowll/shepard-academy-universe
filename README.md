@@ -74,6 +74,27 @@ missing step and links directly to it. Tests may incur your provider's charges.
 The photo-reader test is one image-reading response; the tutor test separately
 checks activity creation and feedback in two structured text responses. Passing
 one role does not imply that the other response format works.
+The **Model response limit** under Advanced connection options controls the
+output budget for connection tests and all real practice calls, including photo reading
+(16,384 tokens by default); the model
+context limit is a separate budget. Match both limits to your provider. Each
+tutor test request has up to 90 seconds, with at most two requests and no
+automatic retry. Incomplete responses can still be billed by the provider.
+Connection tests show the last result directly on the card and retain recent
+diagnostics across reloads in SQLite: phase, safe code, HTTP status, duration,
+requests started, thinking effort and output limit. Records contain no prompts, responses,
+images or keys, are limited to 20 per connection (10 displayed), and expire
+after seven days. A saved terms review remains checked when reopening an
+unchanged connection.
+Meta connections also offer **Thinking effort** under Advanced connection options:
+Provider default (parameter omitted), Minimal, Low, Medium, High, or Xhigh.
+[Meta's official reasoning cookbook](https://github.com/meta-models/meta-model-cookbook/blob/main/01_api_fundamentals/06_reasoning_tokens.ipynb)
+currently documents Xhigh as equivalent to High and does not promise a fixed
+default. Thinking consumes output tokens and can increase time and cost. The
+setting applies to both tests and practice; save, retest and assign roles after
+changing it. Other adapters keep their defaults, without unsupported parameters.
+SQLite model-call records retain selected effort and reported reasoning-token
+counts when supplied, never raw reasoning. Activity difficulty is separate.
 For Meta-hosted inference, the cloud location is fixed but the allowed audience
 is your explicit choice. The app shows a provider-terms disclaimer and records
 your required acknowledgment; it does not certify that an account or agreement
@@ -104,7 +125,7 @@ unsent work; submitted work is stored on the server. Learners see only Practice,
 History, and Help.
 
 An adult account can manage the app and be a student. In **Learners & devices**,
-choose **Add yourself (adult)**, edit the name, and **Add learner** to create your
+choose **Create my practice profile**, edit the prefilled name, and **Add learner** to create your
 own practice profile under the same sign-in. Give each child a separate profile
 and pair their browser for learner-only access. There is no separate child
 password to manage. **Help → Accounts & learners** explains this distinction.
@@ -134,7 +155,13 @@ An unavailable model produces a visible error, not an authored-hint substitute.
 The historical D005 hard cutover applies only to databases from before that
 initial-schema correction; recreate those disposable development databases.
 Current-schema databases use normal migrations, including `0012` for saved AI
-connections and `0013` for local-password policy. [RUNBOOK](docs/RUNBOOK.md) covers private HTTPS, containers, EC2/EBS,
+connections, `0013` for local-password policy, `0014` for connection-test
+diagnostics, `0015` for bounded provider images, and `0016` for thinking-effort
+diagnostics. Stop the API and worker before
+applying `make migrate start` to an existing installation. The image cutover clears
+old connection readiness; retest both roles and save active connections again.
+Test diagnostics and session history are retained. [RUNBOOK](docs/RUNBOOK.md)
+covers private HTTPS, containers, EC2/EBS,
 retention, encrypted backups, and restore rehearsals.
 
 ## Behavior and boundaries
@@ -144,7 +171,9 @@ retention, encrypted backups, and restore rehearsals.
 - Paste an assignment or photograph one to generate distinct analogous practice.
   Supply a book excerpt for passage-specific comprehension questions. The app
   does not fetch books or pretend a title supplies the full text.
-- Learner-led, balanced, and tutor-led initiative settings; no grade-level gate.
+- Easier, Standard, and Harder activity difficulty, adjustable within a saved
+  session, with direct Easier/Harder next-activity buttons. Learner-led, balanced,
+  and tutor-led initiative; no grade-level gate.
 - AI assessment is not a verified grade or a proof of mastery. Model confidence
   can be mistaken. Handwriting accuracy, factual correctness, and answer-leak
   resistance need evaluation with your actual model, not just passing mock tests.
@@ -152,9 +181,15 @@ retention, encrypted backups, and restore rehearsals.
 - Durable jobs survive API reloads and worker crashes. Duplicate requests produce
   one visible result. A crash after a provider response may require a second
   billed request; total calls remain bounded.
-- Photos are normalized privately and metadata removed. Photos are
-  deleted after processing; failed/unprocessed photos expire within 24 hours.
+- Choose or drag and drop JPG, PNG, WebP, HEIC, or HEIF photos (up to 8 MiB).
+  HEIC/HEIF conversion happens on the server so browsers need no HEIC decoder.
+  Photos are normalized to a bounded, high-quality JPEG with metadata removed.
+  Photos are deleted after processing; failed/unprocessed photos expire within 24 hours.
   History defaults to 30 days. Retention runs in the worker.
+- SQLite stores operational model identifiers, phases, safe errors, timing and
+  available token counts without copying questions, answers, images or keys into
+  logs. Submitted text is retained as session history. There is no separate
+  concerning-message archive, safety classifier, or alert service.
 - Service-worker caches contain public assets only. Offline does not mean the
   server or AI can be reached; no work is silently replayed to a cloud provider.
 

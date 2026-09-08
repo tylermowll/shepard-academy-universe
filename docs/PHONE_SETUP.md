@@ -138,7 +138,7 @@ on `127.0.0.1:8000` and one worker behind the gateway. Ctrl+C stops the app/work
 and preserves data; it does not stop Tailscale Serve or Caddy. For computer-only
 HTTP use `make start`.
 
-Open your configured HTTPS address on the computer and sign in. Add yourself
+Open your configured HTTPS address on the computer and sign in. Create your practice profile
 or a child under **Learners & devices**, then open **Practice**, select the
 learner and enter a topic. **Tutor options** controls how much the tutor leads.
 Choose **Start session**, then **Create practice activity**. No grade level or

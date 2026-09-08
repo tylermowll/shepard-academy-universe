@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api, ApiError, newKey, type Schema } from "./client";
+import { BusyStatus } from "./BusyStatus";
 import { ContextHelp } from "./Help";
 import { PhoneLink } from "./PhoneLink";
 import { PhotoInput } from "./PhotoInput";
@@ -21,6 +22,7 @@ type Props = {
   ) => void;
 };
 type Initiative = "tutor_led" | "balanced" | "learner_led";
+type Difficulty = "introductory" | "standard" | "challenge";
 type Source = "topic" | "reference_text" | "reference_photo";
 type Command = {
   path: string;
@@ -48,6 +50,24 @@ function InitiativeOptions() {
   );
 }
 
+function DifficultyOptions() {
+  return (
+    <>
+      <option value="introductory">Easier</option>
+      <option value="standard">Standard</option>
+      <option value="challenge">Harder</option>
+    </>
+  );
+}
+
+function difficultyLabel(value: Difficulty) {
+  return {
+    introductory: "Easier",
+    standard: "Standard",
+    challenge: "Harder",
+  }[value];
+}
+
 export function Tutor({
   learner,
   offline,
@@ -66,6 +86,7 @@ export function Tutor({
   const [features, setFeatures] = useState<Schema<"Features"> | null>(null);
   const [topic, setTopic] = useState("");
   const [initiative, setInitiative] = useState<Initiative>("balanced");
+  const [difficulty, setDifficulty] = useState<Difficulty>("standard");
   const [source, setSource] = useState<Source>("topic");
   const [reference, setReference] = useState("");
   const [text, setText] = useState("");
@@ -173,10 +194,10 @@ export function Tutor({
     if (selectedSession.current) await load(selectedSession.current);
   }, [load]);
   const problem = session?.problems.find((item) => item.status === "assigned");
-  const active =
-    problem?.operations.some((operation) =>
-      activeStatuses.includes(operation.status),
-    ) ?? false;
+  const activeOperation = problem?.operations.find((operation) =>
+    activeStatuses.includes(operation.status),
+  );
+  const active = Boolean(activeOperation);
   const disabled =
     blocked ||
     active ||
@@ -306,10 +327,14 @@ export function Tutor({
     setPending(request);
     await sendCommand(request);
   };
-  const activity = async (nextSource: Source = source) => {
+  const activity = async (
+    nextSource: Source = source,
+    nextDifficulty?: Difficulty,
+  ) => {
     if (!session) return;
     const body: Schema<"TutorActivityInput"> = {
       source: nextSource,
+      ...(nextDifficulty ? { difficulty: nextDifficulty } : {}),
       ...(nextSource === "reference_text" ? { reference_text: reference } : {}),
     };
     await command("activity", `/tutor/sessions/${session.id}/activities`, body);
@@ -325,51 +350,63 @@ export function Tutor({
     } satisfies Schema<"SubmissionInput">);
   };
 
+  const sessionSettings = session?.status === "open" && (
+    <details className="session-settings">
+      <summary>Session settings</summary>
+      <form
+        key={`${session.id}-${session.initiative}-${session.difficulty}`}
+        onSubmit={(event) => {
+          event.preventDefault();
+          const data = new FormData(event.currentTarget);
+          void act(() =>
+            command("settings", `/tutor/sessions/${session.id}/settings`, {
+              initiative: data.get("initiative") as Initiative,
+              difficulty: data.get("difficulty") as Difficulty,
+            } satisfies Schema<"TutorSettingsInput">),
+          );
+        }}
+      >
+        <label>
+          Tutor style for this session
+          <select
+            name="initiative"
+            defaultValue={session.initiative}
+            disabled={disabled}
+          >
+            <InitiativeOptions />
+          </select>
+        </label>
+        <label>
+          Activity difficulty
+          <select
+            name="difficulty"
+            defaultValue={session.difficulty}
+            disabled={disabled}
+          >
+            <DifficultyOptions />
+          </select>
+        </label>
+        <button disabled={disabled}>Save session settings</button>
+        <p className="fine">
+          Difficulty changes future activities and guidance. Tutor style changes
+          how much the tutor suggests next steps. Supplied homework is used for
+          related practice only.
+        </p>
+      </form>
+      <button
+        disabled={disabled || hasResponseDraft}
+        onClick={() =>
+          void act(() =>
+            command("finish", `/sessions/${session.id}/finish`, {}),
+          )
+        }
+      >
+        Finish session
+      </button>
+    </details>
+  );
   const sessionControls = session?.status === "open" && (
     <>
-      <details className="session-settings">
-        <summary>Session settings</summary>
-        <form
-          key={`${session.id}-${session.initiative}`}
-          onSubmit={(event) => {
-            event.preventDefault();
-            const value = new FormData(event.currentTarget).get(
-              "initiative",
-            ) as Initiative;
-            void act(() =>
-              command("settings", `/tutor/sessions/${session.id}/settings`, {
-                initiative: value,
-              } satisfies Schema<"TutorSettingsInput">),
-            );
-          }}
-        >
-          <label>
-            Tutor style for this session
-            <select
-              name="initiative"
-              defaultValue={session.initiative}
-              disabled={disabled}
-            >
-              <InitiativeOptions />
-            </select>
-          </label>
-          <button disabled={disabled}>Save tutor style</button>
-          <p className="fine">
-            This changes how much the tutor suggests next steps. Supplied
-            homework is used for related practice only.
-          </p>
-        </form>
-        <button
-          disabled={disabled || hasResponseDraft}
-          onClick={() =>
-            void act(() =>
-              command("finish", `/sessions/${session.id}/finish`, {}),
-            )
-          }
-        >
-          Finish session
-        </button>
-      </details>
       <details className="activity-source" open={!problem || undefined}>
         <summary>
           {problem
@@ -444,11 +481,16 @@ export function Tutor({
           </p>
         </ContextHelp>
       </details>
+      {sessionSettings}
     </>
   );
 
   return (
-    <section className="tutor" aria-label="AI tutor">
+    <section
+      className="tutor"
+      aria-label="AI tutor"
+      aria-busy={working || active}
+    >
       {navigationNotice && changingSessionDisabled && (
         <p role="status" className="notice">
           {navigationNotice}
@@ -571,6 +613,7 @@ export function Tutor({
                   learner_id: learner,
                   topic,
                   initiative,
+                  difficulty,
                 } satisfies Schema<"TutoringSessionInput">),
               );
             }}
@@ -593,6 +636,22 @@ export function Tutor({
                 reference material after starting the session.
               </p>
             </ContextHelp>
+            <label>
+              Activity difficulty
+              <select
+                value={difficulty}
+                onChange={(event) =>
+                  setDifficulty(event.target.value as Difficulty)
+                }
+                disabled={blocked}
+              >
+                <DifficultyOptions />
+              </select>
+            </label>
+            <p className="fine">
+              Choose Easier for foundational concepts or Harder for deeper,
+              multi-step reasoning. You can change this during the session.
+            </p>
             <details>
               <summary>Tutor options</summary>
               <label>
@@ -636,6 +695,7 @@ export function Tutor({
             </div>
           </form>
         )}
+        {working && <BusyStatus message="Saving your request…" />}
         {pending && !working && (
           <div role="status" className="notice">
             <p>
@@ -678,14 +738,17 @@ export function Tutor({
                     : "Current activity"}
                 </h3>
                 <SafeText text={problem.problem_text} />
+                <p className="fine">
+                  Saved automatically · {difficultyLabel(session.difficulty)}{" "}
+                  difficulty
+                </p>
                 {problem.concept_focus && (
                   <p className="fine">Focus: {problem.concept_focus}</p>
                 )}
-                {problem.activity_state === "generating" && (
+                {problem.activity_state === "generating" && !active && (
                   <p role="status">
-                    {active
-                      ? "Preparing your activity…"
-                      : "No activity is ready yet. Retry the failed operation below, or choose new practice material."}
+                    No activity is ready yet. Retry the failed operation below,
+                    or choose new practice material.
                   </p>
                 )}
                 {problem.activity_state === "reference_capture" && (
@@ -708,54 +771,98 @@ export function Tutor({
                     ))}
                   </section>
                 )}
+                {active && (
+                  <BusyStatus
+                    message={
+                      activeOperation?.status === "interpreting"
+                        ? "Reading your photograph… Your session is saved."
+                        : problem.activity_state === "generating"
+                          ? "Preparing your activity… Your session is saved."
+                          : "Preparing tutor feedback… Your session is saved."
+                    }
+                  />
+                )}
+                <div className="tutor-response">
+                  {problem.activity_state === "ready" && (
+                    <>
+                      <form
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          void act(() => submit("answer"));
+                        }}
+                      >
+                        <label>
+                          Your work or question
+                          <textarea
+                            value={text}
+                            onChange={(event) => setText(event.target.value)}
+                            maxLength={8000}
+                            rows={5}
+                            readOnly={disabled}
+                            placeholder="Write your response, explain a step, or ask a question."
+                          />
+                        </label>
+                        <div className="actions">
+                          <button
+                            className="primary"
+                            disabled={disabled || !text.trim()}
+                          >
+                            Share my work
+                          </button>
+                          <button
+                            type="button"
+                            disabled={disabled || !text.trim()}
+                            onClick={() => void act(() => submit("question"))}
+                          >
+                            Ask about this
+                          </button>
+                        </div>
+                      </form>
+                    </>
+                  )}
+                  {(problem.activity_state !== "generating" ||
+                    photoPending) && (
+                    <>
+                      <p className="fine">{features?.photo_status}</p>
+                      {(features?.photos_available ||
+                        photoDraft ||
+                        photoPending) && (
+                        <>
+                          <PhoneLink
+                            key={`phone-${problem.id}-${problem.version}`}
+                            problem={problem.id}
+                            version={problem.version}
+                            disabled={disabled || !features?.photos_available}
+                            act={act}
+                            onHelp={() => onNavigate?.("help", "phone")}
+                          />
+                          <PhotoInput
+                            key={problem.id}
+                            problem={problem.id}
+                            version={problem.version}
+                            disabled={
+                              active ||
+                              working ||
+                              pending !== null ||
+                              offline ||
+                              !features?.photos_available ||
+                              session.status !== "open"
+                            }
+                            onPendingChange={setPhotoPending}
+                            onDraftChange={setPhotoDraft}
+                            act={act}
+                            onSaved={refresh}
+                            reference={
+                              problem.activity_state === "reference_capture"
+                            }
+                          />
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
                 {problem.activity_state === "ready" && (
-                  <>
-                    <form
-                      onSubmit={(event) => {
-                        event.preventDefault();
-                        void act(() => submit("answer"));
-                      }}
-                    >
-                      <label>
-                        Your work or question
-                        <textarea
-                          value={text}
-                          onChange={(event) => setText(event.target.value)}
-                          maxLength={8000}
-                          rows={5}
-                          readOnly={disabled}
-                          placeholder="Write your response, explain a step, or ask a question."
-                        />
-                      </label>
-                      <div className="actions">
-                        <button
-                          className="primary"
-                          disabled={disabled || !text.trim()}
-                        >
-                          Share my work
-                        </button>
-                        <button
-                          type="button"
-                          disabled={disabled || !text.trim()}
-                          onClick={() => void act(() => submit("question"))}
-                        >
-                          Ask about this
-                        </button>
-                      </div>
-                    </form>
-                    <ContextHelp topic="What should I send?">
-                      <p>
-                        Send a draft, your reasoning, or a question about this
-                        activity. Choose “Share my work” for feedback or “Ask
-                        about this” for a question. You can also photograph work
-                        on paper.
-                      </p>
-                      <p>
-                        The tutor can make mistakes. Check its reading of your
-                        photo before relying on the feedback, and correct errors
-                        in your next message.
-                      </p>
-                    </ContextHelp>
+                  <div className="tutor-next">
                     <details>
                       <summary>Get help with this activity</summary>
                       <div className="actions">
@@ -779,69 +886,32 @@ export function Tutor({
                         </button>
                       </div>
                     </details>
-                  </>
+                    <div className="actions">
+                      <button
+                        disabled={disabled || hasResponseDraft}
+                        onClick={() => void act(() => activity("topic"))}
+                      >
+                        Next activity
+                      </button>
+                      <button
+                        disabled={disabled || hasResponseDraft}
+                        onClick={() =>
+                          void act(() => activity("topic", "introductory"))
+                        }
+                      >
+                        Easier next activity
+                      </button>
+                      <button
+                        disabled={disabled || hasResponseDraft}
+                        onClick={() =>
+                          void act(() => activity("topic", "challenge"))
+                        }
+                      >
+                        Harder next activity
+                      </button>
+                    </div>
+                  </div>
                 )}
-                {(problem.activity_state !== "generating" || photoPending) && (
-                  <>
-                    <p className="fine">{features?.photo_status}</p>
-                    {(features?.photos_available ||
-                      photoDraft ||
-                      photoPending) && (
-                      <>
-                        <PhoneLink
-                          key={`phone-${problem.id}-${problem.version}`}
-                          problem={problem.id}
-                          version={problem.version}
-                          disabled={disabled || !features?.photos_available}
-                          act={act}
-                          onHelp={() => onNavigate?.("help", "phone")}
-                        />
-                        <PhotoInput
-                          key={problem.id}
-                          problem={problem.id}
-                          version={problem.version}
-                          disabled={
-                            active ||
-                            working ||
-                            pending !== null ||
-                            offline ||
-                            !features?.photos_available ||
-                            session.status !== "open"
-                          }
-                          onPendingChange={setPhotoPending}
-                          onDraftChange={setPhotoDraft}
-                          act={act}
-                          onSaved={refresh}
-                          reference={
-                            problem.activity_state === "reference_capture"
-                          }
-                        />
-                      </>
-                    )}
-                  </>
-                )}
-                {active && (
-                  <p role="status">
-                    The tutor is working. Your session is saved; you can leave
-                    this page and return later.
-                  </p>
-                )}
-                {problem.activity_state === "ready" && (
-                  <button
-                    disabled={disabled || hasResponseDraft}
-                    onClick={() => void act(() => activity("topic"))}
-                  >
-                    Next activity
-                  </button>
-                )}
-                <ContextHelp topic="When should I move on?">
-                  <p>
-                    You can revise or ask questions as many times as you need.
-                    “Next activity” uses your discussion to choose more
-                    practice. It does not mean this work has been graded or
-                    mastered.
-                  </p>
-                </ContextHelp>
               </article>
             )}
             {problem && sessionControls}
@@ -911,6 +981,8 @@ function TutorOperation({
     reading.confidence >= 0.85 &&
     !operation.ambiguities?.length;
   const rejected = reading && !canContinue;
+  if (operation.kind === "generation" && operation.status === "completed")
+    return null;
 
   return (
     <section className="operation tutor-operation">
@@ -1007,11 +1079,14 @@ function TutorOperation({
         !rejected && operation.message && <SafeText text={operation.message} />
       )}
       {operation.safe_error && !rejected && (
-        <p role="status" className="error">
-          {operation.safe_error}
-        </p>
+        <div role="status" className="error">
+          <p>{operation.safe_error}</p>
+          {operation.error_code && (
+            <p className="fine">Diagnostic code: {operation.error_code}</p>
+          )}
+        </div>
       )}
-      {operation.status === "failed" && !rejected && (
+      {operation.status === "failed" && operation.retryable && !rejected && (
         <button
           disabled={disabled || offline}
           onClick={() =>

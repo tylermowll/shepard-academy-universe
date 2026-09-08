@@ -404,6 +404,27 @@ class ProviderProbe(Base):
     tested_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utcnow)
 
 
+class ProviderProbeResult(Base):
+    """Bounded synthetic-test diagnostics; never prompts, responses, images or keys."""
+
+    __tablename__ = "provider_probe_result"
+    id: Mapped[uuid.UUID] = mapped_column(UUIDType, primary_key=True, default=uuid.uuid4)
+    provider_id: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    stage: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    step: Mapped[str | None] = mapped_column(String(16))
+    code: Mapped[str | None] = mapped_column(String(64))
+    completion_reason: Mapped[str | None] = mapped_column(String(32))
+    http_status: Mapped[int | None] = mapped_column()
+    output_limit: Mapped[int] = mapped_column(nullable=False)
+    reasoning_effort: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="default", server_default="default"
+    )
+    requests_started: Mapped[int] = mapped_column(nullable=False, default=0)
+    elapsed_ms: Mapped[int] = mapped_column(nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utcnow)
+
+
 class RouteSelection(Base):
     __tablename__ = "route_selection"
     name: Mapped[str] = mapped_column(String(32), primary_key=True)
@@ -441,6 +462,9 @@ class ModelCall(Base):
     )
     provider_id: Mapped[str] = mapped_column(String(64), nullable=False)
     model_id: Mapped[str] = mapped_column(String(2048), nullable=False)
+    reasoning_effort: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="default", server_default="default"
+    )
     stage: Mapped[str] = mapped_column(String(16), nullable=False)
     status: Mapped[str] = mapped_column(String(32), nullable=False)
     usage: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)

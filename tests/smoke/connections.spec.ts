@@ -8,6 +8,7 @@ async function modelFixture() {
   let calls = 0;
   let authenticatedCalls = 0;
   let rejectAuthentication = false;
+  let truncateFeedback = false;
   const server = createServer((request, response) => {
     let text = "";
     request.on("data", (part: Buffer) => {
@@ -32,6 +33,20 @@ async function modelFixture() {
         wire.format?.properties ??
         wire.response_format?.json_schema?.schema?.properties ??
         {};
+      if (truncateFeedback && "strengths" in properties) {
+        response.writeHead(200, { "Content-Type": "application/json" });
+        response.end(
+          JSON.stringify({
+            choices: [
+              {
+                finish_reason: "length",
+                message: { content: '{"guidance":' },
+              },
+            ],
+          }),
+        );
+        return;
+      }
       const payload =
         "problem_text" in properties
           ? {
@@ -99,6 +114,9 @@ async function modelFixture() {
     rejectAuthentication: (reject: boolean) => {
       rejectAuthentication = reject;
     },
+    truncateFeedback: (truncate: boolean) => {
+      truncateFeedback = truncate;
+    },
     close: () =>
       new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
@@ -164,8 +182,17 @@ test("Meta hosted policy is explicit while local model controls remain usable", 
   await expect(page.locator("#meta-policy-help")).toContainText(
     "choose Ollama or vLLM instead",
   );
+  await page.getByText("Advanced connection options", { exact: true }).click();
+  const thinking = page.getByRole("combobox", {
+    name: "Thinking effort",
+    exact: true,
+  });
+  await expect(thinking).toHaveValue("default");
+  await thinking.selectOption("high");
+  await expect(thinking).toHaveValue("high");
 
   await connectionType.selectOption("vllm");
+  await expect(thinking).toHaveCount(0);
   const boundary = page.getByRole("combobox", {
     name: "Where this model runs",
     exact: true,
@@ -405,7 +432,7 @@ for (const adapter of ["vllm", "ollama", "compatible"] as const) {
   }) => {
     const fixture = await modelFixture();
     const id = `synthetic-${adapter}-${Date.now()}`;
-    const failedCalls = adapter === "compatible" ? 1 : 0;
+    const failedCalls = adapter === "compatible" ? 4 : 0;
     try {
       await login(page);
       await navigate(page, "Settings");
@@ -492,6 +519,34 @@ for (const adapter of ["vllm", "ollama", "compatible"] as const) {
         await expect(tutorStatus).toContainText("Not passed yet");
         expect(fixture.calls()).toBe(1);
         fixture.rejectAuthentication(false);
+        page.once("dialog", (dialog) => dialog.accept());
+        await card
+          .getByRole("button", { name: "Test photo reader", exact: true })
+          .click();
+        await expect(photoReaderStatus).toContainText("Passed");
+        fixture.truncateFeedback(true);
+        page.once("dialog", (dialog) => dialog.accept());
+        await card
+          .getByRole("button", { name: "Test tutor", exact: true })
+          .click();
+        await expect(page.getByRole("alert")).toContainText(
+          "Tutor feedback (step 2 of 2)",
+        );
+        await expect(page.getByRole("alert")).toContainText("output_limit");
+        await expect(tutorStatus).toContainText("Not passed yet");
+        await expect(photoReaderStatus).toContainText("Passed");
+        expect(fixture.calls()).toBe(4);
+        await page.reload();
+        await navigate(page, "Settings");
+        await page.getByRole("tab", { name: /Connection tests/ }).click();
+        const history = card.getByRole("region", {
+          name: "Recent connection tests",
+        });
+        await expect(history).toContainText("Tutor feedback (step 2 of 2)");
+        await expect(history).toContainText("response token limit");
+        await expect(history).toContainText("16,384 output-token limit");
+        expect(fixture.calls()).toBe(4); // Reload never sends another model request.
+        fixture.truncateFeedback(false);
       }
       page.once("dialog", (dialog) => dialog.accept());
       await card
@@ -503,6 +558,11 @@ for (const adapter of ["vllm", "ollama", "compatible"] as const) {
         .getByRole("button", { name: "Test photo reader", exact: true })
         .click();
       await expect(photoReaderStatus).toContainText("Passed");
+      await expect(
+        page
+          .getByRole("status")
+          .filter({ hasText: `${id}: photo reader test passed.` }),
+      ).toBeVisible();
       expect(fixture.calls()).toBe(3 + failedCalls);
       expect(fixture.authenticatedCalls()).toBe(3 + failedCalls);
       await page
@@ -585,7 +645,7 @@ for (const adapter of ["vllm", "ollama", "compatible"] as const) {
         "I reviewed the model and provider terms for the users selected above.",
         { exact: true },
       );
-      await reviewedTerms.check();
+      await expect(reviewedTerms).toBeChecked();
       await page
         .getByText("Advanced connection options", { exact: true })
         .click();
@@ -626,6 +686,15 @@ for (const adapter of ["vllm", "ollama", "compatible"] as const) {
     } finally {
       try {
         await restoreDemoRoutes(page);
+        const session = await page.request.get("/api/v1/auth/session");
+        const identity = (await session.json()) as { csrf_token: string };
+        const removed = await page.request.delete(
+          `/api/v1/admin/providers/connections/${id}`,
+          {
+            headers: { "X-CSRF-Token": identity.csrf_token },
+          },
+        );
+        expect([200, 404]).toContain(removed.status());
       } finally {
         await fixture.close();
       }

@@ -61,6 +61,79 @@ def request(image: bool = False) -> ModelRequest:
     )
 
 
+@pytest.mark.parametrize("effort", ["default", "minimal", "low", "medium", "high", "xhigh"])
+def test_meta_thinking_effort_wire_and_reported_token_counts(effort: str) -> None:
+    config = ProviderConfig.model_validate(
+        {
+            "adapter": "meta",
+            "model": "synthetic-model-v1",
+            "enabled": True,
+            "base_url": "https://synthetic.invalid/v1",
+            "data_boundary": "cloud",
+            "eligibility_record": "Synthetic fixture only",
+            "capabilities": {"reasoning_effort": effort},
+        }
+    )
+
+    def respond(req: httpx.Request) -> httpx.Response:
+        body = json.loads(req.content)
+        if effort == "default":
+            assert "reasoning_effort" not in body
+        else:
+            assert body["reasoning_effort"] == effort
+        return httpx.Response(
+            200,
+            json={
+                "choices": [{"finish_reason": "stop", "message": {"content": json.dumps(PAYLOAD)}}],
+                "usage": {
+                    "completion_tokens": 100,
+                    "completion_tokens_details": {
+                        "reasoning_tokens": 75,
+                        "ignored_vendor_field": "never saved",
+                    },
+                },
+            },
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(respond)) as client:
+        result = HTTPProvider(config, client).complete(request())
+    assert result.reported_usage == {"completion_tokens": 100, "reasoning_tokens": 75}
+
+
+@pytest.mark.parametrize("adapter", ["mock", "ollama", "vllm", "compatible", "bedrock"])
+def test_unsupported_adapter_rejects_thinking_effort_even_when_disabled(adapter: str) -> None:
+    with pytest.raises(ValidationError, match="Thinking effort"):
+        ProviderConfig.model_validate(
+            {"adapter": adapter, "model": "synthetic", "capabilities": {"reasoning_effort": "high"}}
+        )
+
+
+@pytest.mark.parametrize("details", [None, {}, {"audio_tokens": 10}])
+def test_absent_reasoning_usage_is_not_reported_as_measured_zero(details: Any) -> None:
+    config = ProviderConfig(
+        adapter="compatible",
+        model="synthetic-model-v1",
+        enabled=True,
+        base_url="http://127.0.0.1:8081",
+        eligibility_record="Synthetic",
+    )
+    with httpx.Client(
+        transport=httpx.MockTransport(
+            lambda _req: httpx.Response(
+                200,
+                json={
+                    "choices": [
+                        {"finish_reason": "stop", "message": {"content": json.dumps(PAYLOAD)}}
+                    ],
+                    "usage": {"completion_tokens": 100, "completion_tokens_details": details},
+                },
+            )
+        )
+    ) as client:
+        result = HTTPProvider(config, client).complete(request())
+    assert result.reported_usage == {"completion_tokens": 100}
+
+
 @pytest.mark.parametrize("adapter", ["meta", "ollama", "vllm", "compatible"])
 def test_transport_maps_roles_schema_and_private_image(adapter: str) -> None:
     config = ProviderConfig.model_validate(
@@ -97,7 +170,7 @@ def test_transport_maps_roles_schema_and_private_image(adapter: str) -> None:
             )
         assert req.url.path == "/v1/chat/completions"
         assert body["messages"][-1]["content"][1]["image_url"]["url"].startswith(
-            "data:image/png;base64,"
+            "data:image/jpeg;base64,"
         )
         assert body["response_format"]["json_schema"]["schema"] == strict_response_schema(
             request(True).response_schema

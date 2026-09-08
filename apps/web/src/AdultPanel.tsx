@@ -8,6 +8,7 @@ import {
 } from "./ProviderConnections";
 
 type Props = {
+  adultLoginName?: string;
   learner: string;
   learners: Schema<"LearnerPublic">[];
   onLearner: (id: string) => void;
@@ -46,6 +47,7 @@ function processingLocation(provider?: Schema<"ProviderPublic">) {
 }
 
 export function AdultPanel({
+  adultLoginName,
   learner,
   learners,
   onLearner,
@@ -309,14 +311,18 @@ export function AdultPanel({
                 type="button"
                 onClick={() => {
                   if (!learnerName.current || !learnerAge.current) return;
-                  learnerName.current.value = "Me";
+                  learnerName.current.value = adultLoginName?.trim() || "Me";
                   learnerAge.current.value = "adult";
                   learnerName.current.focus();
                   learnerName.current.select();
                 }}
               >
-                Add yourself (adult)
+                Create my practice profile
               </button>
+              <p className="fine">
+                This creates a learner profile for your practice and history. It
+                stays separate from your administrator permissions.
+              </p>
               <label>
                 Learner name
                 <input
