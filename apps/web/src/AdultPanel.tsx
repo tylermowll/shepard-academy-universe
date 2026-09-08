@@ -125,6 +125,7 @@ export function AdultPanel({
     focusContent = false,
   ) => {
     focusSettingsContent.current = focusContent;
+    if (next !== settingsSection) setMessage("");
     setSettingsSection(next);
   };
   useEffect(() => {
@@ -688,9 +689,16 @@ export function AdultPanel({
         </>
       )}
       {message && (
-        <p role="status" className="notice">
-          {message}
-        </p>
+        <aside
+          role="status"
+          className="notice settings-toast"
+          aria-live="polite"
+        >
+          <p>{message}</p>
+          <button type="button" onClick={() => setMessage("")}>
+            Dismiss
+          </button>
+        </aside>
       )}
     </section>
   );

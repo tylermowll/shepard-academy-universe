@@ -337,6 +337,10 @@ describe("adult connection setup", () => {
       fireEvent.click(screen.getByRole("button", { name: "Save connection" }));
       const error = await screen.findByRole("alert");
       expect(error).not.toHaveTextContent("synthetic-key-not-valid");
+      expect(error).not.toHaveTextContent("Your entries are still here");
+      expect(error.closest("form")).toBe(
+        screen.getByRole("button", { name: "Save connection" }).closest("form"),
+      );
       expect(screen.getByLabelText("API key")).toHaveValue(
         "synthetic-key-not-valid",
       );
@@ -348,6 +352,50 @@ describe("adult connection setup", () => {
       ).toBeEnabled();
     },
   );
+
+  it("explains a likely stale API when a newer context limit is rejected", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => response({ detail: "Invalid request." }, 422)),
+    );
+    show();
+    fillNew();
+    fireEvent.click(screen.getByText("Advanced connection options"));
+    fireEvent.change(screen.getByLabelText("Model context limit"), {
+      target: { value: "250000" },
+    });
+    fireEvent.click(terms());
+    fireEvent.click(screen.getByRole("button", { name: "Save connection" }));
+    const error = await screen.findByRole("alert");
+    expect(error).toHaveTextContent("Could not save local-tutor");
+    expect(error).toHaveTextContent(
+      "stop and restart the app to make the page and API use the same version",
+    );
+    expect(error.closest("form")).not.toBeNull();
+  });
+
+  it("identifies invisible whitespace in an API key before saving", () => {
+    show();
+    fillNew();
+    fireEvent.change(screen.getByLabelText("API key action"), {
+      target: { value: "replace" },
+    });
+    fireEvent.change(screen.getByLabelText("API key"), {
+      target: { value: "synthetic-key-with-space " },
+    });
+    fireEvent.click(terms());
+    expect(
+      screen.getByText(/Remove spaces, line breaks, or non-ASCII characters/),
+    ).toBeVisible();
+    expect(screen.getByLabelText("API key")).toHaveAttribute(
+      "aria-invalid",
+      "true",
+    );
+    expect(
+      screen.getByRole("button", { name: "Save connection" }),
+    ).toBeDisabled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
 
   it("edits a stored connection without fetching or resubmitting its key", async () => {
     show();
@@ -681,12 +729,28 @@ describe("adult connection setup", () => {
     expect(fetch).toHaveBeenCalledOnce();
     confirm.mockReturnValue(true);
     fireEvent.click(screen.getByRole("button", { name: "Delete connection" }));
-    await screen.findByText("home-vision deleted.");
+    await screen.findByText("home-vision and its saved API key were deleted.");
     expect(fetch).toHaveBeenLastCalledWith(
       "/api/v1/admin/providers/connections/home-vision",
       expect.objectContaining({ method: "DELETE" }),
     );
     expect(onChanged).toHaveBeenCalledTimes(2);
+  });
+
+  it("closes an editor when that connection is deleted", async () => {
+    show();
+    fireEvent.click(screen.getByRole("button", { name: "Edit connection" }));
+    expect(
+      screen.getByRole("heading", { name: "Edit home-vision" }),
+    ).toBeVisible();
+    openDetails();
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    fireEvent.click(screen.getByRole("button", { name: "Delete connection" }));
+    await screen.findByText("home-vision and its saved API key were deleted.");
+    expect(
+      screen.queryByRole("heading", { name: "Edit home-vision" }),
+    ).toBeNull();
+    expect(screen.queryByLabelText("API key")).toBeNull();
   });
 
   it("shows file-managed connections as read-only and prevents deleting a selected connection", () => {

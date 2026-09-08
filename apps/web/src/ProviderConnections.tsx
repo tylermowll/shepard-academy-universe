@@ -63,17 +63,59 @@ function inputFor(provider: Schema<"ProviderPublic">): ConnectionInput {
   };
 }
 
-function saveError(cause: unknown) {
+const knownSafeConnectionDetails = new Set([
+  "An enabled Meta connection needs an API key.",
+  "A changed server or provider needs a replacement key, or explicitly remove the old key.",
+  "Use the cloud boundary for a public Internet endpoint.",
+  "Check the server URL, exact model name, audience, and eligibility. URLs cannot contain credentials, queries, or fragments; cloud URLs need HTTPS. Meta requires the cloud boundary.",
+  "That connection ID is already in use. Choose another.",
+  "Choose a replacement tutor or photo reader before deleting this connection.",
+  "This connection is managed by the server configuration.",
+]);
+
+function saveError(cause: unknown, draft: Draft) {
+  const prefix = draft.id.trim()
+    ? `Could not save ${draft.id.trim()}. `
+    : "Could not save this connection. ";
   if (cause instanceof ApiError) {
     if (cause.status === 401 || cause.status === 403)
-      return "Only an authorized adult can change connections. Check your sign-in and the app permissions.";
-    if (cause.status === 409)
-      return "This name is already in use, or the connection is selected for tutoring. Refresh the connections and check its current settings.";
-    if (cause.status === 422)
-      return "Check the server address, exact model name, audience, and API key choice. Your entries are still here.";
+      return `${prefix}Your administrator sign-in is no longer authorized. Sign in again, then retry.`;
+    if (cause.status === 404)
+      return `${prefix}This connection was deleted. Cancel this editor, choose Add AI connection, and add it again.`;
+    if (cause.status === 409) {
+      if (knownSafeConnectionDetails.has(cause.message))
+        return `${prefix}${cause.message}`;
+      return `${prefix}That name is already in use, or this connection is active. Refresh the saved connections and check its current state.`;
+    }
+    if (cause.status === 422) {
+      if (knownSafeConnectionDetails.has(cause.message))
+        return `${prefix}${cause.message}`;
+      if (draft.configured_context_limit > 131_072)
+        return `${prefix}The running API rejected the form. This version accepts context limits above 131,072, so stop and restart the app to make the page and API use the same version, then retry.`;
+      return `${prefix}The running API rejected a form value. Re-enter the API key without spaces, check the server address and model name, then retry.`;
+    }
   }
-  // Server/provider errors must never echo a credential into the page.
-  return "The server did not confirm the save. Your entries are still here. Refresh connections to check before retrying.";
+  // Unexpected server details must never echo a credential into the page.
+  return `${prefix}The app server did not confirm the save. Refresh Saved connections before retrying.`;
+}
+
+function connectionActionError(
+  cause: unknown,
+  provider: Schema<"ProviderPublic">,
+  remove: boolean,
+) {
+  const action = remove
+    ? `delete ${provider.id}`
+    : `${provider.enabled ? "disable" : "enable"} ${provider.id}`;
+  if (cause instanceof ApiError) {
+    if (cause.status === 401 || cause.status === 403)
+      return `Could not ${action}. Your administrator sign-in is no longer authorized.`;
+    if (cause.status === 404)
+      return `Could not ${action}. That connection no longer exists; refresh Saved connections.`;
+    if (knownSafeConnectionDetails.has(cause.message))
+      return `Could not ${action}. ${cause.message}`;
+  }
+  return `Could not ${action}. Refresh Saved connections, check its current state, and retry.`;
 }
 
 const probeMessages = {
@@ -131,6 +173,7 @@ export function ProviderConnections({
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [saveFailure, setSaveFailure] = useState("");
   const [errorSection, setErrorSection] =
     useState<ProviderSettingsSection | null>(null);
   const editor = useRef<HTMLFormElement>(null);
@@ -168,6 +211,14 @@ export function ProviderConnections({
         editing?.key_configured &&
         !editing.key_needs_replacement),
   );
+  const apiKeyFormatInvalid = Boolean(
+    draft?.api_key_action === "replace" &&
+    draft.api_key &&
+    [...draft.api_key].some(
+      (character) =>
+        character.charCodeAt(0) < 33 || character.charCodeAt(0) > 126,
+    ),
+  );
   const change = <K extends keyof Draft>(
     field: K,
     value: Draft[K],
@@ -176,12 +227,14 @@ export function ProviderConnections({
     setDraft((current) => (current ? { ...current, [field]: value } : null));
     if (termsChanged) setTerms(false);
     setError("");
+    setSaveFailure("");
   };
   const cancel = () => {
     setDraft(null);
     setEditing(null);
     setTerms(false);
     setError("");
+    setSaveFailure("");
   };
   const start = (provider?: Schema<"ProviderPublic">) => {
     if (
@@ -205,6 +258,7 @@ export function ProviderConnections({
     setTerms(false);
     setMessage("");
     setError("");
+    setSaveFailure("");
   };
   const updateConnection = (
     provider: Schema<"ProviderPublic">,
@@ -231,15 +285,16 @@ export function ProviderConnections({
                 enabled: !provider.enabled,
               } satisfies ConnectionInput),
         );
+        if (remove && editing?.id === provider.id) cancel();
         await onChanged();
         setMessage(
           remove
-            ? `${provider.id} deleted.`
+            ? `${provider.id} and its saved API key were deleted.`
             : `${provider.id} ${provider.enabled ? "disabled" : "enabled"}. Test it before selecting it for practice.`,
         );
       } catch (cause) {
         setErrorSection("connections");
-        setError(saveError(cause));
+        setError(connectionActionError(cause, provider, remove));
       } finally {
         setBusy(false);
       }
@@ -303,7 +358,7 @@ export function ProviderConnections({
                 } satisfies ConnectionInput;
                 void act(async () => {
                   setBusy(true);
-                  setError("");
+                  setSaveFailure("");
                   let saved = false;
                   try {
                     await api(
@@ -335,11 +390,10 @@ export function ProviderConnections({
                     );
                     openSection(needsPolicy ? "policy" : "tests");
                   } catch (cause) {
-                    setErrorSection("connections");
-                    setError(
+                    setSaveFailure(
                       saved
                         ? "The connection was saved, but the list could not refresh. Refresh connections to continue."
-                        : saveError(cause),
+                        : saveError(cause, draft),
                     );
                   } finally {
                     setBusy(false);
@@ -547,8 +601,18 @@ export function ProviderConnections({
                       autoComplete="new-password"
                       maxLength={8192}
                       spellCheck={false}
+                      aria-invalid={apiKeyFormatInvalid}
+                      aria-describedby={
+                        apiKeyFormatInvalid ? "api-key-format-error" : undefined
+                      }
                     />
                   </label>
+                )}
+                {apiKeyFormatInvalid && (
+                  <p className="field-error" id="api-key-format-error">
+                    Remove spaces, line breaks, or non-ASCII characters from the
+                    API key.
+                  </p>
                 )}
                 {keyMustChange && draft.api_key_action === "keep" && (
                   <p className="notice">
@@ -726,6 +790,11 @@ export function ProviderConnections({
                   </p>
                 </fieldset>
               </details>
+              {saveFailure && (
+                <p role="alert" className="error">
+                  {saveFailure}
+                </p>
+              )}
               <div className="actions">
                 <button
                   className="primary"
@@ -737,6 +806,7 @@ export function ProviderConnections({
                     !draft.base_url.trim() ||
                     (draft.api_key_action === "replace" &&
                       !draft.api_key.trim()) ||
+                    apiKeyFormatInvalid ||
                     (keyMustChange && draft.api_key_action === "keep") ||
                     metaKeyMissing
                   }
@@ -759,6 +829,11 @@ export function ProviderConnections({
                 </p>
               </div>
             </div>
+            {error && errorSection === "connections" && (
+              <p role="alert" className="error">
+                {error}
+              </p>
+            )}
             <div className="provider-list">
               {providers.map((provider) => {
                 const blocked = policyBlocks(provider);
@@ -901,11 +976,6 @@ export function ProviderConnections({
           </section>
         </>
       )}
-      {error && errorSection === section && (
-        <p role="alert" className="error">
-          {error}
-        </p>
-      )}
       {message && (
         <aside
           role="status"
@@ -920,6 +990,11 @@ export function ProviderConnections({
       )}
       {section === "tests" && (
         <section aria-labelledby="settings-tests-heading">
+          {error && errorSection === "tests" && (
+            <p role="alert" className="error">
+              {error}
+            </p>
+          )}
           <div className="section-heading">
             <div>
               <h2 id="settings-tests-heading" tabIndex={-1}>

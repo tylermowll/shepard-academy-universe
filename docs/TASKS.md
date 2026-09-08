@@ -39,7 +39,57 @@ specification gates pass.
 | T29  | Implemented; automated gates passed                            | Shepard Academy Universe branding; fixed Meta cloud location, editable audience and disclaimer; project hooks/check, 216 integration and 4 affected browser tests passed.                                                      |
 | T30  | Implemented; automated gates passed                            | Guided AI setup, visible blockers, selectable pending connections and million-token context windows; 162 unit, 113 component, 217 integration and 18 affected browser tests passed.                                            |
 | T31  | Implemented; automated gates passed                            | Visible connection repair, tab-scoped named failures, and current Meta direct-API defaults; 162 unit, 115 component and 10 affected browser tests passed.                                                                      |
-| T32  | Implemented; automated gates passed                            | Strict tutor schemas, separate role-test guidance, save toast and stable terms review; 163 unit, 120 component, 217 integration and 10 affected browser tests passed.                                                           |
+| T32  | Implemented; automated gates passed                            | Strict tutor schemas, separate role-test guidance, save toast and stable terms review; 163 unit, 120 component, 217 integration and 10 affected browser tests passed.                                                          |
+| T33  | Implemented; automated gates passed                            | Contextual connection-save errors, stale-process guidance, key-format validation and consistent notices; 163 unit, 123 component and 12 desktop/mobile browser cases passed.                                                   |
+
+### T33 — Contextual connection-save failures (2026-09-07)
+
+The maintainer deleted a Spark connection, tried to add it again, and received a
+generic validation warning below the entire saved-connection list while an older
+success notice remained visible. The visible Meta URL, model, audience and
+250,000-token context value all satisfy the current backend schema. The agent did
+not inspect the private API key, database or running process; an older API process
+is a strong explanation because the former backend rejected context limits above
+131,072 while the newer static page accepts them.
+
+Bounded implementation and acceptance:
+
+- Put a failed save inside its connection editor immediately above the action
+  buttons. Name the connection and preserve only safe, actionable server details;
+  remove the vague **Your entries are still here** text.
+- When a generic running API rejects a context value above the former 131,072
+  bound, explicitly tell the operator to restart so the page and API run the same
+  version. Continue to keep credentials and arbitrary server details out of errors.
+- Reject spaces, line breaks and non-ASCII characters in a replacement API key in
+  the browser before submission, matching backend validation without displaying
+  the key.
+- Close an editor when its connection and stored key are deleted. Make deletion
+  confirmation explicit, dismiss app success notices, and clear obsolete notices
+  when moving to another Settings step.
+- Keep the provider CRUD contract unchanged and exercise only synthetic fixtures;
+  make no live provider call and inspect no operator state.
+
+Implemented and verified:
+
+- The current `ProviderConnectionCreate` and `ProviderConfig` models accepted a
+  synthetic copy of every visible value in the report, including `250000`; this
+  establishes that the displayed fields are not invalid on current `main` without
+  making a network request.
+- Focused ProviderConnections and AdultPanel component coverage passed **53/53**.
+  The full affected browser file passed **12/12** across desktop and mobile,
+  including a real backend rejection whose exact URL rule renders inside the
+  editor. An initial service-worker-intercept test was invalid because the PWA
+  handled the request before Playwright routing; it was replaced with the real
+  synthetic backend case and did not weaken an assertion.
+- `make test` passed **163 backend unit** and **123 frontend component** cases.
+  Repository hooks, lint, formatting, strict types, both production builds,
+  generated-contract drift and tracked-secret checks passed. The existing Vite
+  large-chunk warning remains non-fatal and was not hidden. The integration suite
+  was not rerun because this slice changes no backend or generated API contract;
+  its prior T32 result is 217/217.
+- Push evidence is recorded before handoff. No live Meta request, private
+  configuration access, model download, migration, phone test or deployment was
+  performed.
 
 ### T32 — Tutor probe compatibility and clear save feedback (2026-09-07)
 

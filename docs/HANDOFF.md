@@ -1,6 +1,20 @@
 # Current handoff
 
-The current task is **T32: tutor probe compatibility and clear save feedback**.
+The current task is **T33: contextual connection-save failures**. A save error now
+appears inside its editor above the Save button, identifies the connection, uses
+specific safe server explanations, and no longer says **Your entries are still
+here**. Replacement keys with invisible whitespace or non-ASCII characters are
+rejected before submission without displaying the secret. A generic rejection of
+a context value above the former 131,072 limit tells the operator to restart so
+the page and API use the same version. Deleting a currently edited connection
+closes that stale editor and explicitly confirms that its stored key was removed.
+Success notices are dismissible and old Settings-step notices clear on navigation.
+The final gate passed 163 backend unit and 123 frontend component cases plus lint,
+formatting, strict types, builds, contract drift and secret checks. The affected
+desktop/mobile browser suite passed 12 cases. Push evidence is recorded in
+[TASKS](TASKS.md). No live provider call or private operator state was used.
+
+T32 completed **tutor probe compatibility and clear save feedback**.
 A photo pass proves the model can satisfy the image-reading contract; the tutor
 test separately requires activity and feedback schemas. OpenAI-style native
 structured requests now require all declared properties and omit schema defaults,

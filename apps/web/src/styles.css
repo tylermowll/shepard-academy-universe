@@ -367,6 +367,13 @@ h4 {
   padding: 14px 18px;
   margin: 16px 0;
 }
+.field-error {
+  color: #752e1a;
+  margin: -8px 0 12px;
+}
+input[aria-invalid="true"] {
+  border-color: #a84627;
+}
 .settings-toast {
   position: fixed;
   z-index: 20;

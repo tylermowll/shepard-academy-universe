@@ -182,6 +182,43 @@ test("Meta hosted policy is explicit while local model controls remain usable", 
   await expect(audience).toHaveValue("adult_only");
 });
 
+test("a rejected save gives the exact reason beside the connection form", async ({
+  page,
+}) => {
+  await login(page);
+  await navigate(page, "Settings");
+  await page
+    .getByRole("button", { name: "Add AI connection", exact: true })
+    .click();
+  await page
+    .getByLabel("Connection name", { exact: true })
+    .fill(`synthetic-stale-${Date.now()}`);
+  await page
+    .getByLabel("Model name", { exact: true })
+    .fill("synthetic-model-v1");
+  await page
+    .getByLabel("Server address", { exact: true })
+    .fill("http://127.0.0.1:11434?invalid=synthetic");
+  await page.getByText("Advanced connection options", { exact: true }).click();
+  await page.getByLabel("Model context limit", { exact: true }).fill("250000");
+  await page
+    .getByLabel(
+      "I reviewed the model and provider terms for the users selected above.",
+      { exact: true },
+    )
+    .check();
+  const editor = page.locator("form.connection-editor");
+  await editor
+    .getByRole("button", { name: "Save connection", exact: true })
+    .click();
+  await expect(editor.getByRole("alert")).toContainText(
+    "URLs cannot contain credentials, queries, or fragments",
+  );
+  await expect(editor.getByRole("alert")).not.toContainText(
+    "Your entries are still here",
+  );
+});
+
 test("a saved connection stays selectable while setup blockers point to their exact steps", async ({
   page,
 }) => {

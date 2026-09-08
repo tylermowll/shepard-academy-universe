@@ -427,6 +427,10 @@ describe("AI settings page", () => {
     await screen.findByText(
       "Active connections saved. Future learner work will use these app-wide choices.",
     );
+    const status = screen.getByRole("status");
+    expect(status).toHaveClass("settings-toast");
+    fireEvent.click(screen.getByRole("tab", { name: /Connections/ }));
+    expect(screen.queryByRole("status")).toBeNull();
     expect(fetch).toHaveBeenCalledWith(
       "/api/v1/admin/providers/routes",
       expect.objectContaining({ method: "POST" }),
