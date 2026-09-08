@@ -42,14 +42,6 @@ def session_difficulty(row: PracticeSession) -> Difficulty:
     )
 
 
-class TutoringSessionInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    learner_id: UUID
-    topic: str = Field(min_length=1, max_length=500)
-    initiative: Initiative = "balanced"
-    difficulty: Difficulty = "standard"
-
-
 class TutorSettingsInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     initiative: Initiative
@@ -69,6 +61,15 @@ class TutorActivityInput(BaseModel):
         if self.source != "reference_text" and self.reference_text is not None:
             raise ValueError("Only a text reference accepts reference_text.")
         return self
+
+
+class TutoringSessionInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    learner_id: UUID
+    topic: str = Field(min_length=1, max_length=500)
+    initiative: Initiative = "balanced"
+    difficulty: Difficulty = "standard"
+    initial_activity: TutorActivityInput | None = None
 
 
 class TutoringSessionPublic(BaseModel):
@@ -145,6 +146,8 @@ def create_session(
     )
     db.add(row)
     db.flush()
+    if body.initial_activity is not None:
+        activity(row.id, body.initial_activity, request, db, actor)
     return public_session(db, row)
 
 

@@ -36,7 +36,7 @@ specification gates pass.
 | T26  | Implemented; automated gates passed                            | Purposeful tabs, plain wording, in-context Help, parent-as-student profiles and guided phone setup; 125 unit, 51 component, 146 integration and 36 browser tests passed.                                                         |
 | T27  | Implemented; automated gates passed                            | Browser-managed AI connections/keys, current-schema tests, persistent startup and safe backup settings; 145 unit, 80 component, 188 integration and 42 browser tests passed.                                                     |
 | T28  | Implemented; automated gates passed                            | Browser-first owner setup, inline recovery, six-character loopback passwords with network safeguards; 159 unit, 103 component, 215 integration and 46 browser tests passed.                                                      |
-| T29  | Implemented; automated gates passed                            | Shepard Academy Universe branding; fixed Meta cloud location, editable audience and disclaimer; project hooks/check, 216 integration and 4 affected browser tests passed.                                                        |
+| T29  | Implemented; automated gates passed                            | Shepherd Academy Universe branding; fixed Meta cloud location, editable audience and disclaimer; project hooks/check, 216 integration and 4 affected browser tests passed.                                                        |
 | T30  | Implemented; automated gates passed                            | Guided AI setup, visible blockers, selectable pending connections and million-token context windows; 162 unit, 113 component, 217 integration and 18 affected browser tests passed.                                              |
 | T31  | Implemented; automated gates passed                            | Visible connection repair, tab-scoped named failures, and current Meta direct-API defaults; 162 unit, 115 component and 10 affected browser tests passed.                                                                        |
 | T32  | Implemented; automated gates passed                            | Strict tutor schemas, separate role-test guidance, save toast and stable terms review; 163 unit, 120 component, 217 integration and 10 affected browser tests passed.                                                            |
@@ -44,6 +44,97 @@ specification gates pass.
 | T34  | Implemented; automated gates passed; live retest pending       | Editable tutor response budget, durable SQLite test diagnostics, visible failure phase/finish reason and restored terms review; 163 unit, 130 component, 226 integration and 12 browser cases passed.                            |
 | T35  | Implemented; automated gates passed; live photo retest pending | Bounded JPEG/HEIC and drag/drop, simpler Practice, difficulty controls, pending indicators, adult profile clarity and Meta thinking effort; 179 unit, 137 component, 234 integration and 52 desktop/mobile browser tests passed. |
 | T36  | Implemented; local containers updated; live quality unverified | Continuous conversation, qualified photo feedback, contextual follow-ups, compact workspace; 181 unit, 145 component, 238 integration tests, affected browser checks and container smoke passed.                                 |
+| T37 | Implemented; local installation reset and rebuilt; live quality unverified | Unique learner logins, administrator-only management, one-step practice, exclusive menus, stable connection approvals, two-hour QR and Shepherd branding; validation below. |
+
+### T37 — Account and practice usability review (2026-09-08)
+
+Implemented under the maintainer's fourteen-point review and subsequent
+account, menu, branding and clean-reset instructions. D013 records the account model: one administrator, unique
+learner usernames, administrator-managed passwords, a shared sign-in page,
+and account controls placed beside the selected learner. Existing learner IDs
+and work must survive the migration; duplicate profiles must not be merged.
+
+Affected contracts: learner creation/public serialization, password reset,
+authentication/session revocation, learner device listing and ownership,
+retired pairing endpoints, migration/schema integrity and typed API clients.
+Required tests: duplicate-name and admin-name collisions; valid/invalid learner
+login, reset and stale-login races; two-learner/adult isolation; no password/hash
+disclosure; existing-data migration and rollback; learner account management
+and sign-in in desktop/mobile browsers. Required gates: `make check`,
+`make test-integration`, `make smoke`, `make eval-mock`, container smoke and
+readiness after a controlled migration/rebuild. No live provider calls.
+
+The same review also covers practice startup, tutor/connection choices and
+wording (3–5, 10–14), phone-camera lifetime and recovery (7), mutually exclusive
+composer menus, administrator-only management pages and the corrected Shepherd
+name. Added contracts/tests: atomic initial activity with idempotent retry;
+unchanged connection saves preserve tested approval; actual changes still block
+unapproved use; two-hour camera expiry and regeneration; keyboard/pointer menus.
+The maintainer additionally authorized resetting the local installation, including
+accounts and saved Spark setup, for a clean cutover. The earlier rebuild/push
+authorization applies. No live inference is authorized.
+
+Implemented review changes:
+
+- `api/learners.py`, `auth.py`, `account_names.py` and migration 0017 replace
+  passwordless pairing with unique learner usernames and administrator-managed
+  passwords. Resets revoke prior sessions; public schemas never return hashes or
+  passwords. Existing histories migrate without merging learners.
+- `LearnerAccounts.tsx` places sign-in, browser and saved-work controls beside
+  the selected account. `App.tsx` limits administrators to Learners/Settings/Help
+  and learners to Practice/History/Help. The browser experiment is removed from
+  the application entry and settings UI; its isolated research source remains.
+- `api/tutoring.py` and `Tutor.tsx` start a session and its first activity in one
+  transaction. Topic/reference input, difficulty and explained tutor styles are
+  collected together. `ComposerMenu.tsx` closes menus on another menu, selection,
+  Escape or an outside click.
+- `api/provider_connections.py` preserves tested approval for unchanged saves.
+  Real configuration/credential changes still require tests and activation.
+  Settings uses named sections, explicit cloud/data wording, Add new AI connection,
+  Cancel changes and an editor Delete control. Active connections must be replaced
+  before deletion. Saving Data & privacy is the explicit consent action; merely
+  changing a control sends no request.
+- Phone links accept one photo for the current activity, last two hours and offer
+  **New QR code**. Full phone practice uses the learner's credentials. Existing
+  ownership, expiry, replay, revocation and processing-policy checks remain.
+- Public branding and the Git remote use **Shepherd Academy Universe** and the
+  corrected repository name. The app uses a small book-and-star SVG. The supplied
+  banner remains untracked and unchanged.
+
+Validation:
+
+- `make check`: passed; **181 unit and 145 component tests**, lint, formatting,
+  types, builds, generated-contract drift, public secret scan and infrastructure
+  lint. `make test-integration`: **247 passed**, including migration/rollback,
+  normalized duplicate names, password reset races, idempotent initial activity,
+  unchanged approval and the two-hour photo limit. `make eval-mock`: passed.
+- `pnpm exec playwright test`: **61 passed**, with one new mobile menu test
+  attempting to click the textarea through an overlapping menu. The test now
+  clicks a visible heading outside the menu; no assertion or timeout was weakened.
+  `pnpm exec playwright test tests/smoke/practice-start.spec.ts`: **4 passed**
+  across desktop/mobile, covering startup and all menu dismissal assertions.
+  Earlier fixture failures were fixed by keeping the administrator and learner
+  in separate browser contexts; connection cleanup can no longer use learner
+  permissions. The final full run passed every account, provider, navigation,
+  photo, reference, retry and setup-recovery case.
+- `make hooks-check`: passed all hooks, including the full pre-commit gate.
+  The supplied root banner is excluded from staging.
+- `docker compose -f infra/docker/compose.yaml build` and
+  `sh scripts/container-smoke.sh math-practice-tutor:local`: passed. The smoke uses
+  disposable synthetic storage and checks non-root startup, current migrations,
+  SQLite integrity settings, HEIF/JPEG normalization, cryptography, bounded
+  provider subprocess failure and API/UI/worker readiness without inference.
+- Both existing local services were stopped. Their storage was moved, without
+  reading its contents, into a private rollback archive under ignored `data/`.
+  A fresh database was migrated through 0017, then both services were recreated
+  with the rebuilt image. API/UI, worker readiness and unclaimed administrator
+  setup passed. Both run image
+  `sha256:dd39a98233a29c687550fc08f366530071bb60f2aa80a2dc6871c5c93f46f1e9`.
+  A new private setup link was delivered only to the maintainer; no credentials,
+  provider settings or learner work were inspected or committed.
+
+No paid/live inference, model download, public deployment or live model-quality
+claim. The maintainer must add/test Spark and select its active roles after setup.
 
 ### T36 — Continuous conversation and usable photo feedback (2026-09-08)
 
@@ -571,7 +662,7 @@ Verification:
 The maintainer reported that the UI's obsolete tutor label does not match the
 repository and that the **Where this model runs** and **Allowed users** dropdowns
 do not work while adding a Meta connection. The selected product name is
-**Shepard Academy Universe**. In a follow-up, the maintainer explicitly rejected
+**Shepherd Academy Universe**. In a follow-up, the maintainer explicitly rejected
 the app's provider-specific age rule and chose a terms disclaimer plus
 operator-selected audience instead. Meta's hosted boundary remains cloud-only.
 
@@ -597,7 +688,7 @@ Bounded implementation and acceptance:
 
 Implemented:
 
-- Renamed all user-visible product surfaces to **Shepard Academy Universe** while
+- Renamed all user-visible product surfaces to **Shepherd Academy Universe** while
   retaining compatibility-sensitive package, database and deployment identifiers.
 - Removed the Meta-specific audience validator and routing block. Meta now defaults
   to the editable mixed audience and uses the same selected-audience policy as every
@@ -1607,9 +1698,9 @@ then T02, without implementing T03. This request authorizes the review push.
 
 Original hosted evidence was independently observed with `gh run list`:
 
-- [T00: passed](https://github.com/tylermowll/shepard-academy-universe/actions/runs/34046875874).
-- [T01: passed](https://github.com/tylermowll/shepard-academy-universe/actions/runs/34067432542).
-- [T02: passed](https://github.com/tylermowll/shepard-academy-universe/actions/runs/34071452670).
+- [T00: passed](https://github.com/tylermowll/shepherd-academy-universe/actions/runs/34046875874).
+- [T01: passed](https://github.com/tylermowll/shepherd-academy-universe/actions/runs/34067432542).
+- [T02: passed](https://github.com/tylermowll/shepherd-academy-universe/actions/runs/34071452670).
 
 Findings and fixes, ordered by consequence:
 
@@ -1695,7 +1786,7 @@ apps/api/tests/integration -q` passed **85 tests**, up from 45 original cases.
   passed with execution permission. No test policy was disabled. `git diff
 --check` and `git diff --cached --check` passed. `make hooks-check` passed all
   applicable file/privacy, lock, lint/format/type, and unit/component checks.
-  Commit `ae3f135` was pushed to `main`; [its full hosted CI run passed](https://github.com/tylermowll/shepard-academy-universe/actions/runs/34072697983)
+  Commit `ae3f135` was pushed to `main`; [its full hosted CI run passed](https://github.com/tylermowll/shepherd-academy-universe/actions/runs/34072697983)
   in 1m31s, including locked installs, hooks, Make checks, SQLite runtime,
   integration, and browser smoke gates. A documentation follow-up records this
   observed result and warns existing installations to retain their absolute
@@ -1749,7 +1840,7 @@ PNPM='pnpm --store-dir /tmp/math-tutor-pnpm-store'`: all locks, lint/format,
   through the corrected head 0002; the generated database was removed afterward.
   `make hooks-check` and `git diff --cached --check` passed.
 - The preceding documentation commit `99c5286` also passed its
-  [hosted CI run](https://github.com/tylermowll/shepard-academy-universe/actions/runs/34072857295).
+  [hosted CI run](https://github.com/tylermowll/shepherd-academy-universe/actions/runs/34072857295).
   The cutover push/hosted CI are verified separately after this entry.
 
 The assessment of Spark's original code remains **5/10 for T01/T02**. The removed
@@ -1832,7 +1923,7 @@ writable pnpm store, `make smoke` (**14 passed**) and `make test-integration`
 (**81 passed**) all succeeded. Fresh virtualenv and node_modules were created;
 the previously installed pinned Python runtime/package caches were reused.
 The clone's tracked working tree remained clean. No operator settings were copied.
-Hosted verification is [run 34078898044](https://github.com/tylermowll/shepard-academy-universe/actions/runs/34078898044);
+Hosted verification is [run 34078898044](https://github.com/tylermowll/shepherd-academy-universe/actions/runs/34078898044);
 it passed source/unit/integration gates but failed two browser flows because an
 older learner-list request could replace a newer list after creation. A focused
 component regression reproduced the empty selection (one failure out of four),
@@ -1859,7 +1950,7 @@ advanced it to version 2. Post-decode authorization now expires cached ORM state
 inside the reacquired write transaction; the regression requires `409` and zero
 submissions. Provider probes likewise refresh authorization state after I/O.
 
-Hosted [run 34079742050](https://github.com/tylermowll/shepard-academy-universe/actions/runs/34079742050)
+Hosted [run 34079742050](https://github.com/tylermowll/shepherd-academy-universe/actions/runs/34079742050)
 passed the complete source job: 61 unit, 83 integration, 5 component and 14 browser
 tests, generated contracts, synthetic evaluation and dependency audits. Its package
 job built the image and passed non-root API/UI/worker/migration checks, then failed
@@ -1867,7 +1958,7 @@ the strict image scan on inherited OS/installer packages. D007 records the minim
 runtime correction. Public CI visibility and the checked-in synthetic-only job
 were verified before reading scanner output; no private application logs were read.
 
-Hosted [run 34080218959](https://github.com/tylermowll/shepard-academy-universe/actions/runs/34080218959)
+Hosted [run 34080218959](https://github.com/tylermowll/shepherd-academy-universe/actions/runs/34080218959)
 passed the complete package job: image build, non-root API/UI/worker readiness,
 migrations, HEIF/cryptography runtime checks, strict HIGH/CRITICAL scan (including
 unfixed findings), and SBOM generation. Its source job exposed three intermittent

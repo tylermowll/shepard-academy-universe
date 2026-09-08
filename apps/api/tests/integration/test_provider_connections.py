@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from test_tutoring import activity, tutor_session
 from test_workflows import adult as adult
 from test_workflows import anyio_backend as anyio_backend
-from test_workflows import client, learner_ids, pair_learner
+from test_workflows import client, learner_ids, sign_in_learner
 from test_workflows import engine as engine
 
 from math_tutor import worker
@@ -306,7 +306,7 @@ async def test_connection_authorization_csrf_demo_and_file_route_collision(
 ) -> None:
     body = {"id": "local", **connection()}
     async with client(engine) as guest, client(engine) as child:
-        await pair_learner(adult, child, (await learner_ids(adult))[0])
+        await sign_in_learner(adult, child, (await learner_ids(adult))[0])
         for browser, status in ((guest, 401), (child, 403)):
             assert (await browser.get(BASE)).status_code == status
             assert (await browser.post(BASE + "/connections", json=body)).status_code == status
@@ -946,3 +946,27 @@ def test_connection_and_policy_transaction_rollback(engine: Engine) -> None:
     with Session(engine) as db:
         assert db.get(ProviderConnection, "rolled-back") is None
         assert db.get(ProviderPolicy, "active") is None
+
+
+@pytest.mark.anyio
+async def test_unchanged_connection_save_preserves_approval_and_tests(
+    adult: AsyncClient, engine: Engine
+) -> None:
+    await add(adult, api_key_action="replace", api_key=KEY)
+    record_probes(engine)
+    roles = {"tutor": "local", "vision": "local", "acknowledge_data_boundary": True}
+    assert (await adult.post(BASE + "/routes", json=roles)).status_code == 200
+    with Session(engine) as db:
+        before = effective_configuration(db).fingerprint()
+    assert (await adult.put(BASE + "/connections/local", json=connection())).status_code == 200
+    with Session(engine) as db:
+        config = effective_configuration(db)
+        assert config.fingerprint() == before
+        assert not config.providers["local"].requires_approval
+        assert len(list(db.scalars(select(ProviderProbe)))) == 2
+    assert (
+        await adult.put(BASE + "/connections/local", json=connection(model="changed-model"))
+    ).status_code == 200
+    with Session(engine) as db:
+        assert effective_configuration(db).providers["local"].requires_approval
+        assert list(db.scalars(select(ProviderProbe))) == []

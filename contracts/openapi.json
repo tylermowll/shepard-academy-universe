@@ -12,20 +12,6 @@
         "title": "Acknowledged",
         "type": "object"
       },
-      "Approval": {
-        "properties": {
-          "learner_id": {
-            "format": "uuid",
-            "title": "Learner Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "learner_id"
-        ],
-        "title": "Approval",
-        "type": "object"
-      },
       "Confirmation": {
         "additionalProperties": false,
         "properties": {
@@ -181,6 +167,61 @@
         "title": "HealthResponse",
         "type": "object"
       },
+      "LearnerAccountUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "alias": {
+            "maxLength": 64,
+            "minLength": 1,
+            "title": "Alias",
+            "type": "string"
+          },
+          "password": {
+            "anyOf": [
+              {
+                "maxLength": 256,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Password"
+          }
+        },
+        "required": [
+          "alias"
+        ],
+        "title": "LearnerAccountUpdate",
+        "type": "object"
+      },
+      "LearnerDevicePublic": {
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "expires_at": {
+            "format": "date-time",
+            "title": "Expires At",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "expires_at"
+        ],
+        "title": "LearnerDevicePublic",
+        "type": "object"
+      },
       "LearnerExport": {
         "properties": {
           "learner": {
@@ -234,25 +275,28 @@
             ],
             "title": "Eligibility",
             "type": "string"
+          },
+          "password": {
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string"
           }
         },
         "required": [
-          "alias"
+          "alias",
+          "password"
         ],
         "title": "LearnerInput",
         "type": "object"
       },
       "LearnerPublic": {
-        "additionalProperties": false,
         "properties": {
           "alias": {
-            "maxLength": 64,
-            "minLength": 1,
             "title": "Alias",
             "type": "string"
           },
           "eligibility": {
-            "default": "unknown",
             "enum": [
               "adult",
               "minor",
@@ -265,6 +309,10 @@
             "title": "Enabled",
             "type": "boolean"
           },
+          "has_password": {
+            "title": "Has Password",
+            "type": "boolean"
+          },
           "id": {
             "format": "uuid",
             "title": "Id",
@@ -272,15 +320,17 @@
           }
         },
         "required": [
-          "alias",
           "id",
-          "enabled"
+          "alias",
+          "eligibility",
+          "enabled",
+          "has_password"
         ],
         "title": "LearnerPublic",
         "type": "object"
       },
       "LoginRequest": {
-        "description": "Credentials supplied by the adult administrator.",
+        "description": "Credentials for the administrator or one learner account.",
         "properties": {
           "login_name": {
             "maxLength": 64,
@@ -483,31 +533,6 @@
           "created_at"
         ],
         "title": "OperationPublic",
-        "type": "object"
-      },
-      "PairPublic": {
-        "properties": {
-          "approved": {
-            "title": "Approved",
-            "type": "boolean"
-          },
-          "expires_at": {
-            "format": "date-time",
-            "title": "Expires At",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "expires_at",
-          "approved"
-        ],
-        "title": "PairPublic",
         "type": "object"
       },
       "PhoneReceipt": {
@@ -2202,6 +2227,16 @@
             "title": "Difficulty",
             "type": "string"
           },
+          "initial_activity": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TutorActivityInput"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "initiative": {
             "default": "balanced",
             "enum": [
@@ -2407,7 +2442,7 @@
     }
   },
   "info": {
-    "title": "Shepard Academy Universe API",
+    "title": "Shepherd Academy Universe API",
     "version": "0.1.0"
   },
   "openapi": "3.1.0",
@@ -2519,6 +2554,159 @@
         ]
       }
     },
+    "/api/v1/admin/learners/{learner_id}/account": {
+      "patch": {
+        "operationId": "update_account_api_v1_admin_learners__learner_id__account_patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "learner_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Learner Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LearnerAccountUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LearnerPublic"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Update Account",
+        "tags": [
+          "learners"
+        ]
+      }
+    },
+    "/api/v1/admin/learners/{learner_id}/devices": {
+      "get": {
+        "operationId": "learner_devices_api_v1_admin_learners__learner_id__devices_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "learner_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Learner Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LearnerDevicePublic"
+                  },
+                  "title": "Response Learner Devices Api V1 Admin Learners  Learner Id  Devices Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Learner Devices",
+        "tags": [
+          "learners"
+        ]
+      }
+    },
+    "/api/v1/admin/learners/{learner_id}/devices/{device_id}": {
+      "delete": {
+        "operationId": "revoke_device_api_v1_admin_learners__learner_id__devices__device_id__delete",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "learner_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Learner Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "device_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Device Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Acknowledged"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Revoke Device",
+        "tags": [
+          "learners"
+        ]
+      }
+    },
     "/api/v1/admin/learners/{learner_id}/export": {
       "post": {
         "operationId": "export_api_v1_admin_learners__learner_id__export_post",
@@ -2600,59 +2788,6 @@
           }
         },
         "summary": "Revoke Devices",
-        "tags": [
-          "learners"
-        ]
-      }
-    },
-    "/api/v1/admin/pairing/{pair_id}/approve": {
-      "post": {
-        "operationId": "approve_pair_api_v1_admin_pairing__pair_id__approve_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "pair_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Pair Id",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/Approval"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Acknowledged"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Approve Pair",
         "tags": [
           "learners"
         ]
@@ -3074,7 +3209,7 @@
     },
     "/api/v1/auth/login": {
       "post": {
-        "description": "Authenticate the adult and start an opaque-cookie session.",
+        "description": "Authenticate one account and recheck its credentials before issuing a cookie.",
         "operationId": "login_api_v1_auth_login_post",
         "requestBody": {
           "content": {
@@ -3474,113 +3609,6 @@
         "summary": "Retry Operation",
         "tags": [
           "practice"
-        ]
-      }
-    },
-    "/api/v1/pairing/requests": {
-      "post": {
-        "operationId": "request_pairing_api_v1_pairing_requests_post",
-        "responses": {
-          "201": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PairPublic"
-                }
-              }
-            },
-            "description": "Successful Response"
-          }
-        },
-        "summary": "Request Pairing",
-        "tags": [
-          "learners"
-        ]
-      }
-    },
-    "/api/v1/pairing/requests/{pair_id}": {
-      "get": {
-        "operationId": "pairing_status_api_v1_pairing_requests__pair_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "pair_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Pair Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/PairPublic"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Pairing Status",
-        "tags": [
-          "learners"
-        ]
-      }
-    },
-    "/api/v1/pairing/requests/{pair_id}/claim": {
-      "post": {
-        "operationId": "claim_pair_api_v1_pairing_requests__pair_id__claim_post",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "pair_id",
-            "required": true,
-            "schema": {
-              "format": "uuid",
-              "title": "Pair Id",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Acknowledged"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Claim Pair",
-        "tags": [
-          "learners"
         ]
       }
     },

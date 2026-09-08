@@ -26,7 +26,6 @@ from math_tutor.adapters.db.models import (
     Interpretation,
     Job,
     Learner,
-    PairingRequest,
     PhoneUpload,
     ProblemInstance,
     ProgressEvent,
@@ -101,6 +100,11 @@ async def test_phone_photo_to_computer_confirmation(
         grant = db.get(PhoneUpload, UUID(link["id"]))
         assert grant is not None and grant.token_hash == auth.hash_opaque_token(secret)
         assert grant.token_hash != secret
+        assert (
+            timedelta(hours=2) - timedelta(seconds=5)
+            < grant.expires_at - utcnow()
+            <= timedelta(hours=2)
+        )
     async with client(engine) as phone:
         phone.headers["X-Photo-Token"] = secret
         info = await phone.get("/api/v1/phone-upload")
@@ -245,7 +249,7 @@ async def test_phone_permission_ownership_origin_and_body_limits(
         assert (
             await stranger.post("/api/v1/phone-upload/preview", content=b"invalid")
         ).status_code == 401
-        await pair_learner(adult, stranger, first)
+        await sign_in_learner(adult, stranger, first)
         assert (
             await stranger.post(
                 path, json={"version": 1}, headers={"Idempotency-Key": str(uuid4())}
@@ -466,32 +470,37 @@ async def read_problem(adult: AsyncClient, session_id: str) -> dict[str, Any]:
     )
 
 
-async def pair_learner(adult: AsyncClient, device: AsyncClient, learner_id: str) -> str:
+async def sign_in_learner(adult: AsyncClient, device: AsyncClient, learner_id: str) -> None:
+    rows = (await adult.get("/api/v1/admin/learners")).json()
+    learner = next(row for row in rows if row["id"] == learner_id)
+    if not learner["has_password"]:
+        assert (
+            await adult.patch(
+                f"/api/v1/admin/learners/{learner_id}/account",
+                json={"alias": learner["alias"], "password": DEMO_PASSWORD},
+            )
+        ).status_code == 200
     token = (await device.get("/api/v1/auth/session")).json()["csrf_token"]
     device.headers["X-CSRF-Token"] = token
-    response = await device.post("/api/v1/pairing/requests", json={})
-    assert response.status_code == 201, response.text
-    pair = str(response.json()["id"])
-    assert (
-        await adult.post(f"/api/v1/admin/pairing/{pair}/approve", json={"learner_id": learner_id})
-    ).status_code == 200
-    assert (await device.post(f"/api/v1/pairing/requests/{pair}/claim")).status_code == 200
-    status = (await device.get("/api/v1/auth/session")).json()
+    response = await device.post(
+        "/api/v1/auth/login", json={"login_name": learner["alias"], "password": DEMO_PASSWORD}
+    )
+    assert response.status_code == 200, response.text
+    status = response.json()
     assert status["role"] == "learner" and status["learner_id"] == learner_id
     device.headers["X-CSRF-Token"] = status["csrf_token"]
-    return pair
 
 
 @pytest.mark.anyio
-async def test_pairing_is_bound_single_use_revocable_and_isolated(
+async def test_learner_sign_in_is_revocable_and_isolated(
     adult: AsyncClient, engine: Engine
 ) -> None:
     first, second = await learner_ids(adult)
     session_id, problem = await start(adult, second)
     async with client(engine) as device, client(engine) as stranger:
-        pair = await pair_learner(adult, device, first)
-        assert (await stranger.get(f"/api/v1/pairing/requests/{pair}")).status_code == 404
-        assert (await device.post(f"/api/v1/pairing/requests/{pair}/claim")).status_code == 404
+        await sign_in_learner(adult, device, first)
+        assert (await stranger.get("/api/v1/auth/session")).json()["authenticated"] is False
+        assert (await device.post("/api/v1/pairing/requests")).status_code == 404
         for path in (
             "/admin/learners",
             "/admin/tutor-profiles",
@@ -516,26 +525,18 @@ async def test_pairing_is_bound_single_use_revocable_and_isolated(
 
 
 @pytest.mark.anyio
-async def test_pairing_expiration_blocks_approval(adult: AsyncClient, engine: Engine) -> None:
+async def test_learner_session_expiration_blocks_access(adult: AsyncClient, engine: Engine) -> None:
+    learner = (await learner_ids(adult))[0]
     async with client(engine) as device:
-        token = (await device.get("/api/v1/auth/session")).json()["csrf_token"]
-        response = await device.post(
-            "/api/v1/pairing/requests", headers={"X-CSRF-Token": token}, json={}
-        )
-        pair = str(response.json()["id"])
+        await sign_in_learner(adult, device, learner)
         with Session(engine) as db:
-            row = db.get(PairingRequest, UUID(pair))
+            row = db.scalar(select(DeviceSession).where(DeviceSession.learner_id == UUID(learner)))
             assert row is not None
             row.created_at = utcnow() - timedelta(minutes=10)
             row.expires_at = utcnow() - timedelta(minutes=5)
             db.commit()
-        assert (await device.get(f"/api/v1/pairing/requests/{pair}")).status_code == 404
-        assert (
-            await adult.post(
-                f"/api/v1/admin/pairing/{pair}/approve",
-                json={"learner_id": (await learner_ids(adult))[0]},
-            )
-        ).status_code == 404
+        assert (await device.get("/api/v1/auth/session")).json()["authenticated"] is False
+        assert (await device.get("/api/v1/sessions")).status_code == 401
 
 
 @pytest.mark.anyio
@@ -863,7 +864,7 @@ async def test_profile_version_is_snapshotted_and_solution_policy_enforced(
         "name"
     ] == "Protected"
     async with client(engine) as device:
-        await pair_learner(adult, device, learner)
+        await sign_in_learner(adult, device, learner)
         result = await device.post(
             f"/api/v1/problems/{problem['id']}/submissions",
             json={"version": 1, "kind": "hint", "help_level": 4},
@@ -1194,7 +1195,11 @@ async def test_mutation_commits_before_success_response_headers(
     ) as browser:
         response = await browser.post(
             "/api/v1/admin/learners",
-            json={"alias": "Synthetic commit boundary", "eligibility": "unknown"},
+            json={
+                "alias": "Synthetic commit boundary",
+                "eligibility": "unknown",
+                "password": DEMO_PASSWORD,
+            },
         )
     assert response.status_code == 201
     assert checked

@@ -1,53 +1,80 @@
-"""Managed aliases and browser-bound, single-use device pairing."""
+"""Administrator-managed learner accounts and their signed-in browsers."""
 
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import select, update
+from sqlalchemy.orm import Session
 
 from math_tutor import auth
-from math_tutor.adapters.db.models import DeviceSession, Learner, PairingRequest
+from math_tutor.account_names import account_key, display_name
+from math_tutor.adapters.db.models import Administrator, DeviceSession, Learner
 from math_tutor.api.access import Adult, Database, owned_learner
-from math_tutor.api.auth import (
-    client_key,
-    login_csrf_valid,
-    require_secret,
-    secure_cookies,
-    set_session_cookie,
-)
 
 router = APIRouter(prefix="/api/v1", tags=["learners"])
-PAIR_COOKIE = "mt_pair"
 
 
 class LearnerInput(BaseModel):
-    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    model_config = ConfigDict(extra="forbid")
     alias: str = Field(min_length=1, max_length=64)
     eligibility: Literal["adult", "minor", "unknown"] = "unknown"
+    password: str = Field(min_length=1, max_length=auth.MAX_ADMIN_PASSWORD_LENGTH, repr=False)
 
 
-class LearnerPublic(LearnerInput):
+class LearnerPublic(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: UUID
+    alias: str
+    eligibility: Literal["adult", "minor", "unknown"]
     enabled: bool
+    has_password: bool
 
 
-class PairPublic(BaseModel):
+class LearnerAccountUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    alias: str = Field(min_length=1, max_length=64)
+    password: str | None = Field(
+        default=None, min_length=1, max_length=auth.MAX_ADMIN_PASSWORD_LENGTH, repr=False
+    )
+
+
+class LearnerDevicePublic(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
     id: UUID
+    created_at: datetime
     expires_at: datetime
-    approved: bool
-
-
-class Approval(BaseModel):
-    learner_id: UUID
 
 
 class Acknowledged(BaseModel):
     ok: bool = True
+
+
+def available_name(db: Session, value: str, learner_id: UUID | None = None) -> str:
+    try:
+        name = display_name(value)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from None
+    key = account_key(name)
+    query = select(Learner.id).where(Learner.alias_key == key, Learner.deleted_at.is_(None))
+    if learner_id is not None:
+        query = query.where(Learner.id != learner_id)
+    if db.scalar(query) is not None or any(
+        account_key(admin) == key for admin in db.scalars(select(Administrator.login_name))
+    ):
+        raise HTTPException(409, "That username is already in use. Choose a different username.")
+    return name
+
+
+def checked_password(name: str, password: str) -> str:
+    try:
+        auth.validate_admin_credentials(name, password)
+    except ValueError as error:
+        raise HTTPException(422, str(error)) from None
+    return auth.hash_password(password)
 
 
 @router.get("/admin/learners", response_model=list[LearnerPublic])
@@ -59,16 +86,64 @@ def learners(db: Database, actor: Adult) -> list[Learner]:
 
 @router.post("/admin/learners", response_model=LearnerPublic, status_code=201)
 def create_learner(body: LearnerInput, db: Database, actor: Adult) -> Learner:
-    if os.getenv("APP_MODE", "private") == "demo" and body.alias not in {
-        "Orbit",
-        "Delta",
-        "Synthetic",
-    }:
-        raise HTTPException(403, "Demo accepts synthetic aliases only.")
-    row = Learner(alias=body.alias, eligibility=body.eligibility)
+    name = available_name(db, body.alias)
+    if os.getenv("APP_MODE", "private") == "demo" and name not in {"Orbit", "Delta", "Synthetic"}:
+        raise HTTPException(403, "Demo accepts synthetic usernames only.")
+    row = Learner(
+        alias=name,
+        eligibility=body.eligibility,
+        password_hash=checked_password(name, body.password),
+        local_only_password=len(body.password) < auth.MIN_ADMIN_PASSWORD_LENGTH,
+    )
     db.add(row)
     db.flush()
     return row
+
+
+@router.patch("/admin/learners/{learner_id}/account", response_model=LearnerPublic)
+def update_account(
+    learner_id: UUID, body: LearnerAccountUpdate, db: Database, actor: Adult
+) -> Learner:
+    row = owned_learner(db, actor, learner_id)
+    name = available_name(db, body.alias, learner_id)
+    if body.password is not None:
+        row.password_hash = checked_password(name, body.password)
+        row.local_only_password = len(body.password) < auth.MIN_ADMIN_PASSWORD_LENGTH
+        db.execute(
+            update(DeviceSession)
+            .where(DeviceSession.learner_id == learner_id)
+            .values(revoked_at=auth.utcnow())
+        )
+    row.alias = name
+    db.flush()
+    return row
+
+
+@router.get("/admin/learners/{learner_id}/devices", response_model=list[LearnerDevicePublic])
+def learner_devices(learner_id: UUID, db: Database, actor: Adult) -> list[DeviceSession]:
+    owned_learner(db, actor, learner_id)
+    return list(
+        db.scalars(
+            select(DeviceSession)
+            .where(
+                DeviceSession.learner_id == learner_id,
+                DeviceSession.revoked_at.is_(None),
+                DeviceSession.expires_at > auth.utcnow(),
+            )
+            .order_by(DeviceSession.created_at.desc())
+            .limit(100)
+        )
+    )
+
+
+@router.delete("/admin/learners/{learner_id}/devices/{device_id}", response_model=Acknowledged)
+def revoke_device(learner_id: UUID, device_id: UUID, db: Database, actor: Adult) -> Acknowledged:
+    owned_learner(db, actor, learner_id)
+    row = db.get(DeviceSession, device_id)
+    if row is None or row.learner_id != learner_id:
+        raise HTTPException(404, "Signed-in browser not found.")
+    auth.revoke_session(db, row)
+    return Acknowledged()
 
 
 @router.post("/admin/learners/{learner_id}/revoke", response_model=Acknowledged)
@@ -79,95 +154,4 @@ def revoke_devices(learner_id: UUID, db: Database, actor: Adult) -> Acknowledged
         .where(DeviceSession.learner_id == learner_id)
         .values(revoked_at=auth.utcnow())
     )
-    for row in db.scalars(select(PairingRequest).where(PairingRequest.learner_id == learner_id)):
-        db.delete(row)
-    return Acknowledged()
-
-
-def pairing_limit(request: Request) -> None:
-    wait = auth.register_login_attempt("pair:" + client_key(request))
-    if wait is not None:
-        raise HTTPException(
-            429, "Too many pairing requests. Try again later.", headers={"Retry-After": "60"}
-        )
-
-
-@router.post("/pairing/requests", response_model=PairPublic, status_code=201)
-def request_pairing(request: Request, response: Response, db: Database) -> PairPublic:
-    if not login_csrf_valid(request, require_secret()):
-        raise HTTPException(403, "CSRF validation failed.")
-    pairing_limit(request)
-    token = auth.new_opaque_token()
-    row = PairingRequest(
-        token_hash=auth.hash_opaque_token(token), expires_at=auth.utcnow() + timedelta(minutes=5)
-    )
-    db.add(row)
-    db.flush()
-    response.set_cookie(
-        PAIR_COOKIE,
-        token,
-        max_age=300,
-        httponly=True,
-        secure=secure_cookies(),
-        samesite="strict",
-        path="/api/v1/pairing",
-    )
-    return PairPublic(id=row.id, expires_at=row.expires_at, approved=False)
-
-
-def bound_pair(request: Request, db: Database, pair_id: UUID) -> PairingRequest:
-    row = db.get(PairingRequest, pair_id)
-    token = request.cookies.get(PAIR_COOKIE, "")
-    if (
-        row is None
-        or row.token_hash != auth.hash_opaque_token(token)
-        or row.expires_at <= auth.utcnow()
-        or row.consumed_at is not None
-    ):
-        raise HTTPException(404, "Pairing request unavailable or expired.")
-    return row
-
-
-@router.get("/pairing/requests/{pair_id}", response_model=PairPublic)
-def pairing_status(pair_id: UUID, request: Request, db: Database) -> PairPublic:
-    row = bound_pair(request, db, pair_id)
-    return PairPublic(id=row.id, expires_at=row.expires_at, approved=row.learner_id is not None)
-
-
-@router.post("/admin/pairing/{pair_id}/approve", response_model=Acknowledged)
-def approve_pair(pair_id: UUID, body: Approval, db: Database, actor: Adult) -> Acknowledged:
-    owned_learner(db, actor, body.learner_id)
-    row = db.get(PairingRequest, pair_id)
-    if row is None or row.expires_at <= auth.utcnow() or row.consumed_at is not None:
-        raise HTTPException(404, "Pairing request unavailable or expired.")
-    if row.learner_id is not None and row.learner_id != body.learner_id:
-        raise HTTPException(409, "Request already approved.")
-    row.learner_id = body.learner_id
-    return Acknowledged()
-
-
-@router.post("/pairing/requests/{pair_id}/claim", response_model=Acknowledged)
-def claim_pair(pair_id: UUID, request: Request, response: Response, db: Database) -> Acknowledged:
-    if not login_csrf_valid(request, require_secret()):
-        raise HTTPException(403, "CSRF validation failed.")
-    row = bound_pair(request, db, pair_id)
-    learner = db.get(Learner, row.learner_id) if row.learner_id else None
-    if learner is None or not learner.enabled or learner.deleted_at is not None:
-        raise HTTPException(409, "Waiting for adult approval.")
-    old = auth.get_valid_session(db, request.cookies.get("mt_session", ""))
-    if old is not None:
-        auth.revoke_session(db, old)
-    token = auth.new_opaque_token()
-    db.add(
-        DeviceSession(
-            token_hash=auth.hash_opaque_token(token),
-            role="learner",
-            learner_id=learner.id,
-            csrf_token=auth.new_csrf_token(),
-            expires_at=auth.utcnow() + auth.SESSION_LIFETIME,
-        )
-    )
-    row.consumed_at = auth.utcnow()
-    set_session_cookie(response, token, int(auth.SESSION_LIFETIME.total_seconds()))
-    response.delete_cookie(PAIR_COOKIE, path="/api/v1/pairing")
     return Acknowledged()

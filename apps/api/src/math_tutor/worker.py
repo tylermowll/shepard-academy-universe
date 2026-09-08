@@ -350,7 +350,9 @@ def run_once(engine: Engine) -> bool:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Run the durable Shepard Academy Universe worker.")
+    parser = argparse.ArgumentParser(
+        description="Run the durable Shepherd Academy Universe worker."
+    )
     parser.add_argument("--once", action="store_true")
     args = parser.parse_args()
     engine = create_default_engine()

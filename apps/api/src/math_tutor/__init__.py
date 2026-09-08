@@ -1,1 +1,1 @@
-"""Shepard Academy Universe backend package."""
+"""Shepherd Academy Universe backend package."""

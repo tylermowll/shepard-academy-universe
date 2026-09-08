@@ -28,9 +28,9 @@ test("guests can open and reload Help without exposing account controls", async 
     navigation.getByRole("link", { name: "Help", exact: true }),
   ).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("heading", { level: 1 })).toHaveText("Help");
-  await expect(page.getByRole("button", { name: "Add learner" })).toHaveCount(
-    0,
-  );
+  await expect(
+    page.getByRole("button", { name: "Add learner account" }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Approve device" }),
   ).toHaveCount(0);
@@ -62,13 +62,13 @@ test("guests can open and reload Help without exposing account controls", async 
     }),
   ).toBeVisible();
   await expect(
-    page.getByText(/No sign-in or device pairing is needed for this photo/),
+    page.getByText(/No sign-in is needed for this photo/),
   ).toBeVisible();
   await expectPageFits(page);
   await navigation.getByRole("link", { name: "Sign in", exact: true }).click();
-  await expect(page.getByLabel("Login name", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Username", { exact: true })).toBeVisible();
   await expect(
-    page.getByRole("button", { name: "Pair this device" }),
+    page.getByRole("textbox", { name: "Username", exact: true }),
   ).toBeVisible();
 });
 
@@ -83,12 +83,29 @@ test("adult pages isolate each job and browser navigation preserves a new sessio
   await login(page);
   const navigation = page.getByRole("navigation", { name: "Main navigation" });
   await expect(navigation.getByRole("link")).toHaveText([
-    "Practice",
-    "History",
-    "Learners & devices",
+    "Learners",
     "Settings",
     "Help",
   ]);
+  await navigate(page, "Settings");
+  await page.getByRole("tab", { name: /Connection tests/ }).click();
+  await expect(page.getByRole("button", { name: "Test tutor" })).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Approve device" }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Download and load experiment" }),
+  ).toHaveCount(0);
+  await expectPageFits(page);
+  await navigate(page, "Learners");
+  await expect(
+    page.getByRole("button", { name: "Add learner account" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("complementary", { name: "Choose an account" }),
+  ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Test tutor" })).toHaveCount(0);
+  await expectPageFits(page);
   await createLearner(page);
   const topic = page.getByRole("textbox", {
     name: "Topic or learning goal",
@@ -104,9 +121,9 @@ test("adult pages isolate each job and browser navigation preserves a new sessio
   await expect(practiceHelpDetails).toContainText("reference material");
   await page.keyboard.press("Enter");
   await expect(practiceHelpDetails).not.toHaveAttribute("open", "");
-  await expect(page.getByRole("button", { name: "Add learner" })).toHaveCount(
-    0,
-  );
+  await expect(
+    page.getByRole("button", { name: "Add learner account" }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Approve device" }),
   ).toHaveCount(0);
@@ -135,29 +152,6 @@ test("adult pages isolate each job and browser navigation preserves a new sessio
     "Synthetic draft: comparing two scientific explanations",
   );
 
-  await navigate(page, "Settings");
-  await page.getByRole("tab", { name: /Connection tests/ }).click();
-  await expect(page.getByRole("button", { name: "Test tutor" })).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Approve device" }),
-  ).toHaveCount(0);
-  await expect(topic).not.toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Download and load experiment" }),
-  ).toHaveCount(0);
-  await expectPageFits(page);
-  await navigate(page, "Learners & devices");
-  await expect(page.getByRole("button", { name: "Add learner" })).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: "Approve device" }),
-  ).toBeVisible();
-  await expect(page.getByRole("button", { name: "Test tutor" })).toHaveCount(0);
-  await expect(topic).not.toBeVisible();
-  await expectPageFits(page);
-  await navigate(page, "Practice");
-  await expect(topic).toHaveValue(
-    "Synthetic draft: comparing two scientific explanations",
-  );
   expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([]);
   expect(external).toEqual([]);
 });
@@ -229,20 +223,23 @@ test("Help and History preserve unsent work and saved sessions reopen through Hi
   await expect(response).toHaveCount(0);
 });
 
-test("an adult practices with their own learner profile and browser Back restores the selected saved session", async ({
+test("an adult practices through a distinct learner account and browser Back restores the selected saved session", async ({
   page,
 }) => {
   await login(page);
-  await navigate(page, "Learners & devices");
+  await navigate(page, "Learners");
   await page
-    .getByRole("button", { name: "Create my practice profile", exact: true })
+    .getByRole("button", { name: "Add learner account", exact: true })
     .click();
-  const learnerName = page.getByLabel("Learner name", { exact: true });
-  await expect(learnerName).toHaveValue("demo");
+  const learnerName = page.getByLabel("Learner username", { exact: true });
+  await expect(learnerName).toHaveValue("");
   await expect(learnerName).toBeEditable();
-  await expect(
-    page.getByRole("combobox", { name: "Age group", exact: true }),
-  ).toHaveValue("adult");
+  await page
+    .getByRole("combobox", { name: "Age group", exact: true })
+    .selectOption("adult");
+  await page
+    .getByLabel("Password", { exact: true })
+    .fill("synthetic-demo-password-only");
   const alias = `Synthetic adult ${Date.now()}`;
   await learnerName.fill(alias);
   const created = page.waitForResponse(
@@ -250,7 +247,9 @@ test("an adult practices with their own learner profile and browser Back restore
       response.url().endsWith("/admin/learners") &&
       response.request().method() === "POST",
   );
-  await page.getByRole("button", { name: "Add learner", exact: true }).click();
+  await page
+    .getByRole("button", { name: "Create learner account", exact: true })
+    .click();
   const createdResponse = await created;
   expect(createdResponse.status()).toBe(201);
   expect(await createdResponse.json()).toMatchObject({
@@ -260,9 +259,8 @@ test("an adult practices with their own learner profile and browser Back restore
   await expect(
     page.getByRole("region", { name: "Selected learner", exact: true }),
   ).toContainText(alias);
-  await page
-    .getByRole("button", { name: "Start practice", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await login(page, alias);
 
   const topicA = "Synthetic adult practice: compare scientific explanations";
   const topicB = "Synthetic adult practice: evaluate a historical source";
@@ -324,13 +322,7 @@ test("an adult practices with their own learner profile and browser Back restore
   await expect(page).toHaveURL(new RegExp(`page=practice${hashA}$`));
   await expect(
     page.getByRole("navigation", { name: "Main navigation" }).getByRole("link"),
-  ).toHaveText([
-    "Practice",
-    "History",
-    "Learners & devices",
-    "Settings",
-    "Help",
-  ]);
+  ).toHaveText(["Practice", "History", "Help"]);
   await expect(
     page.getByRole("button", { name: "Sign out", exact: true }),
   ).toBeVisible();

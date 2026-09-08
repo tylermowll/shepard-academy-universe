@@ -14,9 +14,19 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import JSON, CheckConstraint, ForeignKey, String, Text, UniqueConstraint
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy import (
+    JSON,
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    UniqueConstraint,
+    text,
+)
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 
+from math_tutor.account_names import account_key, display_name
 from math_tutor.adapters.db.base import Base
 from math_tutor.adapters.db.types import UTCDateTime, UUIDType, utcnow
 
@@ -224,26 +234,34 @@ class Learner(Base):
         CheckConstraint(
             "eligibility IN ('adult', 'minor', 'unknown')", name="ck_learner_eligibility"
         ),
+        Index(
+            "uq_learner_alias_key",
+            "alias_key",
+            unique=True,
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
     )
     id: Mapped[uuid.UUID] = mapped_column(UUIDType, primary_key=True, default=uuid.uuid4)
     alias: Mapped[str] = mapped_column(String(64), nullable=False)
+    alias_key: Mapped[str] = mapped_column(String(256), nullable=False, server_default="")
+    password_hash: Mapped[str | None] = mapped_column(Text)
+    local_only_password: Mapped[bool] = mapped_column(
+        nullable=False, default=False, server_default="0"
+    )
     eligibility: Mapped[str] = mapped_column(String(16), nullable=False, default="unknown")
     enabled: Mapped[bool] = mapped_column(nullable=False, default=True)
     deleted_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
     created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utcnow)
 
+    @validates("alias")
+    def normalize_alias(self, _key: str, value: str) -> str:
+        name = display_name(value)
+        self.alias_key = account_key(name)
+        return name
 
-class PairingRequest(Base):
-    __tablename__ = "pairing_request"
-    __table_args__ = (CheckConstraint("expires_at > created_at", name="ck_pairing_expiration"),)
-    id: Mapped[uuid.UUID] = mapped_column(UUIDType, primary_key=True, default=uuid.uuid4)
-    token_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
-    learner_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUIDType, ForeignKey("learner.id", ondelete="CASCADE")
-    )
-    created_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False, default=utcnow)
-    expires_at: Mapped[datetime] = mapped_column(UTCDateTime, nullable=False)
-    consumed_at: Mapped[datetime | None] = mapped_column(UTCDateTime)
+    @property
+    def has_password(self) -> bool:
+        return self.password_hash is not None
 
 
 class Submission(Base):

@@ -198,7 +198,7 @@ export function Setup({
         <div className="card">
           <h2>Open the setup link from your terminal</h2>
           <p>
-            On the computer running Shepard Academy Universe, open the setup
+            On the computer running Shepherd Academy Universe, open the setup
             link printed by <code>make start</code>. It works for 30 minutes and
             creates only the first account.
           </p>
@@ -239,7 +239,7 @@ export function Setup({
               {status.minimum_password_length} characters.
             </p>
           )}
-          <label htmlFor="setup-login">Login name</label>
+          <label htmlFor="setup-login">Username</label>
           <input
             id="setup-login"
             name="login"

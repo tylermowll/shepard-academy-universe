@@ -1,4 +1,8 @@
-import { openAttachments, openSessionTools } from "./support";
+import {
+  openAttachments,
+  openSessionTools,
+  openPracticeMaterial,
+} from "./support";
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import type { Schema } from "../../apps/web/src/client";
@@ -157,12 +161,13 @@ test("the tutor continues from a phone photo through guidance, revision, discuss
 test("reading and history reference material produces analogous practice instead of directly solving the supplied assignment", async ({
   page,
 }) => {
-  const alias = await startTutor(
+  await startTutor(
     page,
     "Reading and history: evaluating a narrator's evidence",
   );
   const source =
     "My assigned homework: explain why the invented narrator Mira distrusts the mayor in chapter three of The Copper Lantern. Write the final paragraph for me.";
+  await openPracticeMaterial(page);
   await page
     .getByRole("combobox", { name: "Practice source", exact: true })
     .selectOption("reference_text");
@@ -200,9 +205,6 @@ test("reading and history reference material produces analogous practice instead
     .getByRole("button", { name: "Save session settings", exact: true })
     .click();
   await page.reload();
-  await page
-    .getByRole("combobox", { name: "Learner", exact: true })
-    .selectOption({ label: alias });
   await openSessionTools(page);
   await page.getByText("Session settings", { exact: true }).click();
   await expect(
@@ -247,6 +249,7 @@ test("a source photograph is read only to create distinct practice, not reviewed
   page,
 }) => {
   await startTutor(page, "Science: explain the evidence behind a comparison");
+  await openPracticeMaterial(page);
   await page
     .getByRole("combobox", { name: "Practice source", exact: true })
     .selectOption("reference_photo");

@@ -154,7 +154,7 @@ def create_link(
             version=body.version,
             policy_digest=config.fingerprint(),
             request_key=key,
-            expires_at=utcnow() + timedelta(minutes=5),
+            expires_at=utcnow() + timedelta(hours=2),
         )
         db.add(grant)
         db.flush()

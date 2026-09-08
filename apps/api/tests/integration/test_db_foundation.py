@@ -35,7 +35,7 @@ from math_tutor.adapters.db.engine import (
 from math_tutor.adapters.db.models import Learner, PracticeSession, ProblemInstance
 
 MIGRATIONS_DIR = Path(__file__).resolve().parents[2] / "migrations"
-HEAD_REVISION = "0016_reasoning_effort"
+HEAD_REVISION = "0017_learner_accounts"
 
 
 @pytest.fixture
@@ -72,7 +72,9 @@ def upgrade(db_url: str, revision: str = "head") -> None:
 
 
 def make_session(learner_id: uuid.UUID | None = None) -> PracticeSession:
-    learner = Learner(id=learner_id or uuid.uuid4(), alias="Synthetic", eligibility="unknown")
+    learner = Learner(
+        id=learner_id or uuid.uuid4(), alias=f"Synthetic {uuid.uuid4()}", eligibility="unknown"
+    )
     return PracticeSession(
         id=uuid.uuid4(),
         learner_id=learner.id,
@@ -121,7 +123,6 @@ def test_empty_file_migration_reaches_head(engine: Engine, db_url: str) -> None:
         "device_session",
         "alembic_version",
         "learner",
-        "pairing_request",
         "submission",
         "evaluation",
         "tutor_turn",
@@ -199,8 +200,14 @@ def test_probe_diagnostics_migration_rolls_back_without_losing_existing_work(
     db_url: str,
 ) -> None:
     upgrade(db_url, "0013_local_password_policy")
+    learner_id = uuid.uuid4()
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "INSERT INTO learner(id, alias, eligibility, enabled, created_at) VALUES (?, ?, ?, ?, ?)",
+            (str(learner_id), "Synthetic old schema", "unknown", 1, datetime.now(UTC).isoformat()),
+        )
     with Session(engine) as db:
-        session = make_session()
+        session = PracticeSession(learner_id=learner_id)
         db.add(session)
         db.commit()
         session_id = session.id
@@ -635,3 +642,45 @@ def test_serialized_problem_holds_no_hidden_answer_on_reopen(engine: Engine, db_
             assert "expected_result" not in dumped
     finally:
         reopened.dispose()
+
+
+def test_learner_account_migration_preserves_work_and_disambiguates_existing_names(
+    engine: Engine, db_url: str
+) -> None:
+    upgrade(db_url, "0016_reasoning_effort")
+    learner_ids = [uuid.uuid4() for _ in range(4)]
+    created = datetime.now(UTC).isoformat()
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "INSERT INTO administrator(id,login_name,password_hash,created_at,updated_at) VALUES(?,?,?,?,?)",
+            (str(uuid.uuid4()), "ADMIN", "synthetic-unused-hash", created, created),
+        )
+        for identifier, alias in zip(learner_ids, ["Pat", "pat", "Ｐａｔ", "ADMIN"], strict=True):
+            connection.exec_driver_sql(
+                "INSERT INTO learner(id,alias,eligibility,enabled,created_at) VALUES(?,?,?,?,?)",
+                (str(identifier), alias, "minor", 1, created),
+            )
+    with Session(engine) as db:
+        session = PracticeSession(learner_id=learner_ids[0], topic="Synthetic retained history")
+        db.add(session)
+        db.commit()
+        saved_id = session.id
+    upgrade(db_url)
+    with Session(engine) as db:
+        rows = list(db.scalars(sqlalchemy.select(Learner)))
+        assert {row.id for row in rows} == set(learner_ids)
+        assert len({row.alias_key for row in rows}) == 4
+        assert "admin" not in {row.alias_key for row in rows}
+        assert all(row.password_hash is None for row in rows)
+        saved = db.get(PracticeSession, saved_id)
+        assert (
+            saved
+            and saved.topic == "Synthetic retained history"
+            and saved.learner_id == learner_ids[0]
+        )
+    command.downgrade(alembic_config(db_url), "0016_reasoning_effort")
+    assert "pairing_request" in table_columns(engine)
+    assert "password_hash" not in table_columns(engine)["learner"]
+    upgrade(db_url)
+    with Session(engine) as db:
+        assert db.get(PracticeSession, saved_id) is not None

@@ -1,6 +1,6 @@
 {
   "AWSTemplateFormatVersion": "2010-09-09",
-  "Description": "One Shepard Academy Universe host and retained encrypted local EBS. No automatic software deployment.",
+  "Description": "One Shepherd Academy Universe host and retained encrypted local EBS. No automatic software deployment.",
   "Parameters": {
     "VpcId": { "Type": "AWS::EC2::VPC::Id" },
     "SubnetId": { "Type": "AWS::EC2::Subnet::Id" },

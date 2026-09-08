@@ -15,8 +15,9 @@ const learner: Schema<"LearnerPublic"> = {
   alias: "Orbit",
   eligibility: "unknown",
   enabled: true,
+  has_password: true,
 };
-const pairId = "c50a2621-21eb-4670-9269-d9c491479635";
+const accountId = "c50a2621-21eb-4670-9269-d9c491479635";
 const providers: Schema<"ProvidersPublic"> = {
   policy: {
     allow_cloud_inference: false,
@@ -98,7 +99,20 @@ beforeEach(() => {
   setIdentity("synthetic-csrf", true);
   vi.stubGlobal(
     "fetch",
-    vi.fn(() => Promise.resolve(response(providers))),
+    vi.fn((input: RequestInfo | URL) =>
+      Promise.resolve(
+        response(
+          (typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url
+          ).endsWith("/devices")
+            ? []
+            : providers,
+        ),
+      ),
+    ),
   );
 });
 afterEach(() => {
@@ -107,196 +121,207 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("learner and device page", () => {
-  it("keeps provider setup off this page and explains pairing versus camera-only use", () => {
-    const handlers = props();
-    render(<AdultPanel {...handlers} />);
-    expect(fetch).not.toHaveBeenCalled();
+describe("learner accounts", () => {
+  it("places account actions beside the learner and explains browser access", async () => {
+    render(<AdultPanel {...props()} />);
     expect(
-      screen.queryByRole("combobox", { name: "Tutor" }),
-    ).not.toBeInTheDocument();
+      screen.getByRole("region", { name: "Selected learner" }),
+    ).toContainHTML("Orbit");
+    expect(screen.queryByRole("button", { name: "Open practice" })).toBeNull();
     expect(
-      screen.getByText(/Copy the request ID shown on that device/),
+      await screen.findByText("No browsers are signed in as Orbit."),
     ).toBeVisible();
-    fireEvent.click(screen.getByText("Only need the phone camera?"));
     expect(
-      screen.getByText(/No pairing or phone sign-in is needed/),
+      screen.getByText(/phone photo QR does not sign a browser/),
     ).toBeVisible();
-    fireEvent.click(
-      screen.getByRole("button", { name: "How phone photos work" }),
-    );
-    expect(handlers.onNavigate).toHaveBeenCalledWith("help", "phone");
     expect(
-      screen.getByRole("button", { name: "Delete learner", hidden: true }),
-    ).not.toBeVisible();
+      screen.queryByRole("button", { name: "Create my practice profile" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Approve device" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Add new AI connection" }),
+    ).toBeNull();
   });
 
-  it("adds the learner, refreshes the shared list, and selects it without forcing navigation", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(() => Promise.resolve(response(learner))),
-    );
-    vi.spyOn(crypto, "randomUUID").mockReturnValue(pairId);
+  it("creates one account with a write-only password and selects the returned learner", async () => {
+    const fetcher = vi.fn(() => Promise.resolve(response(learner)));
+    vi.stubGlobal("fetch", fetcher);
+    vi.spyOn(crypto, "randomUUID").mockReturnValue(accountId);
     const handlers = props();
     render(<AdultPanel {...handlers} learner="" learners={[]} />);
-    fireEvent.change(screen.getByLabelText("Learner name"), {
+    fireEvent.change(screen.getByLabelText("Learner username"), {
       target: { value: learner.alias },
     });
-    fireEvent.change(screen.getByLabelText("Age group"), {
-      target: { value: "minor" },
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "synthetic-password-only" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Add learner" }));
-    await screen.findByText("Orbit added. You can start practice now.");
-    expect(fetch).toHaveBeenCalledWith(
+    fireEvent.click(
+      screen.getByRole("button", { name: "Create learner account" }),
+    );
+    await vi.waitFor(() => expect(handlers.onRefresh).toHaveBeenCalledTimes(1));
+    expect(fetcher).toHaveBeenCalledWith(
       "/api/v1/admin/learners",
       expect.objectContaining({
         method: "POST",
-        body: JSON.stringify({ alias: "Orbit", eligibility: "minor" }),
-        headers: {
-          "X-CSRF-Token": "synthetic-csrf",
-          "Content-Type": "application/json",
-          "Idempotency-Key": pairId,
-        },
+        body: JSON.stringify({
+          alias: "Orbit",
+          password: "synthetic-password-only",
+          eligibility: "unknown",
+        }),
       }),
     );
-    expect(handlers.onRefresh).toHaveBeenCalledOnce();
     expect(handlers.onLearner).toHaveBeenCalledWith(learner.id);
     expect(handlers.onNavigate).not.toHaveBeenCalled();
-    expect(screen.getByLabelText("Learner name")).toHaveValue("");
+    expect(screen.getByLabelText("Password")).toHaveValue("");
   });
 
-  it("prefills an editable adult profile for the parent without creating it until submitted", async () => {
-    const ownProfile = {
-      ...learner,
-      alias: "parent-login",
-      eligibility: "adult",
-    };
+  it("keeps the entered username when the server rejects a duplicate", async () => {
     vi.stubGlobal(
       "fetch",
-      vi.fn(() => Promise.resolve(response(ownProfile))),
+      vi.fn(() =>
+        Promise.resolve(
+          response(
+            {
+              detail:
+                "That username is already in use. Choose a different username.",
+            },
+            409,
+          ),
+        ),
+      ),
     );
     const handlers = props();
-    render(<AdultPanel {...handlers} adultLoginName="parent-login" />);
-    expect(
-      screen.getByText(/Your adult sign-in manages this app/),
-    ).toBeVisible();
+    render(<AdultPanel {...handlers} learners={[]} learner="" />);
+    fireEvent.change(screen.getByLabelText("Learner username"), {
+      target: { value: "Orbit" },
+    });
+    fireEvent.change(screen.getByLabelText("Password"), {
+      target: { value: "synthetic-password-only" },
+    });
     fireEvent.click(
-      screen.getByRole("button", { name: "Create my practice profile" }),
+      screen.getByRole("button", { name: "Create learner account" }),
     );
-    const name = screen.getByLabelText("Learner name");
-    expect(name).toHaveValue("parent-login");
-    expect(name).toHaveFocus();
-    expect(name).not.toHaveAttribute("readonly");
-    expect(screen.getByLabelText("Age group")).toHaveValue("adult");
-    expect(fetch).not.toHaveBeenCalled();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "already in use",
+    );
+    expect(screen.getByLabelText("Learner username")).toHaveValue("Orbit");
     expect(handlers.onLearner).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "Add learner" }));
-    await screen.findByText("parent-login added. You can start practice now.");
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/v1/admin/learners",
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ alias: "parent-login", eligibility: "adult" }),
-      }),
-    );
-    expect(handlers.onLearner).toHaveBeenCalledWith(ownProfile.id);
   });
 
-  it.each(["add", "delete"] as const)(
-    "refreshes learners after a delayed %s finishes without changing selection after leaving the page",
+  it.each(["add", "delete"])(
+    "refreshes after a delayed %s without changing the selection after leaving",
     async (action) => {
-      let finish: (value: Response) => void = () => {
-        throw new Error("The request has not started.");
+      let resolveChange: (response: Response) => void = () => {
+        throw new Error("not started");
       };
-      const pending = new Promise<Response>((resolve) => {
-        finish = resolve;
-      });
       vi.stubGlobal(
         "fetch",
-        vi.fn(() => pending),
+        vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+          init?.method === "POST" || init?.method === "DELETE"
+            ? new Promise<Response>((resolve) => {
+                resolveChange = resolve;
+              })
+            : Promise.resolve(
+                response(
+                  (typeof input === "string"
+                    ? input
+                    : input instanceof URL
+                      ? input.href
+                      : input.url
+                  ).endsWith("/devices")
+                    ? []
+                    : providers,
+                ),
+              ),
+        ),
       );
       const handlers = props();
-      const panel = render(<AdultPanel {...handlers} />);
-      const form = screen.getByLabelText("Learner name").closest("form")!;
-      const reset = vi.spyOn(form, "reset");
+      const view = render(
+        <AdultPanel
+          {...handlers}
+          learners={action === "add" ? [] : [learner]}
+        />,
+      );
       if (action === "add") {
-        fireEvent.change(screen.getByLabelText("Learner name"), {
-          target: { value: "Delta" },
+        fireEvent.change(screen.getByLabelText("Learner username"), {
+          target: { value: "Orbit" },
         });
-        fireEvent.click(screen.getByRole("button", { name: "Add learner" }));
+        fireEvent.change(screen.getByLabelText("Password"), {
+          target: { value: "synthetic-password-only" },
+        });
+        fireEvent.click(
+          screen.getByRole("button", { name: "Create learner account" }),
+        );
       } else {
         vi.spyOn(window, "confirm").mockReturnValue(true);
-        fireEvent.click(screen.getByText("Saved data & device access"));
         fireEvent.click(screen.getByRole("button", { name: "Delete learner" }));
       }
-      expect(fetch).toHaveBeenCalledOnce();
-      panel.unmount();
-      // App may now be showing another learner's unsent practice draft. A
-      // callback from the old panel must not replace that current selection.
+      view.rerender(<AdultPanel {...handlers} page="settings" />);
       await act(async () => {
-        finish(
-          response(
-            action === "add" ? { ...learner, id: pairId, alias: "Delta" } : {},
-          ),
-        );
-        await pending;
+        resolveChange(response(action === "add" ? learner : {}));
+        await Promise.resolve();
       });
-      expect(handlers.onRefresh).toHaveBeenCalledOnce();
+      await vi.waitFor(() => expect(handlers.onRefresh).toHaveBeenCalled());
       expect(handlers.onLearner).not.toHaveBeenCalled();
-      expect(reset).not.toHaveBeenCalled();
-      expect(failures).toHaveLength(0);
     },
   );
 
-  it("approves the request for the selected learner and preserves the request on rejection", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi
-        .fn()
-        .mockResolvedValueOnce(
-          response({ detail: "This request expired." }, 403),
-        )
-        .mockResolvedValueOnce(response({ approved: true })),
+  it("saves a reset without ever displaying a stored password", async () => {
+    const fetcher = vi.fn((input: RequestInfo | URL) =>
+      Promise.resolve(
+        response(
+          (typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.href
+              : input.url
+          ).endsWith("/devices")
+            ? []
+            : learner,
+        ),
+      ),
     );
-    render(<AdultPanel {...props()} />);
-    fireEvent.change(screen.getByLabelText("Pairing request ID"), {
-      target: { value: pairId },
+    vi.stubGlobal("fetch", fetcher);
+    const handlers = props();
+    render(<AdultPanel {...handlers} />);
+    const password = screen.getByLabelText("New password");
+    expect(password).toHaveValue("");
+    expect(password).toHaveAttribute("type", "password");
+    fireEvent.change(password, {
+      target: { value: "synthetic-reset-password" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Approve device" }));
-    await vi.waitFor(() => expect(failures).toHaveLength(1));
-    expect(failures[0]?.message).toBe("This request expired.");
-    expect(screen.getByLabelText("Pairing request ID")).toHaveValue(pairId);
-    expect(screen.queryByRole("status")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Approve device" }));
-    await screen.findByText(
-      "Device approved for Orbit. The other browser will sign in automatically.",
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save sign-in details" }),
     );
-    expect(fetch).toHaveBeenLastCalledWith(
-      `/api/v1/admin/pairing/${pairId}/approve`,
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Previous learner sign-ins have ended",
+    );
+    expect(fetcher).toHaveBeenCalledWith(
+      `/api/v1/admin/learners/${learner.id}/account`,
       expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({ learner_id: learner.id }),
+        method: "PATCH",
+        body: JSON.stringify({
+          alias: "Orbit",
+          password: "synthetic-reset-password",
+        }),
       }),
     );
-    expect(screen.getByLabelText("Pairing request ID")).toHaveValue("");
+    expect(password).toHaveValue("");
   });
 
-  it("requires a current learner for pairing and confirmation before deleting saved work", () => {
-    const handlers = props();
-    const { rerender } = render(
-      <AdultPanel {...handlers} learner="stale-id" />,
-    );
-    expect(
-      screen.getByRole("button", { name: "Approve device" }),
-    ).toBeDisabled();
-    rerender(<AdultPanel {...handlers} />);
-    fireEvent.click(screen.getByText("Saved data & device access"));
+  it("requires confirmation before deleting an account and its work", async () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const handlers = props();
+    render(<AdultPanel {...handlers} />);
+    await screen.findByText("No browsers are signed in as Orbit.");
     fireEvent.click(screen.getByRole("button", { name: "Delete learner" }));
     expect(confirm).toHaveBeenCalledWith(
-      expect.stringContaining("Orbit's saved practice"),
+      expect.stringContaining("Orbit's account and saved work"),
     );
-    expect(fetch).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ method: "DELETE" }),
+    );
     expect(handlers.onRefresh).not.toHaveBeenCalled();
   });
 });
@@ -305,16 +330,16 @@ describe("AI settings page", () => {
   it("separates the four setup purposes into keyboard-navigable tabs", async () => {
     render(<AdultPanel {...props()} page="settings" />);
     const connections = await screen.findByRole("tab", {
-      name: /Connections.*Save model access/,
+      name: /Connections.*Add and edit models/,
     });
     const permissions = screen.getByRole("tab", {
-      name: /App permissions.*Allow data use/,
+      name: /Data & privacy.*Cloud access and age groups/,
     });
     const tests = screen.getByRole("tab", {
-      name: /Connection tests.*Check readiness/,
+      name: /Connection tests.*Try a sample request/,
     });
     const roles = screen.getByRole("tab", {
-      name: /Assign active connections.*Activate for the app/,
+      name: /Active models.*Choose tutor and photo reader/,
     });
     expect(screen.getAllByRole("tab")).toHaveLength(4);
     expect(connections).toHaveAttribute("aria-selected", "true");
@@ -323,10 +348,10 @@ describe("AI settings page", () => {
     fireEvent.click(permissions);
     expect(permissions).toHaveAttribute("aria-selected", "true");
     expect(
-      screen.getByRole("heading", { name: "App permissions" }),
+      screen.getByRole("heading", { name: "Data & privacy" }),
     ).toBeVisible();
     expect(
-      screen.queryByRole("button", { name: "Add AI connection" }),
+      screen.queryByRole("button", { name: "Add new AI connection" }),
     ).not.toBeInTheDocument();
 
     fireEvent.keyDown(permissions, { key: "ArrowRight" });
@@ -339,7 +364,7 @@ describe("AI settings page", () => {
     fireEvent.keyDown(tests, { key: "End" });
     expect(roles).toHaveAttribute("aria-selected", "true");
     expect(
-      screen.getByRole("heading", { name: "Assign active connections" }),
+      screen.getByRole("heading", { name: "Active models" }),
     ).toBeVisible();
     expect(roles).toHaveFocus();
   });
@@ -363,11 +388,11 @@ describe("AI settings page", () => {
     );
     render(<AdultPanel {...props()} page="settings" />);
     const rolesTab = await screen.findByRole("tab", {
-      name: /Assign active connections/,
+      name: /Active models/,
     });
     fireEvent.click(rolesTab);
     expect(
-      screen.getByRole("heading", { name: "Assign active connections" }),
+      screen.getByRole("heading", { name: "Active models" }),
     ).toBeVisible();
     expect(
       screen.getByText(/used across this app for future learner work/i),
@@ -391,7 +416,7 @@ describe("AI settings page", () => {
       }),
     );
     expect(
-      screen.getByRole("button", { name: "Save active connections" }),
+      screen.getByRole("button", { name: "Save active models" }),
     ).toBeDisabled();
     expect(fetch).toHaveBeenCalledOnce();
   });
@@ -414,24 +439,20 @@ describe("AI settings page", () => {
       ),
     );
     render(<AdultPanel {...props()} page="settings" />);
-    fireEvent.click(
-      await screen.findByRole("tab", { name: /Assign active connections/ }),
-    );
+    fireEvent.click(await screen.findByRole("tab", { name: /Active models/ }));
     const tutor = screen.getByRole("combobox", { name: "Tutor connection" });
     expect(
       within(tutor).getByRole("option", { name: "local-text (ready)" }),
     ).toBeEnabled();
     expect(
-      screen.getByText(/This connection changed. Saving below approves/),
+      screen.getByText(/This connection has passed its tests. Save below/),
     ).toBeVisible();
     fireEvent.click(
       screen.getByRole("checkbox", {
         name: "I authorize these app-wide connections to process future learner text and photos.",
       }),
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Save active connections" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "Save active models" }));
     await screen.findByText(
       "Active connections saved. Future learner work will use these app-wide choices.",
     );
@@ -448,11 +469,12 @@ describe("AI settings page", () => {
   it("loads on Settings only, filters photo capability, and requires fresh consent after a selection change", async () => {
     const handlers = props();
     const { rerender } = render(<AdultPanel {...handlers} />);
-    expect(fetch).not.toHaveBeenCalled();
-    rerender(<AdultPanel {...handlers} page="settings" />);
-    fireEvent.click(
-      await screen.findByRole("tab", { name: /Assign active connections/ }),
+    expect(fetch).not.toHaveBeenCalledWith(
+      "/api/v1/admin/providers",
+      expect.anything(),
     );
+    rerender(<AdultPanel {...handlers} page="settings" />);
+    fireEvent.click(await screen.findByRole("tab", { name: /Active models/ }));
     const tutor = screen.getByRole("combobox", { name: "Tutor connection" });
     const photoReader = screen.getByRole("combobox", {
       name: "Photo reader connection",
@@ -469,7 +491,7 @@ describe("AI settings page", () => {
       screen.queryByLabelText("Pairing request ID"),
     ).not.toBeInTheDocument();
     const save = screen.getByRole("button", {
-      name: "Save active connections",
+      name: "Save active models",
     });
     expect(save).toBeDisabled();
     const consent = screen.getByRole("checkbox", {

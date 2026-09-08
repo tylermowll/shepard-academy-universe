@@ -145,9 +145,7 @@ for (const lostReceipt of [false, true]) {
         page.getByRole("button", { name: "Create account", exact: true }),
       ).toHaveCount(0);
       await page.goto(ownerUrl);
-      await expect(
-        page.getByLabel("Login name", { exact: true }),
-      ).toBeEditable();
+      await expect(page.getByLabel("Username", { exact: true })).toBeEditable();
       await expect.poll(() => new URL(page.url()).hash).toBe("");
       await expect(page.locator("#setup-password-requirements")).toContainText(
         "6–256",
@@ -158,7 +156,7 @@ for (const lostReceipt of [false, true]) {
           fullPage: true,
         });
       await page
-        .getByLabel("Login name", { exact: true })
+        .getByLabel("Username", { exact: true })
         .fill("synthetic-owner");
       await page.getByLabel("Password", { exact: true }).fill("tiny");
       await page.getByLabel("Confirm password", { exact: true }).fill("tiny");
@@ -166,7 +164,7 @@ for (const lostReceipt of [false, true]) {
         .getByRole("button", { name: "Create account", exact: true })
         .click();
       await expect(page.getByRole("alert")).toContainText(/6–256 characters/);
-      await expect(page.getByLabel("Login name", { exact: true })).toHaveValue(
+      await expect(page.getByLabel("Username", { exact: true })).toHaveValue(
         "synthetic-owner",
       );
 
@@ -220,7 +218,10 @@ for (const lostReceipt of [false, true]) {
         const visitor = await anonymous.newPage();
         await visitor.goto(ownerUrl);
         await expect(
-          visitor.getByRole("heading", { name: "Adult sign in", exact: true }),
+          visitor.getByRole("heading", {
+            name: "Account sign-in",
+            exact: true,
+          }),
         ).toBeVisible();
         await expect(
           visitor.getByRole("button", { name: "Create account", exact: true }),
@@ -240,7 +241,7 @@ for (const lostReceipt of [false, true]) {
       ).toBeVisible();
       await page.getByRole("button", { name: "Sign out", exact: true }).click();
       await page
-        .getByLabel("Login name", { exact: true })
+        .getByLabel("Username", { exact: true })
         .fill("synthetic-owner");
       await page.getByLabel("Password", { exact: true }).fill("local6");
       await page.getByRole("button", { name: "Sign in", exact: true }).click();

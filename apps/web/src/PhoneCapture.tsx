@@ -91,7 +91,7 @@ export function PhoneCapture({ token }: { token: string }) {
   const received = sent || info?.received;
   return (
     <main className="phone-capture">
-      <p className="eyebrow">Shepard Academy Universe · Phone camera</p>
+      <p className="eyebrow">Shepherd Academy Universe · Phone camera</p>
       <h1>
         {received ? "Photo sent to your computer." : "Photograph your work."}
       </h1>

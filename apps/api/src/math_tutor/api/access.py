@@ -36,7 +36,7 @@ Database = Annotated[Session, Depends(transaction, scope="function")]
 def principal(request: Request, db: Database) -> DeviceSession:
     row = get_valid_session(db, request.cookies.get(SESSION_COOKIE, ""))
     if row is None:
-        raise HTTPException(401, "Sign in or pair this device.")
+        raise HTTPException(401, "Sign in to continue.")
     if row.learner_id is not None:
         learner = db.get(Learner, row.learner_id)
         if learner is None or not learner.enabled or learner.deleted_at is not None:

@@ -1,4 +1,10 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ProviderConnections,
@@ -92,7 +98,9 @@ function show(
 }
 
 function fillNew() {
-  fireEvent.click(screen.getByRole("button", { name: "Add AI connection" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Add new AI connection" }),
+  );
   fireEvent.change(screen.getByLabelText("Connection name"), {
     target: { value: "local-tutor" },
   });
@@ -164,7 +172,9 @@ describe("adult connection setup", () => {
 
   it("shows the API key field immediately for hosted APIs while local servers default to no key", () => {
     show();
-    fireEvent.click(screen.getByRole("button", { name: "Add AI connection" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add new AI connection" }),
+    );
     expect(screen.getByLabelText("API key action")).toHaveValue("keep");
     expect(screen.queryByLabelText("API key")).toBeNull();
     fireEvent.change(screen.getByLabelText("Connection type"), {
@@ -261,7 +271,7 @@ describe("adult connection setup", () => {
       target: { value: "250000" },
     });
     expect(terms()).toBeChecked();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel connection" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel changes" }));
     fireEvent.click(screen.getByRole("button", { name: "Edit connection" }));
     expect(terms()).toBeChecked();
     fireEvent.change(screen.getByLabelText("Allowed users"), {
@@ -381,7 +391,9 @@ describe("adult connection setup", () => {
 
   it("requires model, connection name, valid address and explicit reviewed terms", () => {
     show();
-    fireEvent.click(screen.getByRole("button", { name: "Add AI connection" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add new AI connection" }),
+    );
     fireEvent.click(terms());
     expect(
       screen.getByRole("button", { name: "Save connection" }),
@@ -430,7 +442,7 @@ describe("adult connection setup", () => {
     fireEvent.change(screen.getByLabelText("API key"), {
       target: { value: "another-synthetic-key" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Cancel connection" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel changes" }));
     fillNew();
     fireEvent.change(screen.getByLabelText("API key action"), {
       target: { value: "replace" },
@@ -622,7 +634,9 @@ describe("adult connection setup", () => {
 
   it("saves the selected Meta audience while keeping its hosted location fixed", async () => {
     const { onSectionChange } = show();
-    fireEvent.click(screen.getByRole("button", { name: "Add AI connection" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add new AI connection" }),
+    );
     fireEvent.change(screen.getByLabelText("Connection name"), {
       target: { value: "meta-policy" },
     });
@@ -678,32 +692,32 @@ describe("adult connection setup", () => {
       providers: [{ ...pending, boundary: "cloud" }],
     });
     expect(
-      screen.getByText(/Saved, but blocked by App permissions/),
+      screen.getByText(/Saved, but blocked by Data & privacy/),
     ).toBeVisible();
     fireEvent.click(
-      screen.getByRole("button", { name: "Open App permissions" }),
+      screen.getByRole("button", { name: "Open Data & privacy" }),
     );
     expect(view.onSectionChange).toHaveBeenLastCalledWith("policy", true);
   });
 
-  it("explains that App permissions is one app-wide permission gate", () => {
+  it("explains cloud data use and that these settings apply to every connection", () => {
     show(configuration, "policy");
     expect(
-      screen.getByRole("heading", { name: "App permissions" }),
+      screen.getByRole("heading", { name: "Data & privacy" }),
     ).toBeVisible();
     expect(
-      screen.getByText(
-        /one app-wide permission gate for every connection and learner/i,
-      ),
+      screen.getByText(/These settings apply to every connection/i),
     ).toBeVisible();
     expect(
-      screen.getByText(/It does not choose a model or send any requests/i),
+      screen.getByText(/Enabling this permission alone sends no requests/i),
     ).toBeVisible();
   });
 
   it("prefills Meta's direct API model and million-token context", () => {
     show();
-    fireEvent.click(screen.getByRole("button", { name: "Add AI connection" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Add new AI connection" }),
+    );
     fireEvent.change(screen.getByLabelText("Connection type"), {
       target: { value: "meta" },
     });
@@ -760,13 +774,11 @@ describe("adult connection setup", () => {
         screen.getByText(`Ready for ${role}.`, { exact: false }),
       ).toBeVisible();
       expect(screen.getByText(/Other roles still need testing/)).toBeVisible();
-      fireEvent.click(
-        screen.getByRole("button", { name: "Assign active connections" }),
-      );
+      fireEvent.click(screen.getByRole("button", { name: "Active models" }));
       expect(view.onSectionChange).toHaveBeenLastCalledWith("roles", true);
       view.showSection("tests");
       expect(
-        screen.getByRole("button", { name: "Assign active connections" }),
+        screen.getByRole("button", { name: "Active models" }),
       ).toBeEnabled();
       expect(fetch).not.toHaveBeenCalled();
     },
@@ -796,7 +808,7 @@ describe("adult connection setup", () => {
     async (adapter, selectedBoundary, baseUrl) => {
       show();
       fireEvent.click(
-        screen.getByRole("button", { name: "Add AI connection" }),
+        screen.getByRole("button", { name: "Add new AI connection" }),
       );
       fireEvent.change(screen.getByLabelText("Connection name"), {
         target: { value: `${adapter}-policy` },
@@ -868,7 +880,12 @@ describe("adult connection setup", () => {
     ).toBeVisible();
     openDetails();
     vi.spyOn(window, "confirm").mockReturnValue(true);
-    fireEvent.click(screen.getByRole("button", { name: "Delete connection" }));
+    fireEvent.click(
+      within(screen.getByRole("form", { name: "Edit home-vision" })).getByRole(
+        "button",
+        { name: "Delete connection" },
+      ),
+    );
     await screen.findByText("home-vision and its saved API key were deleted.");
     expect(
       screen.queryByRole("heading", { name: "Edit home-vision" }),
@@ -905,7 +922,7 @@ describe("adult connection setup", () => {
       policy: { ...configuration.policy, demo_mode: true },
     });
     expect(
-      screen.getByRole("button", { name: "Add AI connection" }),
+      screen.getByRole("button", { name: "Add new AI connection" }),
     ).toBeDisabled();
     expect(screen.queryByLabelText("API key")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Private setup help" }));
@@ -928,7 +945,7 @@ describe("adult connection setup", () => {
     );
     expect(screen.getByRole("button", { name: "Test tutor" })).toBeDisabled();
     fireEvent.click(
-      screen.getByRole("button", { name: "Open App permissions" }),
+      screen.getByRole("button", { name: "Open Data & privacy" }),
     );
     expect(view.onSectionChange).toHaveBeenCalledWith("policy", true);
     view.showSection("policy", {
@@ -940,17 +957,14 @@ describe("adult connection setup", () => {
     });
     fireEvent.click(screen.getByLabelText("Allow cloud AI for this app"));
     expect(
-      screen.getByRole("button", { name: "Save app permissions" }),
-    ).toBeDisabled();
+      screen.getByRole("button", { name: "Save data & privacy settings" }),
+    ).toBeEnabled();
+    // Changing the controls alone cannot authorize or send any request.
+    expect(fetch).not.toHaveBeenCalled();
     fireEvent.click(
-      screen.getByLabelText(
-        "I confirm this audience and authorize the selected data boundary.",
-      ),
+      screen.getByRole("button", { name: "Save data & privacy settings" }),
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Save app permissions" }),
-    );
-    await screen.findByText(/App permissions saved/);
+    await screen.findByText(/Data & privacy saved/);
     expect(fetch).toHaveBeenCalledWith(
       "/api/v1/admin/providers/policy",
       expect.objectContaining({

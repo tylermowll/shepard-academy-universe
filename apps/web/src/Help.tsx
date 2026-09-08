@@ -70,13 +70,12 @@ export function HelpPage({
             <>
               <ol className="steps">
                 <li>
-                  Open {link("practice", "Practice")}. Choose a learner, or add
-                  one in {link("learners", "Learners & devices")} if you are
-                  signed in as an adult.
+                  Sign in with your learner username and password, then open{" "}
+                  {link("practice", "Practice")}.
                 </li>
                 <li>
                   Enter a topic, such as “writing a persuasive paragraph.” Start
-                  the session, then create an activity from your topic or
+                  the session to create your first activity from that topic or
                   reference material. Choose Easier, Standard, or Harder to set
                   the level; you can change it during the session.
                 </li>
@@ -116,43 +115,43 @@ export function HelpPage({
           )}
           {selected[0] === "accounts" && (
             <>
-              <h3>One adult sign-in, a profile for each student</h3>
+              <h3>One administrator, separate learner accounts</h3>
               <p>
-                The adult account manages learners, device access, and AI
-                settings. Each learner profile holds one person’s practice and
-                history. A profile can belong to a child or to the adult.
+                The administrator manages accounts and AI settings. Each learner
+                signs in with their own username and password and can see only
+                their own practice and history.
               </p>
-              <h3>If you are both parent and student</h3>
               <ol className="steps">
                 <li>
-                  Sign in with your adult account and open{" "}
-                  {link("learners", "Learners & devices")}.
+                  Open {link("learners", "Learners")} as administrator and
+                  choose <strong>Add learner account</strong>.
                 </li>
                 <li>
-                  Choose <strong>Create my practice profile</strong>. Edit the
-                  prefilled name if you want, then choose{" "}
-                  <strong>Add learner</strong>.
+                  Choose a unique username, set a password, and select an age
+                  group. Choose <strong>Create learner account</strong>.
                 </li>
                 <li>
-                  Choose <strong>Start practice</strong>. Your own profile is
-                  selected, and your work stays separate from your children’s.
+                  Give the learner their username and password. They use the
+                  normal Sign in page on any device that can reach this app.
                 </li>
               </ol>
+              <h3>If you also want to study</h3>
               <p>
-                You keep the same sign-in for managing the app and studying.
+                Create one learner account for your own saved work. Sign out of
+                the administrator account, then sign in with those learner
+                credentials.
               </p>
-              <h3>For a child</h3>
+              <h3>Passwords and signed-in browsers</h3>
               <p>
-                Add their learner profile and choose Under 18. Pair their
-                browser from Learners & devices. It opens only their practice
-                and history, without Settings, other learners, or an adult
-                password. Pairing instructions are in{" "}
-                {link("help", "Phone setup", "phone")}.
+                Select a learner to change their username or reset their
+                password. Resetting a password signs out their browsers. You can
+                also end one browser's access or sign out all of that learner's
+                browsers without changing their password.
               </p>
               <p>
-                Children use paired browser access; separate child usernames and
-                passwords are not needed. The adult can sign out their devices
-                at any time.
+                Older profiles keep their saved work. Set a password before
+                using one to sign in. If names conflicted, a numeric suffix
+                distinguishes the accounts; their histories were not merged.
               </p>
             </>
           )}
@@ -173,7 +172,7 @@ export function HelpPage({
                 </li>
                 <li>
                   Scan the QR code with the phone’s camera and open the link. No
-                  sign-in or device pairing is needed for this photo.
+                  sign-in is needed for this photo.
                 </li>
                 <li>
                   Choose <strong>Take or choose a photo</strong>, check the
@@ -185,26 +184,17 @@ export function HelpPage({
                 </li>
               </ol>
               <h3>Use the whole tutor on the phone</h3>
-              <ol className="steps">
-                <li>
-                  Open the app’s shared HTTPS address on the phone. On the
-                  sign-in page, tap <strong>Pair this device</strong>.
-                </li>
-                <li>
-                  Copy the <strong>Pairing request ID</strong> shown on the
-                  phone.
-                </li>
-                <li>
-                  On the computer, sign in as an adult, open{" "}
-                  {link("learners", "Learners & devices")}, and select the
-                  learner.
-                </li>
-                <li>
-                  Paste the ID into <strong>Pairing request ID</strong> and
-                  choose <strong>Approve device</strong> within five minutes.
-                  The phone finishes pairing automatically.
-                </li>
-              </ol>
+              <p>
+                Open the app’s shared HTTPS address and sign in with your
+                learner username and password. Your administrator creates the
+                account and can reset the password in{" "}
+                {link("learners", "Learners")}.
+              </p>
+              <p>
+                A learner sign-in opens their practice and history. The photo QR
+                only connects the camera; it does not open an account or give
+                access to saved work.
+              </p>
               <ContextHelp topic="Set up a shared HTTPS address">
                 <p>
                   The app must run in private mode first. If you started it with{" "}
@@ -316,15 +306,15 @@ export function HelpPage({
               <ol className="steps">
                 <li>
                   Open {link("settings", "Settings")} and use the{" "}
-                  <strong>Connections</strong> step. Select Ollama, vLLM, or
-                  your API type. Enter the server URL, exact model name, and an
-                  API key if required, then save. Saving does not activate it.
+                  <strong>Add new AI connection</strong>. Select Ollama, vLLM,
+                  or your API type. Enter the server URL, exact model name, and
+                  an API key if required, then save. Saving does not activate
+                  it.
                 </li>
                 <li>
-                  Open <strong>App permissions</strong>. This is the global
-                  safety switch for every connection, not another part of the
-                  connection you just saved. Enable cloud processing only if you
-                  intend to send work to a cloud provider.
+                  For cloud AI, enable cloud processing in{" "}
+                  <strong>Data & privacy</strong>. Set the age groups who use
+                  this app there too. These choices apply to all connections.
                 </li>
                 <li>
                   Open <strong>Connection tests</strong> and test tutoring and,
@@ -333,10 +323,9 @@ export function HelpPage({
                   two sample calls; the photo test makes one.
                 </li>
                 <li>
-                  Open <strong>Assign active connections</strong>. Choose the
-                  tutor and photo reader for future learner work, authorize the
-                  destinations, and save. Return to{" "}
-                  {link("practice", "Practice")}.
+                  Open <strong>Active models</strong>. Choose the tutor and
+                  photo reader for future learner work, authorize the
+                  destinations, and save. Learners can then sign in to practice.
                 </li>
               </ol>
               <p>
@@ -357,7 +346,7 @@ export function HelpPage({
               </ContextHelp>
               <ContextHelp topic="Where do I enter an API key?">
                 <p>
-                  In the adult <strong>Add AI connection</strong> form in{" "}
+                  In the adult <strong>Add new AI connection</strong> form in{" "}
                   {link("settings", "Settings")}. Saved keys are encrypted on
                   the app server and are never returned to the browser. Editing
                   lets you keep, replace, or remove a key. Keep keys out of chat
@@ -436,11 +425,12 @@ export function HelpPage({
                   Follow {link("help", "Phone setup", "phone")}.
                 </p>
               </ContextHelp>
-              <ContextHelp topic="The pairing request expired">
+              <ContextHelp topic="I cannot sign in as a learner">
                 <p>
-                  On the phone, choose Pair this device again. Paste the new ID
-                  into Learners & devices on the computer and approve it within
-                  five minutes. Keep the original phone browser open.
+                  Ask your administrator to check the username and set or reset
+                  the password in Learners. Use the same app address on both
+                  devices. Learner passwords cannot be reset from the sign-in
+                  page.
                 </p>
               </ContextHelp>
               <ContextHelp topic="An activity or photo is stuck">
@@ -494,7 +484,7 @@ export function HelpPage({
               <p>
                 Submitted work is saved to the computer running the app. The
                 adult who manages a learner can review their sessions, export
-                them, or delete them in Learners & devices.
+                them, or delete them in Learners.
               </p>
               <p>
                 Photos are removed after processing. Failed or unprocessed

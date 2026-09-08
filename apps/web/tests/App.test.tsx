@@ -32,7 +32,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 describe("entry and offline practice", () => {
-  it("offers real sign-in and pairing with an authenticated CSRF bootstrap", async () => {
+  it("offers administrator and learner sign-in with a CSRF bootstrap", async () => {
     render(<App />);
     expect(screen.getByRole("main")).toBeVisible();
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
@@ -45,9 +45,10 @@ describe("entry and offline practice", () => {
       "type",
       "password",
     );
+    expect(screen.getByLabelText("Username")).toBeVisible();
     expect(
-      screen.getByRole("button", { name: "Pair this device" }),
-    ).toBeEnabled();
+      screen.queryByRole("button", { name: "Pair this device" }),
+    ).toBeNull();
   });
   it("retains bounded arithmetic utilities without exposing a template practice UI", () => {
     expect(checkOffline("10/12", 5n, 6n)).toMatch("Correct value");
@@ -117,23 +118,24 @@ it("keeps a newly created learner when an older list request finishes late", asy
     }),
   );
   render(<App />);
-  fireEvent.click(
-    await screen.findByRole("link", { name: "Learners & devices" }),
-  );
-  fireEvent.change(screen.getByLabelText("Learner name"), {
+  fireEvent.click(await screen.findByRole("link", { name: "Learners" }));
+  fireEvent.change(screen.getByLabelText("Learner username"), {
     target: { value: "Synthetic" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Add learner" }));
+  fireEvent.change(screen.getByLabelText("Password"), {
+    target: { value: "synthetic-password-only" },
+  });
+  fireEvent.click(
+    screen.getByRole("button", { name: "Create learner account" }),
+  );
   await vi.waitFor(() =>
-    expect(screen.getByRole("combobox", { name: "Learner" })).toHaveValue(
-      row.id,
-    ),
+    expect(screen.getByLabelText("Learner username")).toHaveValue(row.alias),
   );
   await act(async () => {
     resolveOld(response([]));
     await oldResponse;
   });
-  expect(screen.getByRole("combobox", { name: "Learner" })).toHaveValue(row.id);
+  expect(screen.getByLabelText("Learner username")).toHaveValue(row.alias);
 });
 
 it("retries a failed learner list when the adult reconnects", async () => {
@@ -174,7 +176,7 @@ it("retries a failed learner list when the adult reconnects", async () => {
   render(<App />);
   await screen.findByRole("alert");
   fireEvent.click(screen.getByRole("button", { name: "Reconnect" }));
-  await screen.findByRole("option", { name: "Recovered learner" });
+  await screen.findByRole("button", { name: /Recovered learner/ });
   expect(lists).toBe(2);
   expect(screen.queryByRole("alert")).toBeNull();
 });
@@ -420,7 +422,7 @@ it("allows a corrected request after its first attempt is definitively rejected"
   expect(
     screen.queryByRole("button", { name: "Retry saved request" }),
   ).toBeNull();
-  fireEvent.click(screen.getByText("Tutor options"));
+  expect(screen.getByRole("group", { name: "Tutor style" })).toBeVisible();
   expect(screen.getByRole("combobox", { name: "Tutor style" })).toBeEnabled();
   fireEvent.click(screen.getByRole("button", { name: "Start session" }));
   await vi.waitFor(() =>

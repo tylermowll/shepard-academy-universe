@@ -138,8 +138,19 @@ def connection_config(body: ProviderConnectionInput) -> ProviderConfig:
         ) from None
 
 
-def save_connection(connection: ProviderConnection, body: ProviderConnectionInput) -> None:
+def save_connection(connection: ProviderConnection, body: ProviderConnectionInput) -> bool:
     config = connection_config(body)
+    # Saving an unchanged editor is not a configuration or credential change.
+    # Keep both the adult approval and the matching capability evidence.
+    if (
+        connection.configuration
+        and body.api_key_action == "keep"
+        and ProviderConfig.model_validate(connection.configuration).model_dump(
+            exclude={"requires_approval"}
+        )
+        == config.model_dump(exclude={"requires_approval"})
+    ):
+        return False
     if (
         connection.encrypted_api_key
         and body.api_key_action == "keep"
@@ -164,6 +175,7 @@ def save_connection(connection: ProviderConnection, body: ProviderConnectionInpu
     connection.configuration = config.model_copy(update={"requires_approval": True}).model_dump(
         mode="json"
     )
+    return True
 
 
 @router.post("/connections", response_model=Acknowledged, status_code=201)
@@ -191,8 +203,8 @@ def update_connection(
     connection = db.get(ProviderConnection, provider_id)
     if connection is None:
         raise HTTPException(404, "Connection not found.")
-    save_connection(connection, body)
-    db.execute(delete(ProviderProbe).where(ProviderProbe.provider_id == provider_id))
+    if save_connection(connection, body):
+        db.execute(delete(ProviderProbe).where(ProviderProbe.provider_id == provider_id))
     return Acknowledged()
 
 

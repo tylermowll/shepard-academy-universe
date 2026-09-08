@@ -104,7 +104,7 @@ function mount(withToken = true) {
 }
 async function fill(password = "simple", confirmation = password) {
   await screen.findByRole("button", { name: "Create account" });
-  fireEvent.change(screen.getByLabelText("Login name"), {
+  fireEvent.change(screen.getByLabelText("Username"), {
     target: { value: "Synthetic" },
   });
   fireEvent.change(screen.getByLabelText("Password", { exact: true }), {
@@ -147,7 +147,7 @@ describe("browser first-account setup", () => {
     fireEvent.click(screen.getByRole("link", { name: "Help" }));
     expect(screen.queryByRole("button", { name: "Create account" })).toBeNull();
     fireEvent.click(screen.getByRole("link", { name: "Set up account" }));
-    expect(screen.getByLabelText("Login name")).toHaveValue("Synthetic");
+    expect(screen.getByLabelText("Username")).toHaveValue("Synthetic");
     expect(screen.getByLabelText("Password", { exact: true })).toHaveValue(
       "simple",
     );
@@ -199,7 +199,7 @@ describe("browser first-account setup", () => {
       "aria-invalid",
       "true",
     );
-    expect(screen.getByLabelText("Login name")).toHaveValue("Synthetic");
+    expect(screen.getByLabelText("Username")).toHaveValue("Synthetic");
     expect(
       fetcher.mock.calls.some(([, options]) => options.method === "POST"),
     ).toBe(false);
@@ -234,7 +234,7 @@ describe("browser first-account setup", () => {
       screen.getByText("Your password cannot be only spaces."),
     ).toBeVisible();
     await fill("abc\u200bdef");
-    fireEvent.change(screen.getByLabelText("Login name"), {
+    fireEvent.change(screen.getByLabelText("Username"), {
       target: { value: "Syn\u200bthetic" },
     });
     submit();
@@ -304,7 +304,7 @@ describe("browser first-account setup", () => {
       );
       expect(document.body.textContent).not.toContain(syntheticToken);
       expect(document.body.textContent).not.toContain("malicious");
-      expect(screen.getByLabelText("Login name")).toHaveValue("Synthetic");
+      expect(screen.getByLabelText("Username")).toHaveValue("Synthetic");
       expect(screen.getByLabelText("Password", { exact: true })).toHaveValue(
         "simple",
       );
@@ -327,7 +327,7 @@ describe("browser first-account setup", () => {
       "Enter the same password in both fields.",
     );
     expect(authority.token).toBe(syntheticToken);
-    expect(screen.getByLabelText("Login name")).toHaveValue("Synthetic");
+    expect(screen.getByLabelText("Username")).toHaveValue("Synthetic");
   });
   it.each(["setup_link_invalid", "setup_unavailable"])(
     "clears the rejected authority for %s and explains how to restart without terminal credentials",
@@ -408,7 +408,7 @@ describe("browser first-account setup", () => {
         fetcher.mock.calls.some(([url]) => url.endsWith("/auth/setup")),
       ).toBe(false);
       if (!authenticated) {
-        fireEvent.change(screen.getByLabelText("Login name"), {
+        fireEvent.change(screen.getByLabelText("Username"), {
           target: { value: "Synthetic" },
         });
         fireEvent.change(screen.getByLabelText("Password"), {

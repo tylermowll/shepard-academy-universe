@@ -992,6 +992,35 @@ main:has(.tutor-workspace) {
 .tutor-sidebar label {
   font-size: 0.9rem;
 }
+.learner-accounts {
+  display: grid;
+  grid-template-columns: minmax(180px, 240px) minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.account-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+}
+.account-list button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-bottom: 8px;
+  overflow-wrap: anywhere;
+}
+.account-list button[aria-pressed="true"] {
+  background: #e6eee2;
+  border-color: #173d34;
+}
+.account-list small {
+  display: block;
+  font-weight: 400;
+}
+.learner-accounts .card {
+  margin-top: 0;
+}
 @media (max-width: 960px) {
   .tutor-workspace {
     grid-template-columns: minmax(0, 1fr);
@@ -1007,6 +1036,9 @@ main:has(.tutor-workspace) {
   }
 }
 @media (max-width: 520px) {
+  .learner-accounts {
+    grid-template-columns: minmax(0, 1fr);
+  }
   .conversation-scroll {
     padding: 8px 12px 20px;
   }
@@ -1034,4 +1066,19 @@ main:has(.tutor-workspace) {
   .chat-column {
     min-height: 440px;
   }
+}
+
+.wordmark {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+.wordmark img {
+  flex: 0 0 auto;
+}
+.tutor-preferences {
+  margin: 1rem 0;
+  border: 1px solid #ccd4c3;
+  border-radius: 0.65rem;
+  padding: 1rem;
 }

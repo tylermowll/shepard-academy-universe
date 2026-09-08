@@ -86,7 +86,7 @@ function saveError(cause: unknown, draft: Draft) {
     if (cause.status === 401 || cause.status === 403)
       return `${prefix}Your administrator sign-in is no longer authorized. Sign in again, then retry.`;
     if (cause.status === 404)
-      return `${prefix}This connection was deleted. Cancel this editor, choose Add AI connection, and add it again.`;
+      return `${prefix}This connection was deleted. Cancel this editor, choose Add new AI connection, and add it again.`;
     if (cause.status === 409) {
       if (knownSafeConnectionDetails.has(cause.message))
         return `${prefix}${cause.message}`;
@@ -137,9 +137,9 @@ const probeMessages = {
   context_limit:
     "The model context limit is too small for tutoring. In Advanced connection options, match Model context limit to the model server's supported size.",
   cloud_disabled:
-    "Cloud requests are off. Review and save App permissions before testing this cloud connection.",
+    "Cloud requests are off. Review and save Data & privacy before testing this cloud connection.",
   audience_blocked:
-    "This connection's Allowed users setting does not match who uses the app. Review both the connection and App permissions.",
+    "This connection's Allowed users setting does not match who uses the app. Review both the connection and Data & privacy.",
   invalid_endpoint:
     "The server address is blocked or does not match its network setting. Check Server address and Where this model runs; hosted services need the cloud setting.",
   unsupported_modality:
@@ -172,7 +172,7 @@ function probeError(cause: unknown) {
     if (cause.status === 401 || cause.status === 403)
       return "Your adult sign-in is no longer authorized. Sign in again before testing this connection.";
     if (cause.status === 409)
-      return "The connection or app permissions changed during the test. Refresh connections, then test the current settings again.";
+      return "The connection or data & privacy settings changed during the test. Refresh connections, then test the current settings again.";
     if (cause.status === 429)
       return "Too many requests were made. Wait a minute before testing again.";
     return `${step}The app returned HTTP ${cause.status} without a recognized test result. No successful test was confirmed.`;
@@ -385,7 +385,7 @@ export function ProviderConnections({
               disabled={policy.demo_mode || busy}
               onClick={() => start()}
             >
-              Add AI connection
+              Add new AI connection
             </button>
           </div>
           {policy.demo_mode && (
@@ -450,7 +450,7 @@ export function ProviderConnections({
                     await onChanged();
                     setMessage(
                       needsPolicy
-                        ? `${id} saved. No model request was sent. ${cloudNeedsPolicy ? "Cloud AI is off" : "Its allowed users do not match the app audience"}, so review App permissions next.`
+                        ? `${id} saved. No model request was sent. ${cloudNeedsPolicy ? "Cloud AI is off" : "Its allowed users do not match the app audience"}, so review Data & privacy next.`
                         : `${id} saved. No model request was sent. Test the connection next.`,
                     );
                     openSection(needsPolicy ? "policy" : "tests");
@@ -768,13 +768,13 @@ export function ProviderConnections({
                   !policy.allow_cloud_inference && (
                     <p className="notice">
                       Cloud AI is off for the whole app. You may save without
-                      sending anything, but enable it in App permissions before
+                      sending anything, but enable it in Data & privacy before
                       testing.{" "}
                       <button
                         type="button"
                         onClick={() => openSection("policy")}
                       >
-                        Open App permissions
+                        Open Data & privacy
                       </button>
                     </p>
                   )}
@@ -938,8 +938,29 @@ export function ProviderConnections({
                   Save connection
                 </button>
                 <button type="button" disabled={busy} onClick={cancel}>
-                  Cancel connection
+                  Cancel changes
                 </button>
+                {editing && (
+                  <button
+                    type="button"
+                    disabled={
+                      busy ||
+                      configuration.routes.tutor === editing.id ||
+                      configuration.routes.vision === editing.id
+                    }
+                    onClick={() => updateConnection(editing, true)}
+                  >
+                    Delete connection
+                  </button>
+                )}
+                {editing &&
+                  (configuration.routes.tutor === editing.id ||
+                    configuration.routes.vision === editing.id) && (
+                    <p className="fine">
+                      Choose a replacement in Active models before deleting this
+                      connection.
+                    </p>
+                  )}
               </div>
             </form>
           )}
@@ -949,7 +970,7 @@ export function ProviderConnections({
                 <h3 id="saved-connections-heading">Saved connections</h3>
                 <p>
                   These entries store how to reach each model. Testing and
-                  assigning them happen in the next steps.
+                  choosing which ones learners use are separate controls.
                 </p>
               </div>
             </div>
@@ -1008,9 +1029,9 @@ export function ProviderConnections({
                       </p>
                     ) : blocked ? (
                       <p className="notice">
-                        Saved, but blocked by App permissions.{" "}
+                        Saved, but blocked by Data & privacy.{" "}
                         <button onClick={() => openSection("policy")}>
-                          Open App permissions
+                          Open Data & privacy
                         </button>
                       </p>
                     ) : readyRoles.length === 0 ? (
@@ -1025,7 +1046,7 @@ export function ProviderConnections({
                       <p className="notice">
                         Ready for {readyRoles.join(" and ")}.{" "}
                         <button onClick={() => openSection("roles")}>
-                          Assign active connections
+                          Active models
                         </button>
                         {needsTest && (
                           <>
@@ -1204,10 +1225,10 @@ export function ProviderConnections({
                   )}
                   {blocked && (
                     <p className="notice">
-                      App permissions currently block this connection, so its
+                      Data & privacy currently block this connection, so its
                       test buttons are unavailable.{" "}
                       <button onClick={() => openSection("policy")}>
-                        Open App permissions
+                        Open Data & privacy
                       </button>
                     </p>
                   )}
@@ -1221,7 +1242,7 @@ export function ProviderConnections({
                         Assign this connection to a role whose test has passed
                         in the final step.{" "}
                         <button onClick={() => openSection("roles")}>
-                          Assign active connections
+                          Active models
                         </button>
                       </p>
                     )}
@@ -1313,11 +1334,12 @@ export function ProviderConnections({
           <div className="section-heading">
             <div>
               <h2 id="settings-policy-heading" tabIndex={-1}>
-                App permissions
+                Data & privacy
               </h2>
               <p>
-                This is one app-wide permission gate for every connection and
-                learner. It does not choose a model or send any requests.
+                Choose whether learner work may go to cloud AI, and which age
+                groups use this installation. These settings apply to every
+                connection.
               </p>
             </div>
           </div>
@@ -1328,7 +1350,7 @@ export function ProviderConnections({
             onChanged={async () => {
               await onChanged();
               setMessage(
-                "App permissions saved. Test the permitted connections next.",
+                "Data & privacy saved. Test the permitted connections next.",
               );
               openSection("tests");
             }}
@@ -1348,7 +1370,6 @@ function ProviderPolicy({
 }) {
   const [cloud, setCloud] = useState(policy.allow_cloud_inference);
   const [audience, setAudience] = useState(policy.app_audience);
-  const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   return (
@@ -1356,7 +1377,7 @@ function ProviderPolicy({
       className="card"
       onSubmit={(event) => {
         event.preventDefault();
-        if (!consent || busy || policy.demo_mode) return;
+        if (busy || policy.demo_mode) return;
         void act(async () => {
           setBusy(true);
           setError("");
@@ -1367,10 +1388,9 @@ function ProviderPolicy({
               acknowledge_data_boundary: true,
             } satisfies Schema<"ProviderPolicyInput">);
             await onChanged();
-            setConsent(false);
           } catch {
             setError(
-              "App permissions could not be changed. Check your adult sign-in and the server-managed restrictions, then retry.",
+              "Data & privacy could not be changed. Check your adult sign-in and the server-managed restrictions, then retry.",
             );
           } finally {
             setBusy(false);
@@ -1389,7 +1409,6 @@ function ProviderPolicy({
           disabled={busy || policy.audience_locked || policy.demo_mode}
           onChange={(event) => {
             setAudience(event.target.value as typeof audience);
-            setConsent(false);
           }}
         >
           <option value="mixed">Adults and children</option>
@@ -1409,7 +1428,6 @@ function ProviderPolicy({
           disabled={busy || policy.cloud_locked || policy.demo_mode}
           onChange={(event) => {
             setCloud(event.target.checked);
-            setConsent(false);
           }}
         />
         Allow cloud AI for this app
@@ -1425,18 +1443,8 @@ function ProviderPolicy({
         tutor receives text read from photos, even if a local model reads the
         image. Enabling this permission alone sends no requests.
       </p>
-      <label className="check">
-        <input
-          type="checkbox"
-          checked={consent}
-          disabled={busy || policy.demo_mode}
-          onChange={(event) => setConsent(event.target.checked)}
-          required
-        />
-        I confirm this audience and authorize the selected data boundary.
-      </label>
-      <button disabled={busy || !consent || policy.demo_mode}>
-        Save app permissions
+      <button disabled={busy || policy.demo_mode}>
+        Save data & privacy settings
       </button>
       {error && (
         <p role="alert" className="error">

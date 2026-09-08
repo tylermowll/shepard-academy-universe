@@ -191,7 +191,6 @@ def restore(source: Path, destination: Path, password: str, current_ledger: Path
                 )
             # Restored credentials never resurrect authenticated browser sessions or in-flight work.
             db.execute("DELETE FROM device_session")
-            db.execute("DELETE FROM pairing_request")
             db.execute(
                 "UPDATE job SET state='canceled',lease_token=NULL WHERE state NOT IN ('completed','canceled')"
             )

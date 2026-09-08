@@ -17,7 +17,6 @@ from math_tutor.adapters.db.models import (
     DeviceSession,
     Job,
     Learner,
-    PairingRequest,
     PhoneUpload,
     PhotoDeletion,
     PracticeSession,
@@ -166,7 +165,6 @@ def sweep(engine: Engine) -> None:
         referenced = set(
             db.scalars(select(Submission.image_key).where(Submission.image_key.is_not(None)))
         )
-        db.execute(delete(PairingRequest).where(PairingRequest.expires_at < utcnow()))
         db.execute(delete(PhoneUpload).where(PhoneUpload.expires_at < utcnow()))
         db.execute(delete(DeviceSession).where(DeviceSession.expires_at < utcnow()))
         db.execute(

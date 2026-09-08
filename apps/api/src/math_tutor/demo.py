@@ -24,8 +24,16 @@ def seed(engine: Engine) -> None:
         admin = auth.create_or_reset_admin(db, "demo", DEMO_PASSWORD)
         db.add_all(
             [
-                Learner(alias="Orbit", eligibility="unknown"),
-                Learner(alias="Delta", eligibility="minor"),
+                Learner(
+                    alias="Orbit",
+                    eligibility="unknown",
+                    password_hash=auth.hash_password(DEMO_PASSWORD),
+                ),
+                Learner(
+                    alias="Delta",
+                    eligibility="minor",
+                    password_hash=auth.hash_password(DEMO_PASSWORD),
+                ),
             ]
         )
         db.add(

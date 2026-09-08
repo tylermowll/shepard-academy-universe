@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, newKey, type Schema } from "./client";
+import { api, type Schema } from "./client";
 import { ContextHelp } from "./Help";
-import { followPage, pageUrl, type Navigate } from "./navigation";
+import { type Navigate } from "./navigation";
+import { LearnerAccounts } from "./LearnerAccounts";
 import {
   ProviderConnections,
   type ProviderSettingsSection,
 } from "./ProviderConnections";
 
 type Props = {
-  adultLoginName?: string;
   learner: string;
   learners: Schema<"LearnerPublic">[];
   onLearner: (id: string) => void;
@@ -27,14 +27,22 @@ const providerSettingsSteps: Array<{
   {
     id: "connections",
     label: "Connections",
-    description: "Save model access",
+    description: "Add and edit models",
   },
-  { id: "policy", label: "App permissions", description: "Allow data use" },
-  { id: "tests", label: "Connection tests", description: "Check readiness" },
+  {
+    id: "policy",
+    label: "Data & privacy",
+    description: "Cloud access and age groups",
+  },
+  {
+    id: "tests",
+    label: "Connection tests",
+    description: "Try a sample request",
+  },
   {
     id: "roles",
-    label: "Assign active connections",
-    description: "Activate for the app",
+    label: "Active models",
+    description: "Choose tutor and photo reader",
   },
 ];
 
@@ -47,7 +55,6 @@ function processingLocation(provider?: Schema<"ProviderPublic">) {
 }
 
 export function AdultPanel({
-  adultLoginName,
   learner,
   learners,
   onLearner,
@@ -66,18 +73,10 @@ export function AdultPanel({
   const [acknowledged, setAcknowledged] = useState(false);
   const [message, setMessage] = useState("");
   const [loadFailed, setLoadFailed] = useState(false);
-  const learnerName = useRef<HTMLInputElement>(null);
-  const learnerAge = useRef<HTMLSelectElement>(null);
-  const pageVersion = useRef(0);
   const refreshSequence = useRef(0);
   const routesDirty = useRef(false);
   const focusSettingsContent = useRef(false);
   const settingsTabs = useRef<Array<HTMLButtonElement | null>>([]);
-  useEffect(() => {
-    return () => {
-      pageVersion.current += 1;
-    };
-  }, [page]);
   const refreshProviders = useCallback(async () => {
     const sequence = ++refreshSequence.current;
     setLoadFailed(false);
@@ -99,10 +98,6 @@ export function AdultPanel({
       refreshSequence.current += 1;
     };
   }, [act, page, refreshProviders]);
-  const chosen = learners.find((row) => row.id === learner);
-  const loopback = ["127.0.0.1", "localhost", "[::1]"].includes(
-    window.location.hostname,
-  );
   const selectedProviders = {
     tutor: providers?.providers.find((p) => p.id === routes.tutor),
     vision: providers?.providers.find((p) => p.id === routes.vision),
@@ -165,7 +160,7 @@ export function AdultPanel({
       !providers?.policy.allow_cloud_inference
     )
       issues.push({
-        text: "Cloud AI is off in App permissions.",
+        text: "Cloud AI is off in Data & privacy.",
         section: "policy",
       });
     if (
@@ -192,249 +187,14 @@ export function AdultPanel({
   return (
     <section className="admin">
       {page === "learners" ? (
-        <>
-          <p>
-            Your adult sign-in manages this app. Learner profiles keep each
-            person&apos;s practice separate, including your own. You can
-            practice here without another login.
-          </p>
-          {chosen && (
-            <section className="card" aria-label="Selected learner">
-              <h2>{chosen.alias}</h2>
-              <p>
-                Age group:{" "}
-                {chosen.eligibility === "adult"
-                  ? "18 or older"
-                  : chosen.eligibility === "minor"
-                    ? "Under 18"
-                    : "Not specified"}
-              </p>
-              <button
-                className="primary"
-                onClick={() => onNavigate("practice")}
-              >
-                Start practice
-              </button>
-              <details>
-                <summary>Saved data &amp; device access</summary>
-                <p>
-                  Download {chosen.alias}&apos;s saved practice, sign out their
-                  devices, or delete this learner and their saved work.
-                </p>
-                <div className="actions">
-                  <button
-                    onClick={() =>
-                      void act(async () => {
-                        const data = await api<Schema<"LearnerExport">>(
-                          `/admin/learners/${learner}/export`,
-                          "POST",
-                        );
-                        const url = URL.createObjectURL(
-                          new Blob([JSON.stringify(data, null, 2)], {
-                            type: "application/json",
-                          }),
-                        );
-                        const link = document.createElement("a");
-                        link.href = url;
-                        link.download = "learner-export.json";
-                        link.click();
-                        window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-                      })
-                    }
-                  >
-                    Download saved practice
-                  </button>
-                  <button
-                    onClick={() =>
-                      void act(async () => {
-                        await api(`/admin/learners/${learner}/revoke`, "POST");
-                        setMessage(`${chosen.alias}'s devices are signed out.`);
-                      })
-                    }
-                  >
-                    Sign out learner devices
-                  </button>
-                  <button
-                    className="danger"
-                    onClick={() => {
-                      const version = pageVersion.current;
-                      if (
-                        window.confirm(
-                          `Delete ${chosen.alias}'s saved practice and revoke all their devices? This cannot be undone.`,
-                        )
-                      )
-                        void act(async () => {
-                          await api(`/admin/learners/${learner}`, "DELETE");
-                          await onRefresh();
-                          if (version !== pageVersion.current) return;
-                          onLearner("");
-                          setMessage("Learner deleted.");
-                        });
-                    }}
-                  >
-                    Delete learner
-                  </button>
-                </div>
-              </details>
-            </section>
-          )}
-          <div className="grid">
-            <form
-              className="card"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const form = e.currentTarget;
-                const data = new FormData(form);
-                const version = pageVersion.current;
-                void act(async () => {
-                  const row = await api<Schema<"LearnerPublic">>(
-                    "/admin/learners",
-                    "POST",
-                    {
-                      alias: data.get("alias"),
-                      eligibility: data.get("eligibility"),
-                    },
-                    newKey(),
-                  );
-                  await onRefresh();
-                  // A completed request must not switch away from practice
-                  // started after this panel was left.
-                  if (version !== pageVersion.current) return;
-                  onLearner(row.id);
-                  form.reset();
-                  setMessage(`${row.alias} added. You can start practice now.`);
-                });
-              }}
-            >
-              <h2>Add a learner</h2>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!learnerName.current || !learnerAge.current) return;
-                  learnerName.current.value = adultLoginName?.trim() || "Me";
-                  learnerAge.current.value = "adult";
-                  learnerName.current.focus();
-                  learnerName.current.select();
-                }}
-              >
-                Create my practice profile
-              </button>
-              <p className="fine">
-                This creates a learner profile for your practice and history. It
-                stays separate from your administrator permissions.
-              </p>
-              <label>
-                Learner name
-                <input
-                  ref={learnerName}
-                  name="alias"
-                  required
-                  maxLength={64}
-                  aria-describedby="learner-name-help"
-                />
-              </label>
-              <p className="fine" id="learner-name-help">
-                A nickname is enough. Each learner has separate saved work.
-              </p>
-              <label>
-                Age group
-                <select name="eligibility" ref={learnerAge}>
-                  <option value="unknown">Not specified</option>
-                  <option value="minor">Under 18</option>
-                  <option value="adult">18 or older</option>
-                </select>
-              </label>
-              <ContextHelp topic="Why ask for an age group?">
-                <p>
-                  Some AI providers are restricted to adults. This setting
-                  controls which configured providers a learner can use. Leave
-                  it unspecified if you are unsure; adult-only providers will
-                  stay unavailable.
-                </p>
-              </ContextHelp>
-              <button>Add learner</button>
-            </form>
-            <section className="card" aria-labelledby="pair-device-heading">
-              <h2 id="pair-device-heading">Pair a learner device</h2>
-              <p>
-                Pair a phone, tablet, or second browser to practice as{" "}
-                {chosen?.alias ?? "a learner"} without an adult password.
-              </p>
-              {loopback && (
-                <p className="notice">
-                  This address works only on this computer. For a phone, first
-                  follow{" "}
-                  <a
-                    href={pageUrl("help", "phone")}
-                    onClick={(e) => followPage(e, onNavigate, "help", "phone")}
-                  >
-                    phone connection setup
-                  </a>{" "}
-                  and open the same private HTTPS address on both devices.
-                </p>
-              )}
-              <ol>
-                <li>
-                  On the learner&apos;s device, open this app and choose{" "}
-                  <strong>Pair this device</strong> on the sign-in page.
-                </li>
-                <li>
-                  Copy the request ID shown on that device into the box below.
-                </li>
-                <li>
-                  Select the learner at the top of this page, then approve. Keep
-                  the other page open; it signs in automatically.
-                </li>
-              </ol>
-              <form
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  if (!chosen) return;
-                  const form = e.currentTarget;
-                  const data = new FormData(form);
-                  void act(async () => {
-                    await api(
-                      `/admin/pairing/${data.get("pair") as string}/approve`,
-                      "POST",
-                      { learner_id: learner },
-                    );
-                    form.reset();
-                    setMessage(
-                      `Device approved for ${chosen.alias}. The other browser will sign in automatically.`,
-                    );
-                  });
-                }}
-              >
-                <label>
-                  Pairing request ID
-                  <input
-                    name="pair"
-                    required
-                    pattern="[a-fA-F0-9-]{36}"
-                    aria-describedby="pair-request-help"
-                  />
-                </label>
-                <p className="fine" id="pair-request-help">
-                  Requests expire after five minutes. If it expires, request a
-                  new ID on the learner&apos;s device.
-                </p>
-                {!chosen && <p>Select or add a learner before approving.</p>}
-                <button disabled={!chosen}>Approve device</button>
-              </form>
-              <ContextHelp topic="Only need the phone camera?">
-                <p>
-                  Start an activity on the Practice page and choose{" "}
-                  <strong>Take photo with phone</strong>. Scan its QR code with
-                  your phone camera to send one photo. No pairing or phone
-                  sign-in is needed.
-                </p>
-                <button onClick={() => onNavigate("help", "phone")}>
-                  How phone photos work
-                </button>
-              </ContextHelp>
-            </section>
-          </div>
-        </>
+        <LearnerAccounts
+          key={learner || "no-learner"}
+          learner={learner}
+          learners={learners}
+          onLearner={onLearner}
+          onRefresh={onRefresh}
+          act={act}
+        />
       ) : (
         <>
           {!providers ? (
@@ -450,7 +210,7 @@ export function AdultPanel({
               <div
                 className="settings-tabs"
                 role="tablist"
-                aria-label="AI setup steps"
+                aria-label="AI settings"
               >
                 {providerSettingsSteps.map((step, index) => (
                   <button
@@ -482,7 +242,6 @@ export function AdultPanel({
                       settingsTabs.current[next]?.focus();
                     }}
                   >
-                    <span className="settings-step-number">{index + 1}</span>
                     <span>
                       <strong>{step.label}</strong>
                       <small>{step.description}</small>
@@ -532,7 +291,7 @@ export function AdultPanel({
                     }}
                   >
                     <h2 id="settings-roles-heading" tabIndex={-1}>
-                      Assign active connections
+                      Active models
                     </h2>
                     <p>
                       Choose the tutor and photo reader used across this app for
@@ -629,22 +388,20 @@ export function AdultPanel({
                                       {target === "connections"
                                         ? "Open Connections"
                                         : target === "policy"
-                                          ? "Open App permissions"
+                                          ? "Open Data & privacy"
                                           : "Open Connection tests"}
                                     </button>
                                   ))}
                                 </div>
                               </div>
                             ) : (
-                              <p className="ready-state">
-                                Ready for app-wide use.
-                              </p>
+                              <p className="ready-state">Ready to use.</p>
                             )}
                             {selected?.requires_approval &&
                               issues.length === 0 && (
                                 <p className="notice">
-                                  This connection changed. Saving below approves
-                                  its current settings for this role.
+                                  This connection has passed its tests. Save
+                                  below to let learners use it.
                                 </p>
                               )}
                           </div>
@@ -676,7 +433,7 @@ export function AdultPanel({
                         !routeAvailable(selectedProviders.vision, "vision")
                       }
                     >
-                      Save active connections
+                      Save active models
                     </button>
                     <ContextHelp topic="Where does learner work go?">
                       <p>

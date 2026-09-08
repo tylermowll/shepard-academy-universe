@@ -37,8 +37,17 @@ test("one composer keeps photo problems, follow-ups and subsequent activities in
   await expect(
     page.getByRole("button", { name: "Dismiss rejected reading" }),
   ).toHaveCount(0);
-  const initial = await composer.boundingBox();
-  expect(initial).not.toBeNull();
+  // Clicking Send can scroll the outer page on a phone. Measure the composer
+  // inside its chat frame so normal page scrolling is not mistaken for drift.
+  const composerPosition = () =>
+    composer.evaluate((node) => {
+      const frame = node.closest(".chat-column");
+      if (!frame) throw new Error("Composer has no chat frame");
+      return (
+        node.getBoundingClientRect().top - frame.getBoundingClientRect().top
+      );
+    });
+  const initial = await composerPosition();
   await composer.fill("Which part of my photo could the reader not identify?");
   await send.click();
   await expect(log.locator(".tutor-feedback")).toHaveCount(1);
@@ -52,9 +61,8 @@ test("one composer keeps photo problems, follow-ups and subsequent activities in
     await send.click();
     await expect(log.locator(".tutor-feedback")).toHaveCount(index + 2);
   }
-  const final = await composer.boundingBox();
-  expect(final).not.toBeNull();
-  expect(Math.abs(final!.y - initial!.y)).toBeLessThan(5);
+  const final = await composerPosition();
+  expect(Math.abs(final - initial)).toBeLessThan(5);
   const sendBounds = await send.boundingBox();
   const chatBounds = await page.locator(".chat-column").boundingBox();
   expect(sendBounds).not.toBeNull();

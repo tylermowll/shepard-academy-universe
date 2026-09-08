@@ -39,12 +39,11 @@ export function PhoneLink({ problem, version, disabled, act, onHelp }: Props) {
       <ContextHelp topic="How do I use my phone?">
         <p>
           Choose “Take photo with phone” and scan the QR code with your phone
-          camera. You can send one photo without signing in or pairing a learner
-          device.
+          camera. You can send one photo without signing in.
         </p>
         <p>
-          For a full practice session on your phone, ask the adult to pair it
-          from Learners &amp; devices.
+          For a full practice session on your phone, sign in with your learner
+          username and password.
         </p>
         {loopback && (
           <p>
@@ -89,7 +88,7 @@ export function PhoneLink({ problem, version, disabled, act, onHelp }: Props) {
         {busy
           ? "Preparing photo link…"
           : link
-            ? "Create a new phone link"
+            ? "New QR code"
             : "Take photo with phone"}
       </button>
       {link && !disabled && !expired && (
@@ -107,9 +106,10 @@ export function PhoneLink({ problem, version, disabled, act, onHelp }: Props) {
             will appear with this activity.
           </p>
           <p className="fine">
-            One upload; expires at{" "}
+            One photo; available for two hours, until{" "}
             {new Date(link.expires_at).toLocaleTimeString()}. Anyone with this
-            link can send that photo—keep it private.
+            link can send that photo. Keep it private. If you close the phone
+            tab, scan this QR again or choose New QR code.
           </p>
           {loopback && (
             <p className="notice">

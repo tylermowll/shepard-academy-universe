@@ -1,4 +1,4 @@
-# Shepard Academy Universe specification
+# Shepherd Academy Universe specification
 
 This document preserves the product, architecture, safety contracts, and roadmap
 from the original README. **These are implementation requirements, not working
@@ -75,7 +75,7 @@ Do not render internal successful activity-generation operations as learner chat
 
 Deliver a complete, modest application with:
 
-1. An adult administrator, adult-managed learner profiles, and revocable learner-device access.
+1. An adult administrator, administrator-managed learner accounts, and revocable browser access.
 2. Free-text topics, adjustable tutor initiative, AI-generated activities, and persistent practice sessions.
 3. Typed work, discussion, and single-photo submissions with automatic reading and quality routing.
 4. Specific conceptual guidance, different relevant examples, revisions, and context-aware follow-up activities.
@@ -132,7 +132,7 @@ The research phase must select one exact runtime/model/device combination, begin
 
 | Screen                    | Required behavior                                                                                                                                                 |
 | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Adult setup               | Bootstrap administrator, select audience/privacy mode, configure allowed providers, create learner aliases, pair learner devices                                  |
+| Adult setup               | Bootstrap administrator, select audience/privacy mode, configure allowed providers, create learner accounts, set/reset passwords, manage signed-in browsers       |
 | Tutor profile             | Edit teaching preferences, preview with synthetic examples, create immutable profile versions                                                                     |
 | Tutor                     | Choose a topic/reference, receive an AI-generated activity, submit work/photo, see reading and guidance, revise/discuss, request a next activity, retry or finish |
 | Session review            | Show attempts, final-answer status, assistance used, unresolved questions, and source/version metadata                                                            |
@@ -141,30 +141,35 @@ The research phase must select one exact runtime/model/device combination, begin
 Keep learner navigation separate from administrator controls. The learner cannot edit endpoints, credentials, retention, age eligibility, or system safety rules.
 
 T26 refines these screens into purpose-specific pages reached by tab-style
-navigation: **Practice**, **History**, **Learners & devices**, **Settings**, and
-**Help**. Adults see all five; paired learners see Practice, History, and Help.
+navigation: **Practice**, **History**, **Learners**, **Settings**, and
+**Help**. Under D013/T37 administrators see Learners, Settings and Help;
+learners see Practice, History, and Help.
 Keep provider controls and browser experiments out of the practice page. Use
 literal labels and contextual help for topic/reference input, tutor style,
-photos, pairing, age categories, and data processing. Help must distinguish
-one-photo QR uploads from learner browser pairing, explain private HTTPS, and
+photos, sign-in, age categories, and data processing. Help must distinguish
+photo QR uploads from learner account sign-in, explain private HTTPS, and
 give an actionable path out of demo/unconfigured states. Ordinary page changes
 preserve unsent work and pending request identities in memory; browser history
 navigation must not bypass ownership or restore another learner's content.
 
-T30 further separates adult AI setup inside Settings into four explicit steps:
-**Connections**, **App permissions**, **Connection tests**, and **Assign active
-connections**. The first stores one model/server/key; the second is an app-wide
-ceiling; the third makes explicitly authorized synthetic calls; only the fourth
-changes the routes used for future learner work. A blocked connection must name
-every unmet step and link to it instead of appearing as an unexplained disabled
-option.
+T37 uses four settings sections without a numbered wizard: **Connections**,
+**Data & privacy**, **Connection tests**, and **Active models**. Connections
+store model access. Data & privacy controls cloud use and age groups. Tests
+make explicitly authorized synthetic calls; Active models chooses the tutor and
+photo reader for future work. Unchanged connection saves preserve current tests
+and approval; real configuration or credential changes require fresh tests and
+role approval. A blocked connection explains each requirement and links to it.
 
-Account permissions and learner profiles are distinct. One adult account can
-manage the household and practice through its own learner profile; it does not
-need a second sign-in to study. Each child has a separate profile and paired
-browser access limited to that learner. The Create my practice profile action
-prefills the administrator login name and adult eligibility, while still requiring
-the administrator to submit a distinct learner profile.
+D013/T37 uses one administrator and distinct learner accounts. Learner usernames
+are unique after Unicode normalization, whitespace normalization and case folding,
+and cannot conflict with the administrator username. The administrator creates
+accounts, sets/resets write-only passwords, and manages signed-in browsers beside
+the selected learner. The common sign-in form accepts either account type. A
+learner sees only their own work. Administrator navigation is limited to Learners,
+Settings and Help, with synthetic connection tests in Settings. Practice requires
+a learner sign-in. Existing IDs and histories are
+preserved; duplicate old names receive deterministic suffixes, never a merge.
+Existing profiles require an administrator-set password before direct sign-in.
 
 ### Tutor profile fields
 
@@ -218,6 +223,13 @@ in reference material. Use recent work to adapt the next activity. Do not expose
 an answer key, solve the reference assignment, or present a copied assignment as
 new practice. For reading, ground passage-specific questions in text actually
 supplied; ask for an excerpt when necessary.
+
+Practice collects the topic, difficulty, tutor style and optional reference in
+one form. It supplies `initial_activity` with session creation so the session,
+first activity and pending job are committed atomically. A repeated request key
+returns the same session and activity. Photo references create the capture step
+directly. Tutor style explanations are visible beside the selector. Composer
+menus are mutually exclusive and close on action, Escape and outside clicks.
 
 **Interpretation:** Recover full visible work, including paragraphs, intermediate
 steps, labels, and reading order, without correcting its content. Return quality,
@@ -377,24 +389,24 @@ releases, with documented compatibility exceptions and exact lockfiles. The
 maintainer updated this policy during bootstrap; see [D001](DECISIONS.md#d001--supported-toolchain-baseline-2026-09-06).
 Record resolved versions and verification dates in `docs/DEPENDENCIES.md`.
 
-| Area              | Selected stack                                                 | Constraint / reason                                                                                 |
-| ----------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| Frontend          | React 19.2, TypeScript 6, Vite 8                               | Client-rendered application; no server-component or Next.js layer needed                            |
-| Node toolchain    | Node.js 24 LTS; pnpm                                           | Pin an exact pnpm release in `packageManager`; commit `pnpm-lock.yaml`                              |
-| UI                | Tailwind CSS 4; semantic HTML; small accessible component set  | Use the current Vite integration, not old Tailwind initialization instructions                      |
-| Routing/data      | React Router; TanStack Query                                   | Router in SPA/library mode; query cache is not permanent student storage                            |
-| Forms             | React Hook Form and Zod                                        | Backend remains validation authority                                                                |
-| Mathematics       | KaTeX; backend exact arithmetic                                | HTML+MathML rendering, `trust: false`, bounded input                                                |
-| PWA               | `vite-plugin-pwa` / Workbox                                    | Prompt before activating an update; cache public assets only                                        |
-| Backend           | Python 3.14; FastAPI; Pydantic 2                               | Latest stable Python line; pinned and tested at 3.14.7                                              |
-| Python tooling    | uv; Ruff; mypy                                                 | `uv.lock`, typed domain/provider boundaries, no ignored type failures by default                    |
-| Database          | SQLite; SQLAlchemy 2; stdlib sqlite3; Alembic                  | Same on-disk engine/settings in development, tests, and deployment; current stable runtime per D004 |
-| HTTP/model access | HTTPX2; boto3 for Bedrock                                      | Maintained HTTP client; small explicit adapters; no mandatory universal AI framework                |
-| Image handling    | Pillow; `pillow-heif` when enabled                             | Bounded, isolated decoding; EXIF orientation and metadata stripping                                 |
-| Authentication    | Server-side opaque sessions; Argon2id adult password hashes    | No tokens in localStorage; learner device pairing                                                   |
-| Tests             | pytest, Hypothesis, Vitest, Testing Library, Playwright        | Unit, property, integration, UI, and end-to-end coverage                                            |
-| Packaging         | Native development; optional Docker Compose gateway/API/worker | One host and shared local data directory; model server optional; no database service                |
-| CI                | GitHub Actions                                                 | Locked installs, real tests, secret/dependency checks, synthetic-only artifacts                     |
+| Area              | Selected stack                                                                  | Constraint / reason                                                                                 |
+| ----------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| Frontend          | React 19.2, TypeScript 6, Vite 8                                                | Client-rendered application; no server-component or Next.js layer needed                            |
+| Node toolchain    | Node.js 24 LTS; pnpm                                                            | Pin an exact pnpm release in `packageManager`; commit `pnpm-lock.yaml`                              |
+| UI                | Tailwind CSS 4; semantic HTML; small accessible component set                   | Use the current Vite integration, not old Tailwind initialization instructions                      |
+| Routing/data      | React Router; TanStack Query                                                    | Router in SPA/library mode; query cache is not permanent student storage                            |
+| Forms             | React Hook Form and Zod                                                         | Backend remains validation authority                                                                |
+| Mathematics       | KaTeX; backend exact arithmetic                                                 | HTML+MathML rendering, `trust: false`, bounded input                                                |
+| PWA               | `vite-plugin-pwa` / Workbox                                                     | Prompt before activating an update; cache public assets only                                        |
+| Backend           | Python 3.14; FastAPI; Pydantic 2                                                | Latest stable Python line; pinned and tested at 3.14.7                                              |
+| Python tooling    | uv; Ruff; mypy                                                                  | `uv.lock`, typed domain/provider boundaries, no ignored type failures by default                    |
+| Database          | SQLite; SQLAlchemy 2; stdlib sqlite3; Alembic                                   | Same on-disk engine/settings in development, tests, and deployment; current stable runtime per D004 |
+| HTTP/model access | HTTPX2; boto3 for Bedrock                                                       | Maintained HTTP client; small explicit adapters; no mandatory universal AI framework                |
+| Image handling    | Pillow; `pillow-heif` when enabled                                              | Bounded, isolated decoding; EXIF orientation and metadata stripping                                 |
+| Authentication    | Server-side opaque sessions; Argon2id administrator and learner password hashes | No tokens in localStorage; learner sign-in and revocation                                           |
+| Tests             | pytest, Hypothesis, Vitest, Testing Library, Playwright                         | Unit, property, integration, UI, and end-to-end coverage                                            |
+| Packaging         | Native development; optional Docker Compose gateway/API/worker                  | One host and shared local data directory; model server optional; no database service                |
+| CI                | GitHub Actions                                                                  | Locked installs, real tests, secret/dependency checks, synthetic-only artifacts                     |
 
 React, Node, Vite, TypeScript, Python, and Tailwind choices were checked against official project documentation. Node 24 is the latest LTS line. The original Python 3.13 baseline is superseded by D001; current version evidence and compatibility exceptions are in [DEPENDENCIES.md](DEPENDENCIES.md). [^S14][^S15][^S16][^S17][^S19]
 
@@ -535,9 +547,8 @@ Test migrations on temporary on-disk databases with production connection settin
 | Entity                  | Minimum fields / purpose                                                                           |
 | ----------------------- | -------------------------------------------------------------------------------------------------- |
 | `administrator`         | ID, login name, password hash, created time; one private deployment boundary                       |
-| `learner`               | ID, adult-managed alias, eligibility category, enabled/deleted state                               |
+| `learner`               | ID, unique normalized username, private password hash, eligibility, enabled/deleted state          |
 | `device_session`        | Hashed opaque token, role, optional learner ID, expiration, revocation                             |
-| `pairing_request`       | Hashed short-lived pairing token, approval state, expiration; rate-limited                         |
 | `tutor_profile_version` | Profile ID, version, structured settings, author, immutable snapshot                               |
 | `practice_session`      | Learner, profile version, start/end, status                                                        |
 | `problem_instance`      | Session, template/version, parameters, seed, hidden answer, assignment version/status              |
@@ -578,11 +589,11 @@ and the separate raw-image endpoint. Generated OpenAPI defines exact schemas.
 | `GET /auth/setup`                                  | Visitor                  | First-account availability and password requirements; never issues a setup token                          |
 | `POST /auth/setup`                                 | Local owner token        | Expiring one-use owner claim, same-origin CSRF, atomic first account and adult session                    |
 | `POST /auth/login`, `POST /auth/logout`            | Adult / authenticated    | Opaque session cookie, CSRF protection, rate limits                                                       |
-| `POST /pairing/requests`                           | Unpaired device          | Create a short-lived request without revealing learner data                                               |
-| `GET /pairing/requests/{id}`                       | Same requesting browser  | Poll approval using a bound pre-authentication token, not the public request ID alone                     |
-| `POST /admin/pairing/{id}/approve`                 | Adult                    | Bind the requesting device to one learner                                                                 |
-| `GET/POST /admin/learners`                         | Adult                    | Manage aliases and eligibility                                                                            |
+| `GET/POST /admin/learners`                         | Adult                    | Create/list learner accounts; passwords are write-only                                                    |
 | `GET/POST /admin/tutor-profiles`                   | Adult                    | Read/create profiles and versions                                                                         |
+| `PATCH /admin/learners/{id}/account`               | Administrator            | Rename an account or reset its password; reset revokes existing sign-ins                                  |
+| `GET /admin/learners/{id}/devices`                 | Administrator            | List active sign-ins without cookies, hashes or CSRF tokens                                               |
+| `DELETE /admin/learners/{id}/devices/{device}`     | Administrator            | Revoke only a browser belonging to the named learner                                                      |
 | `POST /sessions`                                   | Authorized learner/adult | Start session with allowed profile version                                                                |
 | `POST /sessions/{id}/problems`                     | Session owner            | Create next deterministic problem                                                                         |
 | `POST /tutor/sessions`, `GET /tutor/sessions[/id]` | Authorized learner/adult | Primary multi-subject sessions with free-text topic, initiative and difficulty                            |
@@ -611,7 +622,7 @@ Require `Idempotency-Key` for work-creating operations. Use an assignment/interp
 ### Phone camera companion (T24)
 
 An authenticated owner may delegate one photo submission for the current problem
-to an unpaired phone. A five-minute opaque upload secret grants only bounded
+to a phone without account sign-in. A two-hour opaque upload secret grants only bounded
 preview/upload and a content-free receipt, never session browsing or confirmation.
 Store only its hash and bind it to the issuing device session, problem and
 assignment version. The QR carries the secret in a fragment, not a server URL
@@ -623,7 +634,7 @@ reuse with different bytes is rejected. Expired links are swept. In the primary
 tutor, clear readings continue automatically without computer-side confirmation.
 Reference-photo targets use the same scoped upload to derive distinct practice,
 never to answer the original. This deliberately scoped delegation supplements
-the ordinary browser pairing/ownership contract; it is not a learner login.
+the ordinary account sign-in and ownership contract; it is not a learner login.
 
 ### Submission state machine
 
@@ -710,9 +721,16 @@ Network startup, login and adult session use reject local-only credentials.
 Keep the explicit local administrator-reset command for recovery/strengthening,
 not unauthenticated web account recovery. Restarts preserve existing accounts.
 
-Learner devices request pairing; the adult approves the specific request and learner on an already authenticated device. Tokens expire quickly, are rate-limited and single-use, and cannot list learners before approval. Use cryptographically random opaque session tokens, store only their hashes server-side, rotate on role changes, and allow immediate revocation. A learner session cannot become an administrator session by switching profiles.
+D013/T37 replaces passwordless pairing with administrator-managed learner
+credentials. Passwords follow the same local/network length policy and Argon2id
+hashing as the administrator. Login rechecks the password hash, enabled/deleted
+state and network eligibility inside the session-creation transaction, preventing
+a concurrent reset from being bypassed. Password reset revokes learner sessions;
+no public account list or password recovery is exposed. The CLI cannot create a
+second administrator. A learner session cannot become an administrator session by
+switching profiles. Retired pairing endpoints issue no new access.
 
-Use `HttpOnly`, `SameSite=Lax` or stricter cookies, `Secure` outside loopback development, and an origin-bound CSRF token/header on state-changing requests. Validate `Origin`/host and scope trusted reverse-proxy headers. Restrict CORS to named development origins; production uses same-origin routing. Rate-limit login, pairing, uploads, and model operations. Never store cloud credentials or auth tokens in the frontend bundle or localStorage.
+Use `HttpOnly`, `SameSite=Lax` or stricter cookies, `Secure` outside loopback development, and an origin-bound CSRF token/header on state-changing requests. Validate `Origin`/host and scope trusted reverse-proxy headers. Restrict CORS to named development origins; production uses same-origin routing. Rate-limit login, uploads, and model operations. Never store cloud credentials or auth tokens in the frontend bundle or localStorage.
 
 ### Data boundary and retention
 
@@ -1058,7 +1076,7 @@ The following defaults allow implementation to start without another planning ro
 
 | Decision             | Chosen default                                                     | Change procedure                                                                       |
 | -------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| Product name         | Shepard Academy Universe; maintainer-selected repository name      | Treat further renaming as an explicit product decision                                 |
+| Product name         | Shepherd Academy Universe; maintainer-selected repository name      | Treat further renaming as an explicit product decision                                 |
 | Initial use          | One private deployment, adult administrator, managed learners      | Multi-tenant/public sign-up is a separate architecture review                          |
 | Primary client       | Responsive PWA                                                     | Native shell only after a concrete unmet requirement                                   |
 | Core topics          | Fractions and `a*x+b=c`                                            | Add a template/verifier/evaluation task                                                |

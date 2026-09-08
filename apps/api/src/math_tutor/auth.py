@@ -28,7 +28,8 @@ from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from math_tutor import settings
-from math_tutor.adapters.db.models import Administrator, DeviceSession
+from math_tutor.account_names import account_key
+from math_tutor.adapters.db.models import Administrator, DeviceSession, Learner
 
 #: How long a browser session stays valid after login.
 SESSION_LIFETIME = timedelta(hours=24)
@@ -206,6 +207,19 @@ def create_or_reset_admin(db: Session, login_name: str, password: str) -> Admini
         )
         db.flush()
         return existing
+    if db.scalar(select(Administrator.id).limit(1)) is not None:
+        raise ValueError(
+            "An administrator already exists. Use that login name to reset its password."
+        )
+    if (
+        db.scalar(
+            select(Learner.id).where(
+                Learner.alias_key == account_key(name), Learner.deleted_at.is_(None)
+            )
+        )
+        is not None
+    ):
+        raise ValueError("That username is already used by a learner.")
     admin = Administrator(
         login_name=name,
         password_hash=password_hash,
@@ -256,6 +270,37 @@ def create_device_session(db: Session, admin: Administrator) -> tuple[DeviceSess
     return row, token
 
 
+def authenticate_learner(db: Session, login_name: str, password: str) -> Learner | None:
+    try:
+        key = account_key(login_name)
+    except ValueError:
+        key = ""
+    learner = db.scalar(
+        select(Learner).where(Learner.alias_key == key, Learner.deleted_at.is_(None))
+    )
+    password_hash = (
+        learner.password_hash if learner and learner.password_hash else _dummy_password_hash
+    )
+    valid = verify_password(password_hash, password)
+    if learner is None or not learner.enabled or learner.password_hash is None or not valid:
+        return None
+    return learner
+
+
+def create_learner_session(db: Session, learner: Learner) -> tuple[DeviceSession, str]:
+    token = new_opaque_token()
+    row = DeviceSession(
+        token_hash=hash_opaque_token(token),
+        role="learner",
+        learner_id=learner.id,
+        csrf_token=new_csrf_token(),
+        expires_at=utcnow() + SESSION_LIFETIME,
+    )
+    db.add(row)
+    db.flush()
+    return row, token
+
+
 def get_valid_session(db: Session, token: str) -> DeviceSession | None:
     """Return the live session for an opaque token, else None.
 
@@ -276,6 +321,15 @@ def get_valid_session(db: Session, token: str) -> DeviceSession | None:
         row.administrator is None or not administrator_access_allowed(row.administrator)
     ):
         return None
+    if row.role == "learner":
+        learner = db.get(Learner, row.learner_id)
+        if (
+            learner is None
+            or not learner.enabled
+            or learner.deleted_at is not None
+            or (learner.local_only_password and not local_passwords_allowed())
+        ):
+            return None
     return row
 
 

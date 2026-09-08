@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { expect, test, type Page } from "@playwright/test";
-import { createActivity, createLearner, login, navigate } from "./support";
+import { createLearner, login, navigate } from "./support";
 
 const syntheticKey = "synthetic-connection-browser-fixture-only";
 
@@ -144,7 +144,7 @@ test("Meta hosted policy is explicit while local model controls remain usable", 
   await login(page);
   await navigate(page, "Settings");
   await page
-    .getByRole("button", { name: "Add AI connection", exact: true })
+    .getByRole("button", { name: "Add new AI connection", exact: true })
     .click();
   const connectionType = page.getByRole("combobox", {
     name: "Connection type",
@@ -215,7 +215,7 @@ test("a rejected save gives the exact reason beside the connection form", async 
   await login(page);
   await navigate(page, "Settings");
   await page
-    .getByRole("button", { name: "Add AI connection", exact: true })
+    .getByRole("button", { name: "Add new AI connection", exact: true })
     .click();
   await page
     .getByLabel("Connection name", { exact: true })
@@ -255,7 +255,7 @@ test("a saved connection stays selectable while setup blockers point to their ex
     await login(page);
     await navigate(page, "Settings");
     await page
-      .getByRole("button", { name: "Add AI connection", exact: true })
+      .getByRole("button", { name: "Add new AI connection", exact: true })
       .click();
     await page.getByLabel("Connection name", { exact: true }).fill(id);
     await page
@@ -305,15 +305,15 @@ test("a saved connection stays selectable while setup blockers point to their ex
     const card = page
       .getByRole("article")
       .filter({ has: page.getByRole("heading", { name: id, exact: true }) });
-    await expect(card).toContainText("Saved, but blocked by App permissions.");
+    await expect(card).toContainText("Saved, but blocked by Data & privacy.");
     await expect(
-      card.getByRole("button", { name: "Open App permissions", exact: true }),
+      card.getByRole("button", { name: "Open Data & privacy", exact: true }),
     ).toBeVisible();
 
-    await page.getByRole("tab", { name: /Assign active connections/ }).click();
+    await page.getByRole("tab", { name: /Active models/ }).click();
     await expect(
       page.getByRole("heading", {
-        name: "Assign active connections",
+        name: "Active models",
         exact: true,
       }),
     ).toBeVisible();
@@ -351,7 +351,7 @@ test("a saved connection stays selectable while setup blockers point to their ex
       page.getByText("Its photo-reader test has not passed.", { exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Open App permissions", exact: true }),
+      page.getByRole("button", { name: "Open Data & privacy", exact: true }),
     ).toHaveCount(2);
     await expect(
       page.getByRole("button", { name: "Open Connection tests", exact: true }),
@@ -364,25 +364,23 @@ test("a saved connection stays selectable while setup blockers point to their ex
       .check();
     await expect(
       page.getByRole("button", {
-        name: "Save active connections",
+        name: "Save active models",
         exact: true,
       }),
     ).toBeDisabled();
 
     await page
-      .getByRole("button", { name: "Open App permissions", exact: true })
+      .getByRole("button", { name: "Open Data & privacy", exact: true })
       .first()
       .click();
     const permissionsHeading = page.getByRole("heading", {
-      name: "App permissions",
+      name: "Data & privacy",
       exact: true,
     });
     await expect(permissionsHeading).toBeVisible();
     await expect(permissionsHeading).toBeFocused();
     await expect(
-      page.getByText(
-        /one app-wide permission gate for every connection and learner/i,
-      ),
+      page.getByText(/These settings apply to every connection/i),
     ).toBeVisible();
     const appAudience = page.getByRole("combobox", {
       name: "Who uses this app?",
@@ -429,15 +427,17 @@ test("a saved connection stays selectable while setup blockers point to their ex
 for (const adapter of ["vllm", "ollama", "compatible"] as const) {
   test(`adult configures ${adapter} with a write-only key, probes it, and uses it without a restart`, async ({
     page,
+    browser,
   }) => {
     const fixture = await modelFixture();
+    const learnerBrowser = await browser.newContext();
     const id = `synthetic-${adapter}-${Date.now()}`;
     const failedCalls = adapter === "compatible" ? 4 : 0;
     try {
       await login(page);
       await navigate(page, "Settings");
       await page
-        .getByRole("button", { name: "Add AI connection", exact: true })
+        .getByRole("button", { name: "Add new AI connection", exact: true })
         .click();
       await page.getByLabel("Connection name", { exact: true }).fill(id);
       await page
@@ -565,9 +565,7 @@ for (const adapter of ["vllm", "ollama", "compatible"] as const) {
       ).toBeVisible();
       expect(fixture.calls()).toBe(3 + failedCalls);
       expect(fixture.authenticatedCalls()).toBe(3 + failedCalls);
-      await page
-        .getByRole("tab", { name: /Assign active connections/ })
-        .click();
+      await page.getByRole("tab", { name: /Active models/ }).click();
       await page
         .getByRole("combobox", { name: "Tutor connection", exact: true })
         .selectOption(id);
@@ -585,7 +583,7 @@ for (const adapter of ["vllm", "ollama", "compatible"] as const) {
         .check();
       await page
         .getByRole("button", {
-          name: "Save active connections",
+          name: "Save active models",
           exact: true,
         })
         .click();
@@ -596,9 +594,7 @@ for (const adapter of ["vllm", "ollama", "compatible"] as const) {
       ).toBeVisible();
 
       await page.reload();
-      await page
-        .getByRole("tab", { name: /Assign active connections/ })
-        .click();
+      await page.getByRole("tab", { name: /Active models/ }).click();
       await expect(
         page.getByRole("combobox", {
           name: "Tutor connection",
@@ -611,15 +607,19 @@ for (const adapter of ["vllm", "ollama", "compatible"] as const) {
           exact: true,
         }),
       ).toHaveValue(id);
-      await createLearner(page);
-      await page
+      const username = await createLearner(page, false);
+      const learnerPage = await learnerBrowser.newPage();
+      await login(learnerPage, username);
+      await learnerPage
         .getByLabel("Topic or learning goal", { exact: true })
         .fill("Synthetic connection workflow");
-      await page
+      await learnerPage
         .getByRole("button", { name: "Start session", exact: true })
         .click();
-      await createActivity(page);
-      await expect(page.locator(".tutor-activity")).toContainText(
+      await expect(
+        learnerPage.getByLabel("Your work or question", { exact: true }),
+      ).toBeEditable();
+      await expect(learnerPage.locator(".tutor-activity")).toContainText(
         "Synthetic connected-model activity",
       );
       expect(fixture.calls()).toBe(4 + failedCalls);
@@ -696,6 +696,7 @@ for (const adapter of ["vllm", "ollama", "compatible"] as const) {
         );
         expect([200, 404]).toContain(removed.status());
       } finally {
+        await learnerBrowser.close();
         await fixture.close();
       }
     }

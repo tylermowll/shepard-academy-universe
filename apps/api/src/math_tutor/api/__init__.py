@@ -1,1 +1,1 @@
-"""HTTP API boundary for Shepard Academy Universe."""
+"""HTTP API boundary for Shepherd Academy Universe."""

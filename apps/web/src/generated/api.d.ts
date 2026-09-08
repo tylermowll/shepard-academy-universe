@@ -39,6 +39,57 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/admin/learners/{learner_id}/account": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Update Account */
+    patch: operations["update_account_api_v1_admin_learners__learner_id__account_patch"];
+    trace?: never;
+  };
+  "/api/v1/admin/learners/{learner_id}/devices": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Learner Devices */
+    get: operations["learner_devices_api_v1_admin_learners__learner_id__devices_get"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/admin/learners/{learner_id}/devices/{device_id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    /** Revoke Device */
+    delete: operations["revoke_device_api_v1_admin_learners__learner_id__devices__device_id__delete"];
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/admin/learners/{learner_id}/export": {
     parameters: {
       query?: never;
@@ -67,23 +118,6 @@ export interface paths {
     put?: never;
     /** Revoke Devices */
     post: operations["revoke_devices_api_v1_admin_learners__learner_id__revoke_post"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/admin/pairing/{pair_id}/approve": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Approve Pair */
-    post: operations["approve_pair_api_v1_admin_pairing__pair_id__approve_post"];
     delete?: never;
     options?: never;
     head?: never;
@@ -256,7 +290,7 @@ export interface paths {
     put?: never;
     /**
      * Login
-     * @description Authenticate the adult and start an opaque-cookie session.
+     * @description Authenticate one account and recheck its credentials before issuing a cookie.
      */
     post: operations["login_api_v1_auth_login_post"];
     delete?: never;
@@ -436,57 +470,6 @@ export interface paths {
     put?: never;
     /** Retry Operation */
     post: operations["retry_operation_api_v1_operations__operation_id__retry_post"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/pairing/requests": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Request Pairing */
-    post: operations["request_pairing_api_v1_pairing_requests_post"];
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/pairing/requests/{pair_id}": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    /** Pairing Status */
-    get: operations["pairing_status_api_v1_pairing_requests__pair_id__get"];
-    put?: never;
-    post?: never;
-    delete?: never;
-    options?: never;
-    head?: never;
-    patch?: never;
-    trace?: never;
-  };
-  "/api/v1/pairing/requests/{pair_id}/claim": {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    get?: never;
-    put?: never;
-    /** Claim Pair */
-    post: operations["claim_pair_api_v1_pairing_requests__pair_id__claim_post"];
     delete?: never;
     options?: never;
     head?: never;
@@ -898,14 +881,6 @@ export interface components {
        */
       ok: boolean;
     };
-    /** Approval */
-    Approval: {
-      /**
-       * Learner Id
-       * Format: uuid
-       */
-      learner_id: string;
-    };
     /** Confirmation */
     Confirmation: {
       /** Final Answer */
@@ -959,6 +934,31 @@ export interface components {
       /** Status */
       status: string;
     };
+    /** LearnerAccountUpdate */
+    LearnerAccountUpdate: {
+      /** Alias */
+      alias: string;
+      /** Password */
+      password?: string | null;
+    };
+    /** LearnerDevicePublic */
+    LearnerDevicePublic: {
+      /**
+       * Created At
+       * Format: date-time
+       */
+      created_at: string;
+      /**
+       * Expires At
+       * Format: date-time
+       */
+      expires_at: string;
+      /**
+       * Id
+       * Format: uuid
+       */
+      id: string;
+    };
     /** LearnerExport */
     LearnerExport: {
       learner: components["schemas"]["LearnerPublic"];
@@ -980,6 +980,8 @@ export interface components {
        * @enum {string}
        */
       eligibility: "adult" | "minor" | "unknown";
+      /** Password */
+      password: string;
     };
     /** LearnerPublic */
     LearnerPublic: {
@@ -987,12 +989,13 @@ export interface components {
       alias: string;
       /**
        * Eligibility
-       * @default unknown
        * @enum {string}
        */
       eligibility: "adult" | "minor" | "unknown";
       /** Enabled */
       enabled: boolean;
+      /** Has Password */
+      has_password: boolean;
       /**
        * Id
        * Format: uuid
@@ -1001,7 +1004,7 @@ export interface components {
     };
     /**
      * LoginRequest
-     * @description Credentials supplied by the adult administrator.
+     * @description Credentials for the administrator or one learner account.
      */
     LoginRequest: {
       /** Login Name */
@@ -1074,21 +1077,6 @@ export interface components {
       verdict?: components["schemas"]["VerdictPublic"] | null;
       /** Work Text */
       work_text: string;
-    };
-    /** PairPublic */
-    PairPublic: {
-      /** Approved */
-      approved: boolean;
-      /**
-       * Expires At
-       * Format: date-time
-       */
-      expires_at: string;
-      /**
-       * Id
-       * Format: uuid
-       */
-      id: string;
     };
     /** PhoneReceipt */
     PhoneReceipt: {
@@ -1900,6 +1888,7 @@ export interface components {
        * @enum {string}
        */
       difficulty: "introductory" | "standard" | "challenge";
+      initial_activity?: components["schemas"]["TutorActivityInput"] | null;
       /**
        * Initiative
        * @default balanced
@@ -2081,6 +2070,104 @@ export interface operations {
       };
     };
   };
+  update_account_api_v1_admin_learners__learner_id__account_patch: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        learner_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["LearnerAccountUpdate"];
+      };
+    };
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LearnerPublic"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  learner_devices_api_v1_admin_learners__learner_id__devices_get: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        learner_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["LearnerDevicePublic"][];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
+  revoke_device_api_v1_admin_learners__learner_id__devices__device_id__delete: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        learner_id: string;
+        device_id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Successful Response */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Acknowledged"];
+        };
+      };
+      /** @description Validation Error */
+      422: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["HTTPValidationError"];
+        };
+      };
+    };
+  };
   export_api_v1_admin_learners__learner_id__export_post: {
     parameters: {
       query?: never;
@@ -2122,41 +2209,6 @@ export interface operations {
       cookie?: never;
     };
     requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["Acknowledged"];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"];
-        };
-      };
-    };
-  };
-  approve_pair_api_v1_admin_pairing__pair_id__approve_post: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        pair_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody: {
-      content: {
-        "application/json": components["schemas"]["Approval"];
-      };
-    };
     responses: {
       /** @description Successful Response */
       200: {
@@ -2812,88 +2864,6 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["OperationPublic"];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"];
-        };
-      };
-    };
-  };
-  request_pairing_api_v1_pairing_requests_post: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path?: never;
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      201: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["PairPublic"];
-        };
-      };
-    };
-  };
-  pairing_status_api_v1_pairing_requests__pair_id__get: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        pair_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["PairPublic"];
-        };
-      };
-      /** @description Validation Error */
-      422: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["HTTPValidationError"];
-        };
-      };
-    };
-  };
-  claim_pair_api_v1_pairing_requests__pair_id__claim_post: {
-    parameters: {
-      query?: never;
-      header?: never;
-      path: {
-        pair_id: string;
-      };
-      cookie?: never;
-    };
-    requestBody?: never;
-    responses: {
-      /** @description Successful Response */
-      200: {
-        headers: {
-          [name: string]: unknown;
-        };
-        content: {
-          "application/json": components["schemas"]["Acknowledged"];
         };
       };
       /** @description Validation Error */

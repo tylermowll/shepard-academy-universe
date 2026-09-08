@@ -5,6 +5,7 @@ import { ContextHelp } from "./Help";
 import { PhoneLink } from "./PhoneLink";
 import { PhotoInput } from "./PhotoInput";
 import { SafeText } from "./SafeText";
+import { ComposerMenu } from "./ComposerMenu";
 import { TutorConversation } from "./TutorConversation";
 
 type Props = {
@@ -306,6 +307,7 @@ export function Tutor({
         await load(created.id);
         setNewSession(false);
         setTopic("");
+        setReference("");
       } else if (selectedSession.current === request.sessionId) await refresh();
     } finally {
       if (mounted.current) setWorking(false);
@@ -407,6 +409,51 @@ export function Tutor({
       </button>
     </details>
   );
+  const sourceFields = (
+    <>
+      <label>
+        Practice source
+        <select
+          value={source}
+          onChange={(event) => setSource(event.target.value as Source)}
+          disabled={blocked || active}
+        >
+          <option value="topic">My topic</option>
+          <option value="reference_text">Pasted text or assignment</option>
+          <option value="reference_photo">
+            Photo of a passage or assignment
+          </option>
+        </select>
+      </label>
+      {source !== "topic" && (
+        <p className="notice">
+          The tutor uses your material to create different practice on the same
+          concepts. It does not answer the supplied assignment. For reading
+          practice, include the passage; the tutor cannot access a book from its
+          title.
+        </p>
+      )}
+      {source === "reference_text" && (
+        <label>
+          Reference material
+          <textarea
+            value={reference}
+            onChange={(event) => setReference(event.target.value)}
+            required
+            maxLength={8000}
+            rows={6}
+            disabled={blocked || active}
+          />
+        </label>
+      )}
+      {source === "reference_photo" && (
+        <p>
+          After you start, send a photo from your phone or upload one here. The
+          tutor reads it to create related practice.
+        </p>
+      )}
+    </>
+  );
   const sessionControls = session?.status === "open" && (
     <>
       <details className="activity-source" open={!problem || undefined}>
@@ -421,48 +468,7 @@ export function Tutor({
             void act(() => activity());
           }}
         >
-          <label>
-            Practice source
-            <select
-              value={source}
-              onChange={(event) => setSource(event.target.value as Source)}
-              disabled={disabled}
-            >
-              <option value="topic">My topic</option>
-              <option value="reference_text">Pasted text or assignment</option>
-              <option value="reference_photo">
-                Photo of a passage or assignment
-              </option>
-            </select>
-          </label>
-          {source !== "topic" && (
-            <p className="notice">
-              The tutor uses your material to create different practice on the
-              same concepts. It does not answer the supplied assignment. For
-              reading practice, include the passage; the tutor cannot access a
-              book from its title.
-            </p>
-          )}
-          {source === "reference_text" && (
-            <label>
-              Reference material
-              <textarea
-                value={reference}
-                onChange={(event) => setReference(event.target.value)}
-                required
-                maxLength={8000}
-                rows={6}
-                disabled={disabled}
-              />
-            </label>
-          )}
-          {source === "reference_photo" && (
-            <p>
-              Choose “Create practice activity”, then send a photo from your
-              phone or upload one here. You will see its reading before the new
-              practice.
-            </p>
-          )}
+          {sourceFields}
           <button
             className="primary"
             disabled={
@@ -562,8 +568,8 @@ export function Tutor({
             </h2>
             {!session && (
               <p>
-                Choose a topic. Then get an activity and send your work for
-                feedback.
+                Choose a topic or add reference material. Start session creates
+                your first activity.
               </p>
             )}
           </div>
@@ -616,6 +622,12 @@ export function Tutor({
                   topic,
                   initiative,
                   difficulty,
+                  initial_activity: {
+                    source,
+                    ...(source === "reference_text"
+                      ? { reference_text: reference }
+                      : {}),
+                  },
                 } satisfies Schema<"TutoringSessionInput">),
               );
             }}
@@ -635,7 +647,7 @@ export function Tutor({
               <p>
                 Use any subject or question: fractions, persuasive writing,
                 photosynthesis, or a passage you are reading. You can add
-                reference material after starting the session.
+                reference material below before starting the session.
               </p>
             </ContextHelp>
             <label>
@@ -654,8 +666,8 @@ export function Tutor({
               Choose Easier for foundational concepts or Harder for deeper,
               multi-step reasoning. You can change this during the session.
             </p>
-            <details>
-              <summary>Tutor options</summary>
+            <fieldset className="tutor-preferences">
+              <legend>Tutor style</legend>
               <label>
                 Tutor style
                 <select
@@ -669,10 +681,13 @@ export function Tutor({
                 </select>
               </label>
               <p className="fine">
-                Choose how much the tutor suggests next steps. You can change
-                this during the session.
+                “Suggest what to do next” gives regular prompts. “Decide
+                together” offers a suggestion and lets you choose. “Follow my
+                questions” waits for you to ask for help. All three give
+                feedback on your work.
               </p>
-            </details>
+            </fieldset>
+            {sourceFields}
             <div className="actions">
               <button
                 className="primary"
@@ -680,7 +695,9 @@ export function Tutor({
                   blocked ||
                   offline ||
                   !topic.trim() ||
-                  !features?.tutoring_available
+                  !features?.tutoring_available ||
+                  (source === "reference_text" && !reference.trim()) ||
+                  (source === "reference_photo" && !features?.photos_available)
                 }
               >
                 Start session
@@ -812,8 +829,7 @@ export function Tutor({
                         >
                           Attach photo
                         </button>
-                        <details className="composer-menu">
-                          <summary>Help</summary>
+                        <ComposerMenu title="Help">
                           <div className="composer-options">
                             <button
                               type="button"
@@ -837,9 +853,11 @@ export function Tutor({
                               Show a different example
                             </button>
                           </div>
-                        </details>
-                        <details className="composer-menu next-menu">
-                          <summary>Next activity options</summary>
+                        </ComposerMenu>
+                        <ComposerMenu
+                          title="Next activity options"
+                          className="next-menu"
+                        >
                           <div className="composer-options">
                             <button
                               type="button"
@@ -869,7 +887,7 @@ export function Tutor({
                               Harder next activity
                             </button>
                           </div>
-                        </details>
+                        </ComposerMenu>
                         <button
                           className="primary send-message"
                           disabled={disabled || !text.trim()}

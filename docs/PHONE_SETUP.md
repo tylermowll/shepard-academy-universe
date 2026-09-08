@@ -138,8 +138,8 @@ on `127.0.0.1:8000` and one worker behind the gateway. Ctrl+C stops the app/work
 and preserves data; it does not stop Tailscale Serve or Caddy. For computer-only
 HTTP use `make start`.
 
-Open your configured HTTPS address on the computer and sign in. Create your practice profile
-or a child under **Learners & devices**, then open **Practice**, select the
+Open your configured HTTPS address on the computer and sign in. Create a learner account
+under **Learners**, then open **Practice**, select the
 learner and enter a topic. **Tutor options** controls how much the tutor leads.
 Choose **Start session**, then **Create practice activity**. No grade level or
 skill catalog is required.
@@ -155,12 +155,10 @@ rotate as needed, then tap **Send to computer**. The phone needs no tutor login.
 If it is already signed in, leave it signed in: the QR link opens the photo page
 independently of that login, including when the browser reuses an open tab.
 
-For the entire tutor on the phone, open the same HTTPS address in its browser and
-tap **Pair this device** on the sign-in page. Copy its request ID to
-**Learners & devices → Pairing request ID** on the signed-in adult's computer.
-Select the learner and choose **Approve device** within five minutes. Keep the
-phone browser open; it signs in automatically. This learner pairing is separate
-from sending a photo through the QR link.
+For the entire tutor on the phone, open the same HTTPS address and sign in with
+the learner username and password created by the administrator. The administrator
+can reset that password and manage signed-in browsers in **Learners**. This
+account sign-in is separate from sending a photo through the QR link.
 
 The in-app **Help → Phone setup** page contains these two workflows and the HTTPS
 setup steps. The adjacent phone help disclosures link directly to it.
@@ -182,10 +180,10 @@ in text. Request a next activity when ready; the tutor uses recent work and your
 initiative setting. It explains and uses different relevant examples rather than
 giving the current answer or finishing your homework.
 
-Links last five minutes and accept one photo. Keep the phone page open while an
+Links last two hours and accept one photo. Keep the phone page open while an
 upload is pending; its retry button resends the same photo without creating a
 second operation. If you reload or close it, rescan the original QR to check its
-receipt, or generate a new link on the computer if it expired. A new link cancels
+receipt, or choose **New QR code** on the computer if it expired. A new link cancels
 the previous link. Logout/revocation, deletion, changed processing settings, or
 finishing/changing the problem invalidates unused links. Links expose neither
 history nor grading/admin actions; nevertheless, keep the QR private.

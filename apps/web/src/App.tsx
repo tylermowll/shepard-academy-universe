@@ -1,18 +1,5 @@
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
-import {
-  api,
-  newKey,
-  onAuthenticationLost,
-  setIdentity,
-  type Schema,
-} from "./client";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api, onAuthenticationLost, setIdentity, type Schema } from "./client";
 import { AdultPanel } from "./AdultPanel";
 import { Tutor } from "./Tutor";
 import { UpdateNotice } from "./UpdateNotice";
@@ -21,11 +8,10 @@ import { followPage, pageUrl, type Page, type Navigate } from "./navigation";
 import { Setup } from "./Setup";
 import { captureSetupAuthority, type SetupAuthority } from "./setup-authority";
 
-const Research = lazy(() => import("./Research"));
 const pageNames: Record<Page, string> = {
   practice: "Practice",
   history: "History",
-  learners: "Learners & devices",
+  learners: "Learners",
   settings: "Settings",
   help: "Help",
 };
@@ -51,15 +37,10 @@ export function App({ setupAuthority }: { setupAuthority?: SetupAuthority }) {
   const [error, setError] = useState("");
   const [offline, setOffline] = useState(!navigator.onLine);
   const [learner, setLearner] = useState("");
-  const [pair, setPair] = useState<Schema<"PairPublic"> | null>(null);
   const [busy, setBusy] = useState(false);
   const [location, setLocation] = useState(readLocation);
   const [learners, setLearners] = useState<Schema<"LearnerPublic">[]>([]);
-  const [learnersLoaded, setLearnersLoaded] = useState(false);
   const [settingsVersion, setSettingsVersion] = useState(0);
-  const [researchOpen, setResearchOpen] = useState(false);
-  const [tutorBusy, setTutorBusy] = useState(false);
-  const [tutorDraft, setTutorDraft] = useState(false);
   const learnerSequence = useRef(0);
   const workspace = useRef<HTMLDivElement>(null);
   const scrollToTop = useRef(false);
@@ -80,7 +61,10 @@ export function App({ setupAuthority }: { setupAuthority?: SetupAuthority }) {
         : !isAdult &&
             (location.page === "settings" || location.page === "learners")
           ? "practice"
-          : location.page;
+          : isAdult &&
+              (location.page === "practice" || location.page === "history")
+            ? "learners"
+            : location.page;
   const tutorVisible = page === "practice" || page === "history";
   useEffect(() => {
     const changed = () => {
@@ -103,7 +87,7 @@ export function App({ setupAuthority }: { setupAuthority?: SetupAuthority }) {
     };
   }, [authenticated, identity]);
   useEffect(() => {
-    document.title = `${authenticated || page === "help" ? pageNames[page] : setupRequired || checkingSetup ? "Create administrator account" : "Sign in"} · Shepard Academy Universe`;
+    document.title = `${authenticated || page === "help" ? pageNames[page] : setupRequired || checkingSetup ? "Create administrator account" : "Sign in"} · Shepherd Academy Universe`;
     workspace.current
       ?.querySelector<HTMLElement>("h1")
       ?.focus({ preventScroll: true });
@@ -117,28 +101,11 @@ export function App({ setupAuthority }: { setupAuthority?: SetupAuthority }) {
     const rows = await api<Schema<"LearnerPublic">[]>("/admin/learners");
     if (sequence !== learnerSequence.current) return;
     setLearners(rows);
-    setLearnersLoaded(true);
     setLearner((current) =>
       rows.some((row) => row.id === current) ? current : "",
     );
   }, []);
-  const chooseLearner = (id: string) => {
-    if (id === learner || tutorBusy) return;
-    if (
-      tutorDraft &&
-      !window.confirm(
-        "Switch learners and discard the unsent work in this tab? Submitted work is saved.",
-      )
-    )
-      return;
-    if (learner && learner !== id)
-      window.history.replaceState(
-        null,
-        "",
-        window.location.pathname + window.location.search,
-      );
-    setLearner(id);
-  };
+  const chooseLearner = (id: string) => setLearner(id);
   const refresh = useCallback(async () => {
     const session = await api<Schema<"SessionStatus">>("/auth/session");
     if (session.authenticated || !session.setup_required) clearSetupToken();
@@ -182,21 +149,16 @@ export function App({ setupAuthority }: { setupAuthority?: SetupAuthority }) {
         clearSetupToken();
         setSession(null);
         setLearner("");
-        setPair(null);
         learnerSequence.current += 1;
         setLearners([]);
-        setLearnersLoaded(false);
-        setResearchOpen(false);
         window.history.replaceState(
           null,
           "",
           window.location.pathname + window.location.search,
         );
-        setError("Your session ended. Sign in or pair this device again.");
+        setError("Your session ended. Sign in again.");
         void refresh().catch(() => {
-          setError(
-            "Your session ended. Reconnect to sign in or pair this device again.",
-          );
+          setError("Your session ended. Reconnect to sign in again.");
         });
       }),
     [refresh, clearSetupToken],
@@ -262,25 +224,6 @@ export function App({ setupAuthority }: { setupAuthority?: SetupAuthority }) {
       window.removeEventListener("offline", lost);
     };
   }, []);
-  useEffect(() => {
-    if (!pair || identity?.authenticated) return;
-    const timer = window.setInterval(() => {
-      if (document.visibilityState !== "visible") return;
-      void api<Schema<"PairPublic">>(`/pairing/requests/${pair.id}`)
-        .then(async (result) => {
-          if (result.approved) {
-            await api(`/pairing/requests/${pair.id}/claim`, "POST");
-            setPair(null);
-            await refresh();
-          }
-        })
-        .catch((cause) => {
-          setPair(null);
-          setError(cause instanceof Error ? cause.message : "Pairing expired.");
-        });
-    }, 2500);
-    return () => window.clearInterval(timer);
-  }, [pair, identity?.authenticated, refresh]);
   return (
     <main>
       <a className="skip-link" href="#workspace">
@@ -292,7 +235,8 @@ export function App({ setupAuthority }: { setupAuthority?: SetupAuthority }) {
           onClick={(event) => followPage(event, navigate, "practice")}
           className="wordmark"
         >
-          Shepard Academy Universe
+          <img src="/icon.svg" alt="" width={32} height={32} />
+          Shepherd Academy Universe
         </a>
         {identity?.authenticated && (
           <button
@@ -311,7 +255,7 @@ export function App({ setupAuthority }: { setupAuthority?: SetupAuthority }) {
       <nav className="page-tabs" aria-label="Main navigation">
         {(authenticated
           ? isAdult
-            ? (Object.keys(pageNames) as Page[])
+            ? (["learners", "settings", "help"] as Page[])
             : (["practice", "history", "help"] as Page[])
           : (["practice", "help"] as Page[])
         ).map((item) => (
@@ -363,9 +307,7 @@ export function App({ setupAuthority }: { setupAuthority?: SetupAuthority }) {
             ) : (
               <section className="welcome">
                 <h1 tabIndex={-1}>Sign in</h1>
-                <p>
-                  Sign in as an adult, or connect this browser to a learner.
-                </p>
+                <p>Use your administrator or learner username and password.</p>
                 <div className="grid">
                   <form
                     className="card"
@@ -388,10 +330,13 @@ export function App({ setupAuthority }: { setupAuthority?: SetupAuthority }) {
                       });
                     }}
                   >
-                    <h2>Adult sign in</h2>
-                    <p>For parents and adults who want to study.</p>
+                    <h2>Account sign-in</h2>
+                    <p>
+                      Learner accounts open only that learner’s practice and
+                      history.
+                    </p>
                     <label>
-                      Login name
+                      Username
                       <input
                         name="login"
                         autoComplete="username"
@@ -413,27 +358,18 @@ export function App({ setupAuthority }: { setupAuthority?: SetupAuthority }) {
                       Sign in
                     </button>
                     <p className="fine">
-                      Use the account created when this app was set up.
+                      Learners: use the account your administrator created for
+                      you.
                     </p>
-                    <ContextHelp topic="Can I manage the app and study too?">
-                      <p>
-                        Yes. Create your practice profile, then select it in
-                        Practice. Use the same adult sign-in for both.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => navigate("help", "accounts")}
-                      >
-                        Accounts and learners
-                      </button>
-                    </ContextHelp>
+
                     <ContextHelp topic="Need an account or a password reset?">
                       <p>
-                        The first account is created with the private setup link
-                        printed by <code>make start</code>. If an account
-                        already exists, only the person running the app can
-                        reset its password with <code>make admin</code> on that
-                        computer.
+                        Ask your administrator to reset a learner password in
+                        Learners. The administrator account is created with the
+                        private setup link printed by <code>make start</code>.
+                        If an account already exists, only the person running
+                        the app can reset its password with{" "}
+                        <code>make admin</code> on that computer.
                       </p>
                       <button
                         type="button"
@@ -443,62 +379,6 @@ export function App({ setupAuthority }: { setupAuthority?: SetupAuthority }) {
                       </button>
                     </ContextHelp>
                   </form>
-                  <section className="card">
-                    <h2>Connect a learner</h2>
-                    <p>
-                      Request access here, then ask an adult to approve it on
-                      their signed-in computer.
-                    </p>
-                    {pair ? (
-                      <>
-                        <label>
-                          Pairing request ID
-                          <input readOnly value={pair.id} />
-                        </label>
-                        <p role="status">
-                          Waiting for approval. Expires at{" "}
-                          {new Date(pair.expires_at).toLocaleTimeString()}.
-                        </p>
-                        <p>
-                          On the adult’s computer: open{" "}
-                          <strong>Learners & devices</strong>, select your
-                          learner, paste this ID, and choose{" "}
-                          <strong>Approve device</strong>.
-                        </p>
-                      </>
-                    ) : (
-                      <button
-                        disabled={busy || !identity}
-                        onClick={() =>
-                          void act(async () =>
-                            setPair(
-                              await api<Schema<"PairPublic">>(
-                                "/pairing/requests",
-                                "POST",
-                                {},
-                                newKey(),
-                              ),
-                            ),
-                          )
-                        }
-                      >
-                        Pair this device
-                      </button>
-                    )}
-                    <ContextHelp topic="Only using your phone to take a photo?">
-                      <p>
-                        Use Take photo with phone inside a practice activity on
-                        the computer. Scan that QR code; you do not need to pair
-                        or sign in for a photo.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => navigate("help", "phone")}
-                      >
-                        Phone setup
-                      </button>
-                    </ContextHelp>
-                  </section>
                 </div>
               </section>
             )}
@@ -516,37 +396,15 @@ export function App({ setupAuthority }: { setupAuthority?: SetupAuthority }) {
                       : page === "history"
                         ? "Review or continue a saved session."
                         : page === "learners"
-                          ? "Add learners and connect their browsers."
+                          ? "Manage learner accounts, passwords, and signed-in browsers."
                           : "Choose the AI models that process your work."}
                   </p>
                 </div>
-                {isAdult && (tutorVisible || page === "learners") && (
-                  <label className="learner-selector">
-                    Learner
-                    <select
-                      value={learner}
-                      disabled={tutorBusy}
-                      onChange={(event) => chooseLearner(event.target.value)}
-                    >
-                      <option value="">
-                        {learnersLoaded
-                          ? "Select a learner"
-                          : "Loading learners…"}
-                      </option>
-                      {learners.map((row) => (
-                        <option key={row.id} value={row.id}>
-                          {row.alias}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
               </div>
             )}
             {isAdult && (page === "learners" || page === "settings") && (
               <AdultPanel
                 key={page}
-                adultLoginName={identity.login_name ?? ""}
                 learner={learner}
                 onLearner={chooseLearner}
                 learners={learners}
@@ -559,7 +417,7 @@ export function App({ setupAuthority }: { setupAuthority?: SetupAuthority }) {
                 act={act}
               />
             )}
-            {learner && (
+            {learner && !isAdult && (
               <div hidden={!tutorVisible}>
                 <Tutor
                   key={learner}
@@ -571,68 +429,14 @@ export function App({ setupAuthority }: { setupAuthority?: SetupAuthority }) {
                   isAdult={isAdult}
                   onNavigate={navigate}
                   settingsVersion={settingsVersion}
-                  onBusyChange={setTutorBusy}
-                  onDraftChange={setTutorDraft}
                 />
-              </div>
-            )}
-            {!learner && tutorVisible && (
-              <section className="card empty-state">
-                <h2>
-                  {learners.length
-                    ? "Who is practicing?"
-                    : "Add your first learner"}
-                </h2>
-                <p>
-                  {learners.length
-                    ? "Select a learner above to see their practice and saved sessions."
-                    : "Create a profile for yourself or your child. Each person gets their own practice history; a nickname is enough."}
-                </p>
-                {isAdult && (
-                  <button
-                    className="primary"
-                    onClick={() => navigate("learners")}
-                  >
-                    {learners.length ? "Manage learners" : "Add a learner"}
-                  </button>
-                )}
-                <ContextHelp topic="What happens next?">
-                  <p>
-                    Choose a topic, get an activity, and submit your response.
-                    You can type or send a photo. For actual feedback, an adult
-                    must connect a model in Settings.
-                  </p>
-                  <button onClick={() => navigate("help", "practice")}>
-                    Practice guide
-                  </button>
-                </ContextHelp>
-              </section>
-            )}
-            {isAdult && (
-              <div hidden={page !== "settings"}>
-                <details
-                  onToggle={(event) => {
-                    if (event.currentTarget.open) setResearchOpen(true);
-                  }}
-                >
-                  <summary>Advanced: browser model experiment</summary>
-                  <p>
-                    A separate text-only experiment. It is not needed for
-                    tutoring or phone photos.
-                  </p>
-                  {researchOpen && (
-                    <Suspense fallback={<p>Loading experiment…</p>}>
-                      <Research />
-                    </Suspense>
-                  )}
-                </details>
               </div>
             )}
           </>
         )}
       </div>
       <footer>
-        <span>Shepard Academy Universe</span>
+        <span>Shepherd Academy Universe</span>
         <a
           href={pageUrl("help", "privacy")}
           onClick={(event) => followPage(event, navigate, "help", "privacy")}

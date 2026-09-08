@@ -53,7 +53,7 @@ use App permissions, then Connection tests, then Assign active connections to
 activate a saved Spark connection.
 
 T29 completed **product identity and honest provider controls**. The
-maintainer selected **Shepard Academy Universe**, matching the repository name,
+maintainer selected **Shepherd Academy Universe**, matching the repository name,
 and reported that the model-location and allowed-user dropdowns looked broken
 while configuring Meta. After reviewing the provider-specific terms, the maintainer
 explicitly chose a disclaimer instead of a hard-coded age rule. Meta-hosted

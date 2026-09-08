@@ -30,7 +30,7 @@ from sqlalchemy.orm import Session
 
 from math_tutor import auth as auth_service
 from math_tutor import settings
-from math_tutor.adapters.db.models import Administrator
+from math_tutor.adapters.db.models import Administrator, Learner
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
@@ -47,7 +47,7 @@ _RATE_LIMITED = "Too many login attempts. Try again later."
 
 
 class LoginRequest(BaseModel):
-    """Credentials supplied by the adult administrator."""
+    """Credentials for the administrator or one learner account."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -203,6 +203,9 @@ def get_session(request: Request, response: Response) -> SessionStatus:
             row = auth_service.get_valid_session(db, token)
             if row is not None:
                 login_name = row.administrator.login_name if row.administrator is not None else None
+                if row.learner_id:
+                    learner = db.get(Learner, row.learner_id)
+                    login_name = learner.alias if learner else None
                 return SessionStatus(
                     authenticated=True,
                     role=cast(Literal["adult", "learner"], row.role),
@@ -225,7 +228,7 @@ def get_session(request: Request, response: Response) -> SessionStatus:
     response_model_exclude_defaults=True,
 )
 def login(credentials: LoginRequest, request: Request, response: Response) -> SessionStatus:
-    """Authenticate the adult and start an opaque-cookie session."""
+    """Authenticate one account and recheck its credentials before issuing a cookie."""
 
     secret = require_secret()
     if not origin_allowed(request):
@@ -240,23 +243,41 @@ def login(credentials: LoginRequest, request: Request, response: Response) -> Se
             headers={"Retry-After": str(max(1, math.ceil(retry_after)))},
         )
     with Session(engine_for(request)) as db:
-        admin = auth_service.authenticate_admin(db, credentials.login_name, credentials.password)
-        if admin is None:
+        account: Administrator | Learner | None = auth_service.authenticate_admin(
+            db, credentials.login_name, credentials.password
+        )
+        if account is None:
+            account = auth_service.authenticate_learner(
+                db, credentials.login_name, credentials.password
+            )
+        if account is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_BAD_CREDENTIALS)
-        if not auth_service.administrator_access_allowed(admin):
+        if account.local_only_password and not auth_service.local_passwords_allowed():
             raise HTTPException(
                 403,
-                "This account has a local-only password. On the app computer, run make admin and set at least 12 characters before using HTTPS or phone access.",
+                "This account has a local-only password. Set at least 12 characters on the app computer before using HTTPS or phone access. The administrator can reset learner passwords in Learners; use make admin for the administrator account.",
             )
         # End the read snapshot after password verification. The short write
         # transaction rechecks the hash so a concurrent reset cannot be bypassed.
-        admin_id, password_hash = admin.id, admin.password_hash
+        account_id, password_hash = account.id, account.password_hash
+        is_administrator = isinstance(account, Administrator)
         db.rollback()
         db.connection(execution_options={"sqlite_begin_immediate": True})
-        admin = db.get(Administrator, admin_id, populate_existing=True)
-        if admin is None or admin.password_hash != password_hash:
+        account = (
+            db.get(Administrator, account_id, populate_existing=True)
+            if is_administrator
+            else db.get(Learner, account_id, populate_existing=True)
+        )
+        if (
+            account is None
+            or account.password_hash != password_hash
+            or (
+                isinstance(account, Learner)
+                and (not account.enabled or account.deleted_at is not None)
+            )
+        ):
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=_BAD_CREDENTIALS)
-        if not auth_service.administrator_access_allowed(admin):
+        if account.local_only_password and not auth_service.local_passwords_allowed():
             raise HTTPException(
                 403,
                 "This account needs a password reset on the app computer before network access.",
@@ -266,14 +287,22 @@ def login(credentials: LoginRequest, request: Request, response: Response) -> Se
             old_session = auth_service.get_valid_session(db, previous)
             if old_session is not None:
                 auth_service.revoke_session(db, old_session)
-        row, token = auth_service.create_device_session(db, admin)
-        name = admin.login_name
+        if isinstance(account, Administrator):
+            row, token = auth_service.create_device_session(db, account)
+            name = account.login_name
+        else:
+            row, token = auth_service.create_learner_session(db, account)
+            name = account.alias
+        role = cast(Literal["adult", "learner"], row.role)
+        learner_id = row.learner_id
         csrf = row.csrf_token
         max_age = max(1, int((row.expires_at - auth_service.utcnow()).total_seconds()))
         db.commit()
     set_session_cookie(response, token, max_age)
     response.delete_cookie(ANON_CSRF_COOKIE, path="/")
-    return SessionStatus(authenticated=True, role="adult", login_name=name, csrf_token=csrf)
+    return SessionStatus(
+        authenticated=True, role=role, login_name=name, learner_id=learner_id, csrf_token=csrf
+    )
 
 
 @router.post("/logout", response_model=LogoutResponse)

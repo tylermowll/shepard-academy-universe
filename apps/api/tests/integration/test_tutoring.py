@@ -12,7 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from test_workflows import adult as adult
 from test_workflows import anyio_backend as anyio_backend
-from test_workflows import client, learner_ids, pair_learner, phone_link, photo_bytes
+from test_workflows import client, learner_ids, phone_link, photo_bytes, sign_in_learner
 from test_workflows import engine as engine
 
 from math_tutor import worker
@@ -605,7 +605,7 @@ async def test_reference_export_is_typed_complete_and_adult_only(
     ] == []
     async with client(engine) as stranger:
         assert (await stranger.post(url)).status_code == 401
-        await pair_learner(adult, stranger, session["learner_id"])
+        await sign_in_learner(adult, stranger, session["learner_id"])
         assert (await stranger.post(url)).status_code == 403
 
 
@@ -727,3 +727,50 @@ async def test_conversation_spans_activities_and_more_than_four_exchanges_but_no
     assert len(request.ordered_messages) == 13
     assert request.ordered_messages[0].role == "user"
     assert request.ordered_messages[-1].role == "user"
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("source", ["topic", "reference_text", "reference_photo"])
+async def test_session_and_first_activity_start_atomically_and_retry_once(
+    adult: AsyncClient, engine: Engine, source: str
+) -> None:
+    key = str(uuid4())
+    body = {
+        "learner_id": (await learner_ids(adult))[0],
+        "topic": "Synthetic first activity",
+        "initial_activity": {
+            "source": source,
+            **(
+                {"reference_text": "Synthetic passage for related practice."}
+                if source == "reference_text"
+                else {}
+            ),
+        },
+    }
+    response = await adult.post(
+        "/api/v1/tutor/sessions", json=body, headers={"Idempotency-Key": key}
+    )
+    assert response.status_code == 201, response.text
+    session = response.json()
+    assert len(session["problems"]) == 1
+    problem = session["problems"][0]
+    assert problem["reference_source"] == source
+    assert problem["activity_state"] == (
+        "reference_capture" if source == "reference_photo" else "generating"
+    )
+    repeated = await adult.post(
+        "/api/v1/tutor/sessions", json=body, headers={"Idempotency-Key": key}
+    )
+    assert repeated.status_code == 201
+    assert repeated.json() == session
+    with Session(engine) as db:
+        assert db.scalar(select(func.count()).select_from(ProblemInstance)) == 1
+        assert db.scalar(select(func.count()).select_from(Job)) == (
+            0 if source == "reference_photo" else 1
+        )
+    conflict = await adult.post(
+        "/api/v1/tutor/sessions",
+        json={**body, "topic": "Changed"},
+        headers={"Idempotency-Key": key},
+    )
+    assert conflict.status_code == 409

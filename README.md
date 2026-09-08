@@ -1,4 +1,4 @@
-# Shepard Academy Universe
+# Shepherd Academy Universe
 
 A self-hosted AI tutor: choose a topic, receive an activity, work on paper, send
 an iPhone photo, and get guidance on your actual work. Revise or discuss it, then
@@ -64,13 +64,13 @@ needs an upgrade, startup stops with instructions. Stop all app/worker writes,
 back up retained data, then run `make migrate start`. `make admin` is an explicit
 password-reset tool, not a routine restart step; resetting revokes sessions.
 
-Sign in and open **Settings**. Its four steps keep different decisions separate:
-**Connections** saves a model/server/key, **App permissions** controls the
+Sign in as administrator and open **Settings**. Choose a section:
+**Connections** saves a model/server/key, **Data & privacy** controls the
 installation-wide cloud and audience ceiling, **Connection tests** sends only
-explicitly approved synthetic checks, and **Assign active connections** chooses
+explicitly approved synthetic checks, and **Active models** chooses
 what future learner work actually uses. A saved connection is not automatically
 tested or activated. If a connection is not ready, its assignment shows the exact
-missing step and links directly to it. Tests may incur your provider's charges.
+requirement and links directly to it. Tests may incur your provider's charges.
 The photo-reader test is one image-reading response; the tutor test separately
 checks activity creation and feedback in two structured text responses. Passing
 one role does not imply that the other response format works.
@@ -101,9 +101,9 @@ your required acknowledgment; it does not certify that an account or agreement
 permits a particular audience. To run a Meta/Llama model locally, configure it
 through Ollama or vLLM instead.
 
-Open **Learners & devices** to add yourself or a child. Select the profile, choose
-**Start practice**, enter a topic and choose **Start session**, then
-**Create practice activity**.
+Open **Learners** to add yourself or a child. Sign out, then sign in with the
+learner account. Enter a topic, optionally add reference material, and choose
+**Start session**. The first activity is created automatically.
 
 The page tabs separate the workflow:
 
@@ -112,12 +112,11 @@ The page tabs separate the workflow:
   **Help** for suggestions and **Next activity options** to move on.
   **Session & material** holds reference material and session preferences.
 - **History**: reopen or review a saved session.
-- **Learners & devices** (adult): add learners, pair browsers, export saved work,
+- **Learners** (adult): manage learner accounts and passwords, sign out browsers, export saved work,
   revoke access, and delete learners.
 - **Settings** (adult): add/edit AI connections and keys, review cloud/audience
   permissions, test connections, and separately assign the active tutor and photo
-  reader. The browser model experiment is under **Advanced** and is not required
-  for practice.
+  reader. Connection tests use synthetic samples.
 - **Help**: setup, phone connection, model configuration, troubleshooting, and
   privacy. Contextual disclosures explain controls without leaving the page.
 
@@ -126,17 +125,21 @@ requests in memory. Closing/reloading the tab or switching learners can lose
 unsent work; submitted work is stored on the server. Learners see only Practice,
 History, and Help.
 
-An adult account can manage the app and be a student. In **Learners & devices**,
-choose **Create my practice profile**, edit the prefilled name, and **Add learner** to create your
-own practice profile under the same sign-in. Give each child a separate profile
-and pair their browser for learner-only access. There is no separate child
-password to manage. **Help → Accounts & learners** explains this distinction.
+The administrator manages learner accounts in **Learners**. Choose **Add learner
+account**, enter a unique username and password, and select an age group. Each
+learner signs in through the common sign-in page and sees only their own work.
+Select an account to reset its password, manage its signed-in browsers, export
+saved practice, or delete it. Password resets sign out that learner's browsers.
 
-For a learner browser, choose **Pair this device** on its sign-in page, copy the
-request ID to **Learners & devices** on the adult's computer, select the learner,
-and choose **Approve device** within five minutes. A physical phone needs the
-shared private HTTPS address in the phone guide. Sending one photo through
-**Take photo with phone** needs no learner login or pairing.
+If the administrator also studies, create one distinct learner account for that
+work, then sign in with that learner account. Administrator pages contain only
+account management, AI settings and help. Existing profiles retain their histories and need an explicitly set
+password for direct learner sign-in. Conflicting old names receive a numeric
+suffix; accounts and histories are never merged.
+
+A physical phone needs the shared private HTTPS address in the phone guide.
+For full practice, sign in with the learner's credentials. **Take photo with
+phone** opens a limited camera page without a learner login.
 
 `make demo` starts a disposable preview at <http://127.0.0.1:8000>, with public
 synthetic credentials `demo` / `synthetic-demo-password-only`. It blocks tutoring

@@ -1,5 +1,33 @@
 # Implementation decisions
 
+## D013 — Administrator-managed learner accounts (2026-09-08)
+
+The maintainer replaces profile-only learners and the primary device-pairing
+flow with one administrator managing distinct learner sign-ins. Each learner
+has a unique username and a password set/reset by the administrator. A learner
+sign-in grants access only to that learner's practice and history; it never
+grants household settings or account management. Administrators see Learners,
+Settings and Help. Practice and History require a learner sign-in; administrators
+can test AI connections with synthetic examples in Settings.
+
+Use the existing Argon2id hashing, opaque cookies, CSRF, origin checks, bounded
+sessions and rate limits. Passwords are write-only and excluded from account
+lists and exports. Password resets revoke existing learner sessions. Username
+uniqueness is enforced on normalized, case-insensitive keys in SQLite and also
+checked against the administrator's login name to avoid ambiguous sign-in.
+
+Existing learner IDs and saved work are preserved by a forward migration.
+Conflicting old names receive a deterministic numeric suffix, never a merge or
+deletion. Existing profiles initially need an administrator to set a password;
+the application must not invent, print or publish shared default credentials.
+Previously authenticated learner sessions remain subject to their existing
+expiry/revocation. Pending pairing requests are retired with the old pairing
+endpoints. New learner access uses the common sign-in form.
+
+This supersedes the primary account/pairing workflow in T03/T26. Phone camera
+delegation remains a separate, limited capability and is addressed separately.
+No external identity service, public signup or email recovery is added.
+
 ## D012 — Operator-selected audience for Meta-hosted inference (2026-09-07)
 
 The maintainer explicitly rejected a hard-coded Meta age gate and

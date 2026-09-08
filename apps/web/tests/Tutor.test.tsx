@@ -150,7 +150,7 @@ describe("AI learning conversation", () => {
     fireEvent.change(screen.getByLabelText("Topic or learning goal"), {
       target: { value: "Persuasive writing" },
     });
-    fireEvent.click(screen.getByText("Tutor options"));
+    expect(screen.getByRole("group", { name: "Tutor style" })).toBeVisible();
     fireEvent.change(screen.getByLabelText("Tutor style"), {
       target: { value: "learner_led" },
     });
@@ -175,6 +175,7 @@ describe("AI learning conversation", () => {
       topic: "Persuasive writing",
       initiative: "learner_led",
       difficulty: "challenge",
+      initial_activity: { source: "topic" },
     });
     expect(screen.queryByLabelText(/level|skill|grade/i)).toBeNull();
     expect(screen.queryByText("Full solution")).toBeNull();
@@ -183,6 +184,7 @@ describe("AI learning conversation", () => {
   it("uses pasted assignments only as reference for distinct practice", async () => {
     const fetcher = installSession(session());
     render(<Tutor learner={learner} offline={false} act={run} />);
+    await screen.findByText("Choose practice material");
     fireEvent.change(await screen.findByLabelText("Practice source"), {
       target: { value: "reference_text" },
     });
@@ -501,7 +503,7 @@ describe("AI learning conversation", () => {
       ),
     ).toBeNull();
     expect(
-      screen.getByRole("link", { name: "Shepard Academy Universe" }),
+      screen.getByRole("link", { name: "Shepherd Academy Universe" }),
     ).toBeVisible();
   });
 

@@ -1,4 +1,4 @@
-"""Local configuration for Shepard Academy Universe.
+"""Local configuration for Shepherd Academy Universe.
 
 T01 owns the database-path portion of the configuration contract; T02 owns
 the session-secret and public-origin portion. Provider settings belong to
