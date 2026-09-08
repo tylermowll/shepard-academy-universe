@@ -64,8 +64,11 @@ This is separate from provider reasoning effort. Meta connections may explicitly
 select minimal/low/medium/high/xhigh; default omits the parameter. Other adapters
 reject non-default effort until their distinct wire contracts are implemented.
 Persist selected effort in model-call and probe diagnostics, not reasoning text.
-Keep Practice ordered as activity/discussion, grouped typed/photo input, hints
-and next-activity choices, followed by secondary material/session settings.
+Keep Practice as one chronological session conversation, with current activity
+instructions above a bounded scrolling transcript and a stable composer below.
+Use one Send action for work and questions. Group attachments, optional help and
+explicit next-activity choices in compact controls; put secondary material and
+session settings in a desktop side panel or mobile disclosure.
 Do not render internal successful activity-generation operations as learner chat.
 
 ### First usable release
@@ -220,14 +223,26 @@ supplied; ask for an excerpt when necessary.
 steps, labels, and reading order, without correcting its content. Return quality,
 confidence, ambiguities, and concrete handwriting/organization advice. The worker
 persists the reading before automatically proceeding when quality is `clear`,
-confidence is at least 0.85, and no ambiguity is reported. The UI renders the
+confidence is at least 0.85, the transcription is nonempty, and there is no
+blocking rejection reason. `clear` means enough task-relevant content is legible
+for useful feedback. `ambiguities` records localized uncertainty; incidental
+marks, spacing, capitalization, incomplete work or a secondary diagram count do
+not alone block feedback on readable content. Incorrect mathematics is not a
+readability failure. Counted regions and written labels must be distinguished;
+never infer a diagram's count from the expected result. The UI renders the
 reading before guidance. No learner approval or browser acknowledgement is
 required. The threshold is an uncalibrated routing heuristic, not measured model
-accuracy. Unclear work stops before tutoring and asks for a cleaner submission;
+accuracy. Essential unreadable content stops automatic photo tutoring and asks
+for one specific clarification or cleaner section. Organization advice may be
+empty, and must not become a required formatting checklist;
 never select a reading because it seems more likely to be the correct answer.
 
 **Tutoring:** Respond to the student's actual work, relevant recent dialogue,
-and initiative setting. Identify strengths and likely misconceptions, explain
+and initiative setting. Answer the latest message's intent directly, including
+questions about photo rejection, without forced praise or an unrelated lesson.
+Allow an empty next step when the question has been answered. Match explanation
+depth to the task objective, selected difficulty and demonstrated understanding;
+do not infer mathematical proficiency from handwriting. Identify strengths and likely misconceptions, explain
 concepts, ask useful questions, and provide different relevant examples. Be
 flexible about teaching style, solution method, and subject. Do not give the active
 task's final answer, finish the student's essay, or solve directly supplied
@@ -293,7 +308,12 @@ The server derives the legal `message_kind` and checks the result against the re
 
 Build each prompt from versioned instructions, current topic/initiative, the
 current activity, the student's full accepted reading or typed work, and relevant
-recent session turns. Preserve message roles and bound the total context before
+recent session turns, including failed/canceled attempts and rejected reader
+reports explicitly labeled as uncertain evidence. Reader reports are not direct
+image access or verified learner work. Retain up to twelve recent exchanges
+across the current session's activities and trim whole exchanges to the provider
+budget. Never include another session or learner, or promote raw assignment
+references into student-work review. Preserve message roles and bound the total context before
 calling the provider. Do not replay unrelated histories or retired photographs.
 Provider reasoning settings are adapter-specific and require contract tests.
 
@@ -565,9 +585,9 @@ and the separate raw-image endpoint. Generated OpenAPI defines exact schemas.
 | `GET/POST /admin/tutor-profiles`                   | Adult                    | Read/create profiles and versions                                                                         |
 | `POST /sessions`                                   | Authorized learner/adult | Start session with allowed profile version                                                                |
 | `POST /sessions/{id}/problems`                     | Session owner            | Create next deterministic problem                                                                         |
-| `POST /tutor/sessions`, `GET /tutor/sessions[/id]` | Authorized learner/adult | Primary multi-subject sessions with free-text topic, initiative and difficulty                             |
+| `POST /tutor/sessions`, `GET /tutor/sessions[/id]` | Authorized learner/adult | Primary multi-subject sessions with free-text topic, initiative and difficulty                            |
 | `POST /tutor/sessions/{id}/activities`             | Session owner            | AI generation from topic, pasted reference, or a reference-photo intake target                            |
-| `POST /tutor/sessions/{id}/settings`               | Session owner            | Adjust initiative and difficulty for subsequent requests                                                   |
+| `POST /tutor/sessions/{id}/settings`               | Session owner            | Adjust initiative and difficulty for subsequent requests                                                  |
 | `POST /problems/{id}/submissions`                  | Problem owner            | Typed answer/question/hint; persist then return 202                                                       |
 | `POST /submissions/{id}/confirm-interpretation`    | Submission owner         | Confirm/edit a specific version; queue checking/tutoring                                                  |
 | `POST /problems/{id}/photos`                       | Problem owner            | Bounded raw image; interpretation requires confirmation                                                   |

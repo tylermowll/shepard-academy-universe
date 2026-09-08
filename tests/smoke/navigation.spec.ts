@@ -4,6 +4,8 @@ import {
   createLearner,
   login,
   navigate,
+  openAttachments,
+  openSessionTools,
   startTutor,
 } from "./support";
 
@@ -173,13 +175,12 @@ test("Help and History preserve unsent work and saved sessions reopen through Hi
   await response.fill(
     "A source should contain observations supporting the claim.",
   );
-  await page
-    .getByRole("button", { name: "Share my work", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.locator(".tutor-feedback")).toHaveCount(1);
   const sessionHash = await page.evaluate(() => location.hash);
   const draft = "Unsent revision: I also need to compare another source.";
   await response.fill(draft);
+  await openAttachments(page);
   await page.getByText("How do I use my phone?", { exact: true }).click();
   await page.evaluate(() =>
     window.scrollTo(0, document.documentElement.scrollHeight),
@@ -215,6 +216,7 @@ test("Help and History preserve unsent work and saved sessions reopen through Hi
   ).toHaveAttribute("aria-current", "page");
   await expect(page.locator(".tutor-feedback")).toHaveCount(1);
   expect(await page.evaluate(() => location.hash)).toBe(sessionHash);
+  await openSessionTools(page);
   await page.getByText("Session settings", { exact: true }).click();
   await page
     .getByRole("button", { name: "Finish session", exact: true })

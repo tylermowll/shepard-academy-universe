@@ -30,8 +30,10 @@ or database engines without a documented need and architecture decision.
 - Enforce provider capability, audience, ownership, and retention in backend code.
 - Display photo interpretation before its tutoring feedback. Clear readings
   proceed automatically in the worker; there is no approval or confirmation gate.
-  Ambiguous/unreadable work receives concrete advice and a request for a cleaner
-  submission. Do not introduce a fixed-template catalog or authored-hint fallback
+  Uncertainty that prevents useful feedback receives specific clarification
+  advice. Incidental uncertainty must not block readable task-relevant work.
+  Retain rejected reader reports as explicitly uncertain conversational context.
+  Do not introduce a fixed-template catalog or authored-hint fallback
   into the tutor.
 - Models cannot change verified verdicts, permissions, answer keys, or workflow
   state. AI reasoning feedback is allowed and must not masquerade as verified grades.

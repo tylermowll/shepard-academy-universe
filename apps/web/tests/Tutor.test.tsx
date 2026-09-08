@@ -102,21 +102,27 @@ afterEach(() => {
 });
 
 describe("AI learning conversation", () => {
-  it("requests easier practice directly and keeps response controls before next steps", async () => {
+  it("keeps one composer with compact photo and next-activity controls", async () => {
     const fetcher = installSession(session([activity()]));
     render(<Tutor learner={learner} offline={false} act={run} />);
-    const easier = await screen.findByRole("button", {
-      name: "Easier next activity",
-    });
-    const reply = screen.getByLabelText("Your work or question");
-    const photo = screen.getByText("Upload a photo");
-    const help = screen.getByText("Get help with this activity");
+    const reply = await screen.findByLabelText("Your work or question");
     expect(
-      reply.compareDocumentPosition(photo) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+      screen.getByRole("log", { name: "Learning conversation" }),
+    ).toBeVisible();
+    expect(screen.getByRole("button", { name: "Send" })).toBeVisible();
+    expect(screen.queryByRole("button", { name: "Ask about this" })).toBeNull();
+    expect(screen.getByText("Upload a photo")).not.toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "Attach photo" }));
+    expect(screen.getByText("Upload a photo")).toBeVisible();
+    expect(screen.getByLabelText("Take or choose a photo")).toBeVisible();
     expect(
-      photo.compareDocumentPosition(help) & Node.DOCUMENT_POSITION_FOLLOWING,
+      reply.compareDocumentPosition(screen.getByText("Upload a photo")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Attach photo" }));
+    fireEvent.click(screen.getByText("Next activity options"));
+    const easier = screen.getByRole("button", { name: "Easier next activity" });
+    expect(easier).toBeVisible();
     fireEvent.click(easier);
     await vi.waitFor(() => {
       const sent = fetcher.mock.calls.find(([url]) =>
@@ -215,7 +221,6 @@ describe("AI learning conversation", () => {
     expect(
       await screen.findByRole("button", { name: "Take photo with phone" }),
     ).toBeEnabled();
-    fireEvent.click(screen.getByText("Upload a photo"));
     expect(
       screen.getByText(/Photograph the reference material/),
     ).toHaveTextContent("not solve the original assignment");
@@ -235,12 +240,14 @@ describe("AI learning conversation", () => {
     const reading = await screen.findByRole("region", {
       name: "Reading from your photo",
     });
-    const feedback = screen.getByRole("region", { name: "Tutor guidance" });
+    const feedback = screen.getByRole("region", { name: "Tutor response" });
     expect(
       reading.compareDocumentPosition(feedback) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(within(reading).getByText(/Protect the wetland/)).toBeVisible();
+    expect(within(reading).getByText(/line spacing/)).not.toBeVisible();
+    fireEvent.click(within(reading).getByText("Reading details"));
     expect(within(reading).getByText(/line spacing/)).toBeVisible();
     expect(within(feedback).getByText(guidance.guidance[0]!)).toBeVisible();
     expect(
@@ -270,15 +277,17 @@ describe("AI learning conversation", () => {
     const fetcher = installSession(session([activity([uncertain])]));
     render(<Tutor learner={learner} offline={false} act={run} />);
     expect(
-      await screen.findByText("Please organize or retake this work."),
+      await screen.findByText("This photo needs clarification."),
     ).toBeVisible();
+    fireEvent.click(screen.getByText("Reading details"));
     expect(
       screen.getByText("Put each sentence on a separate line."),
     ).toBeVisible();
-    expect(screen.queryByRole("region", { name: "Tutor guidance" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "Tutor response" })).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Retry tutor response" }),
     ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Attach photo" }));
     expect(
       screen.getByRole("button", { name: "Take photo with phone" }),
     ).toBeEnabled();
@@ -299,7 +308,7 @@ describe("AI learning conversation", () => {
           "I added an observation about nesting birds. Does it support my claim?",
       },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Share my work" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await vi.waitFor(() =>
       expect(
         fetcher.mock.calls.some(([url]) => url.endsWith("/submissions")),
@@ -325,7 +334,8 @@ describe("AI learning conversation", () => {
   it("changes tutor initiative without introducing a homework solution setting", async () => {
     const fetcher = installSession(session([activity()]));
     render(<Tutor learner={learner} offline={false} act={run} />);
-    fireEvent.click(await screen.findByText("Session settings"));
+    fireEvent.click(await screen.findByText("Session & material"));
+    fireEvent.click(screen.getByText("Session settings"));
     fireEvent.change(screen.getByLabelText("Tutor style for this session"), {
       target: { value: "tutor_led" },
     });
@@ -365,31 +375,24 @@ describe("AI learning conversation", () => {
       ]),
     );
     render(<Tutor learner={learner} offline={false} act={run} />);
-    expect(
-      await screen.findByText(
-        "Reading your photograph… Your session is saved.",
-      ),
-    ).toBeVisible();
+    expect(await screen.findByText("Reading your photograph…")).toBeVisible();
     expect(document.querySelector(".spinner")).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "AI tutor" })).toHaveAttribute(
       "aria-busy",
       "true",
     );
-    expect(
-      await screen.findByRole("button", { name: "Share my work" }),
-    ).toBeDisabled();
+    expect(await screen.findByRole("button", { name: "Send" })).toBeDisabled();
     expect(screen.getByLabelText("Your work or question")).toHaveAttribute(
       "readonly",
     );
     expect(
       screen.getByRole("button", { name: "Next activity" }),
     ).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Attach photo" }));
     expect(
       screen.getByRole("button", { name: "Take photo with phone" }),
     ).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: "Cancel this operation" }),
-    ).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Stop response" })).toBeEnabled();
   });
 
   it("shows the persisted provider code and only offers valid retries", async () => {
@@ -588,7 +591,7 @@ describe("AI learning conversation", () => {
     render(<Tutor learner={learner} offline={false} act={run} />);
     const input = await screen.findByLabelText("Your work or question");
     fireEvent.change(input, { target: { value: "An unfinished argument." } });
-    fireEvent.click(screen.getByText("Get help with this activity"));
+    fireEvent.click(screen.getByText("Help"));
     fireEvent.click(screen.getByRole("button", { name: "Give me a hint" }));
     await vi.waitFor(() =>
       expect(
@@ -716,7 +719,7 @@ describe("AI learning conversation", () => {
     fireEvent.change(await screen.findByLabelText("Your work or question"), {
       target: { value: "Keep this draft." },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Share my work" }));
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
     await screen.findByRole("button", { name: "Retry saved request" });
     expect(busyChanged).toHaveBeenLastCalledWith(true);
     view.rerender(<Tutor {...props} page="history" />);
@@ -795,4 +798,54 @@ describe("AI learning conversation", () => {
       fetcher.mock.calls.filter(([url]) => url.endsWith("/features")),
     ).toHaveLength(2);
   });
+});
+
+it("shows feedback on a usable reading while keeping localized uncertainty visible in its details", async () => {
+  const note = "The sketch count is uncertain; the equation is legible.";
+  installSession(session([activity([operation({ ambiguities: [note] })])]));
+  render(<Tutor learner={learner} offline={false} act={run} />);
+  expect(
+    await screen.findByRole("region", { name: "Tutor response" }),
+  ).toBeVisible();
+  expect(screen.queryByText("This photo needs clarification.")).toBeNull();
+  fireEvent.click(screen.getByText("Reading details"));
+  expect(screen.getByText(note)).toBeVisible();
+});
+
+it("keeps rejected photos and follow-ups together across activities without a dismiss action", async () => {
+  const rejected = operation({
+    status: "failed",
+    feedback: null,
+    reading: {
+      quality: "uncertain",
+      confidence: 0.5,
+      can_continue: false,
+      organization_feedback: [],
+      rejection_reason: "The first numerator could be 3 or 8.",
+    },
+  });
+  const previous = { ...activity([rejected]), status: "completed" };
+  const current = {
+    ...activity([
+      operation({
+        id: "next-message",
+        text: "Which numerator was unclear?",
+        reading: null,
+        interpretation: null,
+        feedback: { ...guidance, strengths: [], next_step: "" },
+      }),
+    ]),
+    id: "next-activity",
+  };
+  installSession(session([previous, current]));
+  render(<Tutor learner={learner} offline={false} act={run} />);
+  const log = await screen.findByRole("log", { name: "Learning conversation" });
+  expect(
+    within(log).getByText("The first numerator could be 3 or 8."),
+  ).toBeVisible();
+  expect(within(log).getByText("Which numerator was unclear?")).toBeVisible();
+  expect(within(log).getAllByLabelText(/exchange/)).toHaveLength(2);
+  expect(screen.queryByRole("button", { name: /dismiss|cancel/i })).toBeNull();
+  expect(screen.queryByText("What is working")).toBeNull();
+  expect(screen.queryByText("Try this next")).toBeNull();
 });

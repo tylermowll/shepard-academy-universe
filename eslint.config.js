@@ -12,6 +12,12 @@ export default defineConfig([
     "**/.env*",
     "**/test-results/**",
     "**/playwright-report/**",
+    "data/**",
+    "uploads/**",
+    "backups/**",
+    "logs/**",
+    "certs/**",
+    "secrets/**",
   ]),
   { ...js.configs.recommended, languageOptions: { globals: globals.node } },
   {

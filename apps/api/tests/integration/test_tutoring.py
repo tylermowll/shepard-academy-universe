@@ -72,6 +72,7 @@ def install_tutor(
     *,
     quality: Literal["clear", "uncertain", "unreadable"] = "clear",
     reference: str | None = None,
+    ambiguities: list[str] | None = None,
 ) -> list[ModelRequest]:
     requests: list[ModelRequest] = []
 
@@ -89,7 +90,9 @@ def install_tutor(
                 or "1. I measured each seedling.\n2. I think the taller one had more light.",
                 quality=quality,
                 confidence=0.95 if quality == "clear" else 0.5,
-                ambiguities=[] if quality == "clear" else ["The second line overlaps the first."],
+                ambiguities=ambiguities
+                if ambiguities is not None
+                else ([] if quality == "clear" else ["The second line overlaps the first."]),
                 organization_feedback=[
                     "Leave a blank line between numbered observations and your conclusion."
                 ],
@@ -604,3 +607,123 @@ async def test_reference_export_is_typed_complete_and_adult_only(
         assert (await stranger.post(url)).status_code == 401
         await pair_learner(adult, stranger, session["learner_id"])
         assert (await stranger.post(url)).status_code == 403
+
+
+@pytest.mark.anyio
+async def test_usable_reading_with_local_uncertainty_continues_with_qualified_evidence(
+    adult: AsyncClient, engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    note = "The secondary sketch's exact shaded-region count is uncertain; the written equation is legible."
+    requests = install_tutor(monkeypatch, ambiguities=[note])
+    session = await tutor_session(adult)
+    await activity(adult, session)
+    assert worker.run_once(engine)
+    problem = await latest(adult, session)
+    uploaded = await adult.post(
+        f"/api/v1/problems/{problem['id']}/photos?version={problem['version']}",
+        content=photo_bytes(),
+        headers={"Idempotency-Key": str(uuid4())},
+    )
+    assert uploaded.status_code == 202
+    assert worker.run_once(engine)
+    result = (await latest(adult, session))["operations"][-1]
+    assert result["reading"]["can_continue"] is True
+    assert result["ambiguities"] == [note]
+    assert result["feedback"] is None
+    assert worker.run_once(engine)
+    assert note in requests[-1].ordered_messages[-1].content
+    assert "not the original image" in requests[-1].ordered_messages[-1].content
+    assert requests[-1].private_image_bytes is None
+    assert (await latest(adult, session))["operations"][-1]["feedback"] is not None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("cancel", [False, True])
+async def test_followup_receives_rejected_reading_and_specific_reason_without_regrading(
+    adult: AsyncClient, engine: Engine, monkeypatch: pytest.MonkeyPatch, cancel: bool
+) -> None:
+    requests = install_tutor(monkeypatch, quality="uncertain")
+    session = await tutor_session(adult)
+    await activity(adult, session)
+    assert worker.run_once(engine)
+    problem = await latest(adult, session)
+    uploaded = await adult.post(
+        f"/api/v1/problems/{problem['id']}/photos?version={problem['version']}",
+        content=photo_bytes(),
+        headers={"Idempotency-Key": str(uuid4())},
+    )
+    assert uploaded.status_code == 202 and worker.run_once(engine)
+    rejected = (await latest(adult, session))["operations"][-1]
+    if cancel:
+        assert (await adult.post(f"/api/v1/operations/{rejected['id']}/cancel")).status_code == 200
+    assert not worker.run_once(engine)
+    sent = await adult.post(
+        f"/api/v1/problems/{problem['id']}/submissions",
+        json={"version": problem["version"], "text": "Which part of my photo needs clarification?"},
+        headers={"Idempotency-Key": str(uuid4())},
+    )
+    assert sent.status_code == 202 and worker.run_once(engine)
+    request = requests[-1]
+    assert request.purpose == "review" and request.private_image_bytes is None
+    messages = "\n".join(message.content for message in request.ordered_messages)
+    assert "REJECTED/UNCERTAIN" in messages
+    assert "I measured each seedling" in messages
+    assert "The second line overlaps the first" in messages
+    assert "Rewrite the overlapping lines" in messages
+    assert "Which part of my photo" in request.ordered_messages[-1].content
+    assert (
+        "Do not turn a readability question into an unrelated lesson" in request.system_instruction
+    )
+    with Session(engine) as db:
+        assert db.scalar(select(func.count()).select_from(Evaluation)) == 0
+        row = db.get(Submission, UUID(rejected["id"]))
+        assert row is not None and row.status == ("canceled" if cancel else "failed")
+
+
+@pytest.mark.anyio
+async def test_conversation_spans_activities_and_more_than_four_exchanges_but_not_other_sessions(
+    adult: AsyncClient, engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    requests = install_tutor(monkeypatch)
+    session = await tutor_session(adult)
+    other = await tutor_session(adult, "Separate synthetic session")
+    for target, count, marker in [
+        (other, 1, "OTHER_SESSION_CONTENT"),
+        (session, 6, "EARLIER_REASONING"),
+    ]:
+        await activity(adult, target)
+        assert worker.run_once(engine)
+        problem = await latest(adult, target)
+        for index in range(count):
+            result = await adult.post(
+                f"/api/v1/problems/{problem['id']}/submissions",
+                json={
+                    "version": problem["version"],
+                    "text": f"{marker}_{index}: I compared observations.",
+                },
+                headers={"Idempotency-Key": str(uuid4())},
+            )
+            assert result.status_code == 202, result.text
+            assert worker.run_once(engine)
+            checked = await latest(adult, target)
+            assert checked["operations"][-1]["status"] == "completed", checked["operations"][-1]
+            problem = checked
+    await activity(adult, session)
+    assert worker.run_once(engine)
+    problem = await latest(adult, session)
+    result = await adult.post(
+        f"/api/v1/problems/{problem['id']}/submissions",
+        json={
+            "version": problem["version"],
+            "text": "How does this connect to my earlier reasoning?",
+        },
+        headers={"Idempotency-Key": str(uuid4())},
+    )
+    assert result.status_code == 202 and worker.run_once(engine)
+    request = requests[-1]
+    context = "\n".join(message.content for message in request.ordered_messages)
+    assert "EARLIER_REASONING_0" in context and "EARLIER_REASONING_5" in context
+    assert "OTHER_SESSION_CONTENT" not in context
+    assert len(request.ordered_messages) == 13
+    assert request.ordered_messages[0].role == "user"
+    assert request.ordered_messages[-1].role == "user"

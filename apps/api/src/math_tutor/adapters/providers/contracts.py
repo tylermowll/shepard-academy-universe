@@ -83,7 +83,7 @@ class FeedbackPayload(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     strengths: list[str] = Field(max_length=5)
     guidance: list[str] = Field(min_length=1, max_length=5)
-    next_step: str = Field(min_length=1, max_length=1000)
+    next_step: str = Field(max_length=1000)
     concepts: list[str] = Field(max_length=5)
     uncertainty_note: str | None = Field(default=None, max_length=500)
 
@@ -95,7 +95,7 @@ class ModelRequest(BaseModel):
     purpose: Literal["legacy", "generate", "read", "review"] = "legacy"
     model_id: str
     system_instruction: str = Field(max_length=6000)
-    ordered_messages: list[Message] = Field(max_length=12)
+    ordered_messages: list[Message] = Field(max_length=32)
     private_image_bytes: bytes | None = Field(default=None, exclude=True)
     response_schema: dict[str, Any]
     max_output_tokens: int = Field(default=1200, ge=64, le=MAX_OUTPUT_TOKENS)

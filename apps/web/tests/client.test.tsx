@@ -9,6 +9,52 @@ import {
 beforeEach(() => setIdentity(""));
 afterEach(() => vi.unstubAllGlobals());
 
+it("keeps photo-link authorization failures independent of the signed-in session", async () => {
+  const lost = vi.fn();
+  const unsubscribe = onAuthenticationLost(lost);
+  setIdentity("synthetic-authenticated-csrf", true);
+  const fetcher = vi
+    .fn()
+    .mockImplementation(() =>
+      Promise.resolve(
+        new Response('{"detail":"Open a new photo link."}', { status: 401 }),
+      ),
+    );
+  vi.stubGlobal("fetch", fetcher);
+  try {
+    await expect(
+      imageRequest(
+        "/phone-upload/preview",
+        new Blob(["synthetic"]),
+        undefined,
+        "a".repeat(64),
+      ),
+    ).rejects.toThrow("Open a new photo link.");
+    expect(lost).not.toHaveBeenCalled();
+    expect(fetcher).toHaveBeenLastCalledWith(
+      "/api/v1/phone-upload/preview",
+      expect.objectContaining({
+        credentials: "omit",
+        headers: {
+          "X-Photo-Token": "a".repeat(64),
+          "Content-Type": "application/octet-stream",
+        },
+      }),
+    );
+    fetcher.mockResolvedValue(new Response("{}"));
+    await api("/auth/session");
+    expect(fetcher).toHaveBeenLastCalledWith(
+      "/api/v1/auth/session",
+      expect.objectContaining({
+        credentials: "same-origin",
+        headers: { "X-CSRF-Token": "synthetic-authenticated-csrf" },
+      }),
+    );
+  } finally {
+    unsubscribe();
+  }
+});
+
 it.each(["json", "photo"])(
   "invalidates authenticated state when a %s request reports revocation",
   async (kind) => {

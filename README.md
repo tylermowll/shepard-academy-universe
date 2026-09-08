@@ -107,8 +107,10 @@ Open **Learners & devices** to add yourself or a child. Select the profile, choo
 
 The page tabs separate the workflow:
 
-- **Practice**: the current activity, response, photo, and feedback. Tutor style,
-  reference material, and hints are available when needed.
+- **Practice**: one conversation containing work, photos, readings and replies.
+  Use **Send** for work or questions, **Attach photo** for upload/phone QR,
+  **Help** for suggestions and **Next activity options** to move on.
+  **Session & material** holds reference material and session preferences.
 - **History**: reopen or review a saved session.
 - **Learners & devices** (adult): add learners, pair browsers, export saved work,
   revoke access, and delete learners.

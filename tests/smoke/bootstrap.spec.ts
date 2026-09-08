@@ -1,3 +1,4 @@
+import { openAttachments, openSessionTools } from "./support";
 import { expect, test } from "@playwright/test";
 import {
   createActivity,
@@ -62,9 +63,7 @@ test("persisted tutoring survives disconnect and reload, then logout clears priv
       response.url().includes("/submissions") &&
       response.request().method() === "POST",
   );
-  await page
-    .getByRole("button", { name: "Share my work", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   expect((await submitted).status()).toBe(202);
   await context.setOffline(true);
   await page.reload();
@@ -84,6 +83,7 @@ test("persisted tutoring survives disconnect and reload, then logout clears priv
     .selectOption({ label: alias });
   await expect(page.locator(".tutor-feedback")).toHaveCount(1);
   expect(await page.evaluate(() => location.hash)).toBe(hash);
+  await openSessionTools(page);
   await page.getByText("Session settings", { exact: true }).click();
   await page
     .getByRole("button", { name: "Finish session", exact: true })
@@ -245,9 +245,7 @@ test("changing learners clears the previous learner's tutoring and unsent work",
   await page
     .getByRole("textbox", { name: "Your work or question", exact: true })
     .fill("My evidence should support my paragraph's claim.");
-  await page
-    .getByRole("button", { name: "Share my work", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.locator(".tutor-feedback")).toHaveCount(1);
   await page
     .getByRole("textbox", { name: "Your work or question", exact: true })
@@ -311,15 +309,13 @@ test("a lost work receipt retries the original submission through throttling wit
   await page
     .getByRole("textbox", { name: "Your work or question", exact: true })
     .fill("Synthetic original work remains bound to this entry.");
-  await page
-    .getByRole("button", { name: "Share my work", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.locator(".tutor-feedback")).toHaveCount(1);
   await expect(
     page.getByRole("textbox", { name: "Your work or question", exact: true }),
   ).not.toBeEditable();
   await expect(
-    page.getByRole("button", { name: "Share my work", exact: true }),
+    page.getByRole("button", { name: "Send", exact: true }),
   ).toBeDisabled();
   const throttled = page.waitForResponse(
     (response) =>
@@ -355,9 +351,7 @@ test("a lost work receipt retries the original submission through throttling wit
   await page
     .getByRole("textbox", { name: "Your work or question", exact: true })
     .fill("A new revision gets its own operation.");
-  await page
-    .getByRole("button", { name: "Share my work", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.locator(".tutor-feedback")).toHaveCount(2);
   expect(submissions[3]?.key).not.toBe(submissions[0]?.key);
 });
@@ -389,7 +383,7 @@ test("a lost photograph receipt retries the same bytes and purpose without dupli
       });
     else await route.continue();
   });
-  await page.getByText("Upload a photo", { exact: true }).click();
+  await openAttachments(page);
   await page
     .getByLabel("Take or choose a photo")
     .setInputFiles("evals/fixtures/work.png");

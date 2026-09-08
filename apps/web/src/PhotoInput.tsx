@@ -12,6 +12,7 @@ type Props = {
   act: (a: () => Promise<void>) => Promise<void>;
   companionToken?: string;
   reference?: boolean;
+  expanded?: boolean;
 };
 type PendingPhoto = {
   path: string;
@@ -29,6 +30,7 @@ export function PhotoInput({
   act,
   companionToken,
   reference = false,
+  expanded = false,
 }: Props) {
   const [blob, setBlob] = useState<Blob | null>(null);
   const [url, setUrl] = useState("");
@@ -154,7 +156,7 @@ export function PhotoInput({
   }
   return (
     <details
-      open={companionToken ? true : undefined}
+      open={companionToken || expanded ? true : undefined}
       hidden={disabled && !pending && !blob && !working}
     >
       <summary>Upload a photo</summary>

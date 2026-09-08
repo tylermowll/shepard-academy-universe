@@ -50,7 +50,6 @@ def reading(**changes: object) -> ReadingPayload:
         {"quality": "uncertain"},
         {"quality": "unreadable"},
         {"confidence": 0.84},
-        {"ambiguities": ["The order is unclear"]},
         {"transcription": " "},
         {"rejection_reason": "The last line is missing"},
     ],
@@ -58,6 +57,38 @@ def reading(**changes: object) -> ReadingPayload:
 def test_reading_threshold_is_fail_closed(changes: dict[str, object]) -> None:
     assert not can_read(reading(**changes))
     assert can_read(reading())
+
+
+@pytest.mark.parametrize("transcription", ["3/7 + 1/7 = 4/7", "3/7 + 1/7 = 4/14"])
+def test_readability_is_independent_of_correctness_and_incidental_uncertainty(
+    transcription: str,
+) -> None:
+    assert can_read(
+        reading(
+            transcription=transcription,
+            ambiguities=[
+                "The exact number of shaded regions in the secondary sketch is uncertain."
+            ],
+            organization_feedback=[],
+        )
+    )
+    assert not can_read(
+        reading(
+            transcription="[unclear numerator]/7 + 1/7",
+            quality="uncertain",
+            rejection_reason="Type the first numerator; it could be 3 or 8.",
+        )
+    )
+
+
+def test_direct_reply_does_not_require_praise_or_an_extra_exercise() -> None:
+    payload = FeedbackPayload(
+        strengths=[],
+        guidance=["The reader could not identify the first numerator."],
+        next_step="",
+        concepts=[],
+    )
+    assert payload.next_step == "" and not payload.strengths
 
 
 def test_reading_quality_confidence_required_and_no_verdict_fields() -> None:

@@ -149,9 +149,11 @@ creates distinct practice rather than answering the original.
 
 ## 5. Use your iPhone
 
-On the computer, choose **Take photo with phone**. Scan the QR with the iPhone's
+On the computer, choose **Attach photo → Take photo with phone**. Scan the QR with the iPhone's
 Camera app, tap the link, and choose **Take or choose a photo**. Preview, crop or
 rotate as needed, then tap **Send to computer**. The phone needs no tutor login.
+If it is already signed in, leave it signed in: the QR link opens the photo page
+independently of that login, including when the browser reuses an open tab.
 
 For the entire tutor on the phone, open the same HTTPS address in its browser and
 tap **Pair this device** on the sign-in page. Copy its request ID to
@@ -165,11 +167,13 @@ setup steps. The adjacent phone help disclosures link directly to it.
 
 Return to the computer. Within the normal polling interval, the photo's processing
 status appears in session history. The app displays the full reading and any
-handwriting/organization advice. A clear reading proceeds to guidance
+necessary readability advice. A usable reading proceeds to guidance
 automatically—do not wait for a confirmation control. If the model reports
-ambiguity or low readability, tutoring stops and asks for specific improvements:
-for example, separating steps, numbering paragraphs, or rewriting an unclear
-symbol. Submit a cleaner photo or type a new response. Model confidence is not
+essential unreadable content, automatic photo tutoring stops and asks for a
+specific clarification. Incidental uncertainty does not block useful feedback.
+You can ask why the reader rejected the photo in the same conversation; its
+report remains available as explicitly uncertain context. Clarify the relevant
+line or send a clearer section when needed. Model confidence is not
 proof of accuracy; if you notice a wrong reading, point it out in the discussion
 or submit a corrected response.
 

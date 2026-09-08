@@ -81,13 +81,14 @@ export function HelpPage({
                   the level; you can change it during the session.
                 </li>
                 <li>
-                  Write your response in the box, upload a photo, or use{" "}
+                  Write your work or question and choose <strong>Send</strong>.
+                  Use <strong>Attach photo</strong> to upload work or choose{" "}
                   <strong>Take photo with phone</strong>.
                 </li>
                 <li>
                   Read the feedback. Revise your response, ask a question, or
-                  ask for a hint. Choose <strong>Next activity</strong> when you
-                  are ready.
+                  ask for a hint from <strong>Help</strong>. Choose from{" "}
+                  <strong>Next activity options</strong> when you are ready.
                 </li>
               </ol>
               <p>

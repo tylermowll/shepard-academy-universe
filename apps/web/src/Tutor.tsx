@@ -5,6 +5,7 @@ import { ContextHelp } from "./Help";
 import { PhoneLink } from "./PhoneLink";
 import { PhotoInput } from "./PhotoInput";
 import { SafeText } from "./SafeText";
+import { TutorConversation } from "./TutorConversation";
 
 type Props = {
   learner: string;
@@ -94,6 +95,7 @@ export function Tutor({
   const [pending, setPending] = useState<Command | null>(null);
   const [photoPending, setPhotoPending] = useState(false);
   const [photoDraft, setPhotoDraft] = useState(false);
+  const [attachmentsOpen, setAttachmentsOpen] = useState(false);
   const [newSession, setNewSession] = useState(false);
   const [connectionError, setConnectionError] = useState("");
   const [navigationNotice, setNavigationNotice] = useState("");
@@ -729,100 +731,165 @@ export function Tutor({
                 session.
               </p>
             )}
-            {!problem && sessionControls}
-            {problem && (
-              <article className="tutor-activity card">
-                <h3>
-                  {problem.activity_state === "reference_capture"
-                    ? "Reference material"
-                    : "Current activity"}
-                </h3>
-                <SafeText text={problem.problem_text} />
-                <p className="fine">
-                  Saved automatically · {difficultyLabel(session.difficulty)}{" "}
-                  difficulty
-                </p>
-                {problem.concept_focus && (
-                  <p className="fine">Focus: {problem.concept_focus}</p>
+            <div className="tutor-workspace">
+              <article className="tutor-activity chat-column">
+                {problem && (
+                  <details className="activity-brief" open>
+                    <summary>
+                      <h3>
+                        {problem.activity_state === "reference_capture"
+                          ? "Reference material"
+                          : "Current activity"}
+                      </h3>
+                    </summary>
+                    <SafeText text={problem.problem_text} />
+                    <p className="fine">
+                      Saved automatically ·{" "}
+                      {difficultyLabel(session.difficulty)} difficulty
+                    </p>
+                    {problem.concept_focus && (
+                      <p className="fine">Focus: {problem.concept_focus}</p>
+                    )}
+                  </details>
                 )}
-                {problem.activity_state === "generating" && !active && (
-                  <p role="status">
-                    No activity is ready yet. Retry the failed operation below,
-                    or choose new practice material.
-                  </p>
-                )}
-                {problem.activity_state === "reference_capture" && (
-                  <p>
-                    Send a photo of the passage or assignment. The tutor will
-                    read it and create related practice.
-                  </p>
-                )}
-                {problem.operations.length > 0 && (
-                  <section aria-label="Current activity conversation">
-                    {problem.operations.map((operation) => (
-                      <TutorOperation
-                        key={operation.id}
-                        operation={operation}
-                        offline={offline}
-                        disabled={blocked}
-                        act={act}
-                        refresh={refresh}
-                      />
-                    ))}
-                  </section>
-                )}
-                {active && (
-                  <BusyStatus
-                    message={
-                      activeOperation?.status === "interpreting"
-                        ? "Reading your photograph… Your session is saved."
-                        : problem.activity_state === "generating"
-                          ? "Preparing your activity… Your session is saved."
-                          : "Preparing tutor feedback… Your session is saved."
-                    }
-                  />
-                )}
+                <TutorConversation
+                  session={session}
+                  offline={offline}
+                  disabled={blocked}
+                  active={pageActive && page === "practice" && !newSession}
+                  act={act}
+                  refresh={refresh}
+                />
                 <div className="tutor-response">
-                  {problem.activity_state === "ready" && (
-                    <>
-                      <form
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          void act(() => submit("answer"));
-                        }}
-                      >
-                        <label>
-                          Your work or question
-                          <textarea
-                            value={text}
-                            onChange={(event) => setText(event.target.value)}
-                            maxLength={8000}
-                            rows={5}
-                            readOnly={disabled}
-                            placeholder="Write your response, explain a step, or ask a question."
-                          />
-                        </label>
-                        <div className="actions">
-                          <button
-                            className="primary"
-                            disabled={disabled || !text.trim()}
-                          >
-                            Share my work
-                          </button>
-                          <button
-                            type="button"
-                            disabled={disabled || !text.trim()}
-                            onClick={() => void act(() => submit("question"))}
-                          >
-                            Ask about this
-                          </button>
-                        </div>
-                      </form>
-                    </>
+                  {active && (
+                    <BusyStatus
+                      message={
+                        activeOperation?.status === "interpreting"
+                          ? "Reading your photograph…"
+                          : problem?.activity_state === "generating"
+                            ? "Preparing your activity…"
+                            : "Preparing tutor response…"
+                      }
+                    />
                   )}
-                  {(problem.activity_state !== "generating" ||
-                    photoPending) && (
-                    <>
+                  {problem?.activity_state === "generating" && !active && (
+                    <p role="status">
+                      No activity is ready yet. Retry the failed request above,
+                      or choose new practice material.
+                    </p>
+                  )}
+                  {problem?.activity_state === "reference_capture" && (
+                    <p>
+                      Attach a photo of your reference material to create
+                      related practice.
+                    </p>
+                  )}
+                  {problem?.activity_state === "ready" && (
+                    <form
+                      onSubmit={(event) => {
+                        event.preventDefault();
+                        void act(() => submit("answer"));
+                      }}
+                    >
+                      <label>
+                        Your work or question
+                        <textarea
+                          value={text}
+                          onChange={(event) => setText(event.target.value)}
+                          maxLength={8000}
+                          rows={2}
+                          readOnly={disabled}
+                          placeholder="Share your thinking, ask a question, or discuss a photo…"
+                        />
+                      </label>
+                      <div className="composer-actions">
+                        <button
+                          type="button"
+                          aria-expanded={attachmentsOpen}
+                          aria-controls="tutor-attachments"
+                          disabled={blocked}
+                          onClick={() => setAttachmentsOpen(!attachmentsOpen)}
+                        >
+                          Attach photo
+                        </button>
+                        <details className="composer-menu">
+                          <summary>Help</summary>
+                          <div className="composer-options">
+                            <button
+                              type="button"
+                              disabled={disabled}
+                              onClick={() => void act(() => submit("hint", 1))}
+                            >
+                              Give me a hint
+                            </button>
+                            <button
+                              type="button"
+                              disabled={disabled}
+                              onClick={() => void act(() => submit("hint", 2))}
+                            >
+                              Explain the concept
+                            </button>
+                            <button
+                              type="button"
+                              disabled={disabled}
+                              onClick={() => void act(() => submit("hint", 3))}
+                            >
+                              Show a different example
+                            </button>
+                          </div>
+                        </details>
+                        <details className="composer-menu next-menu">
+                          <summary>Next activity options</summary>
+                          <div className="composer-options">
+                            <button
+                              type="button"
+                              disabled={disabled || hasResponseDraft}
+                              onClick={() => void act(() => activity("topic"))}
+                            >
+                              Next activity
+                            </button>
+                            <button
+                              type="button"
+                              disabled={disabled || hasResponseDraft}
+                              onClick={() =>
+                                void act(() =>
+                                  activity("topic", "introductory"),
+                                )
+                              }
+                            >
+                              Easier next activity
+                            </button>
+                            <button
+                              type="button"
+                              disabled={disabled || hasResponseDraft}
+                              onClick={() =>
+                                void act(() => activity("topic", "challenge"))
+                              }
+                            >
+                              Harder next activity
+                            </button>
+                          </div>
+                        </details>
+                        <button
+                          className="primary send-message"
+                          disabled={disabled || !text.trim()}
+                        >
+                          Send
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                  {problem && (
+                    <div
+                      id="tutor-attachments"
+                      className="tutor-attachments"
+                      hidden={
+                        !attachmentsOpen &&
+                        problem.activity_state !== "reference_capture" &&
+                        !photoPending &&
+                        !photoDraft
+                      }
+                    >
                       <p className="fine">{features?.photo_status}</p>
                       {(features?.photos_available ||
                         photoDraft ||
@@ -837,6 +904,7 @@ export function Tutor({
                             onHelp={() => onNavigate?.("help", "phone")}
                           />
                           <PhotoInput
+                            expanded
                             key={problem.id}
                             problem={problem.id}
                             version={problem.version}
@@ -851,96 +919,29 @@ export function Tutor({
                             onPendingChange={setPhotoPending}
                             onDraftChange={setPhotoDraft}
                             act={act}
-                            onSaved={refresh}
+                            onSaved={async () => {
+                              await refresh();
+                              setAttachmentsOpen(false);
+                            }}
                             reference={
                               problem.activity_state === "reference_capture"
                             }
                           />
                         </>
                       )}
-                    </>
+                    </div>
                   )}
                 </div>
-                {problem.activity_state === "ready" && (
-                  <div className="tutor-next">
-                    <details>
-                      <summary>Get help with this activity</summary>
-                      <div className="actions">
-                        <button
-                          disabled={disabled}
-                          onClick={() => void act(() => submit("hint", 1))}
-                        >
-                          Give me a hint
-                        </button>
-                        <button
-                          disabled={disabled}
-                          onClick={() => void act(() => submit("hint", 2))}
-                        >
-                          Explain the concept
-                        </button>
-                        <button
-                          disabled={disabled}
-                          onClick={() => void act(() => submit("hint", 3))}
-                        >
-                          Show a different example
-                        </button>
-                      </div>
-                    </details>
-                    <div className="actions">
-                      <button
-                        disabled={disabled || hasResponseDraft}
-                        onClick={() => void act(() => activity("topic"))}
-                      >
-                        Next activity
-                      </button>
-                      <button
-                        disabled={disabled || hasResponseDraft}
-                        onClick={() =>
-                          void act(() => activity("topic", "introductory"))
-                        }
-                      >
-                        Easier next activity
-                      </button>
-                      <button
-                        disabled={disabled || hasResponseDraft}
-                        onClick={() =>
-                          void act(() => activity("topic", "challenge"))
-                        }
-                      >
-                        Harder next activity
-                      </button>
-                    </div>
-                  </div>
-                )}
               </article>
-            )}
-            {problem && sessionControls}
-            {session.problems.some((item) => item.id !== problem?.id) && (
-              <details
-                className="past-activities"
-                open={session.status !== "open" || undefined}
-              >
-                <summary>Earlier activities in this session</summary>
-                {session.problems
-                  .filter((item) => item.id !== problem?.id)
-                  .map((item) => (
-                    <article className="card tutor-history" key={item.id}>
-                      <h4>Earlier activity</h4>
-                      <SafeText text={item.problem_text} />
-                      {item.operations.map((operation) => (
-                        <TutorOperation
-                          key={operation.id}
-                          operation={operation}
-                          offline={offline}
-                          disabled={blocked}
-                          act={act}
-                          refresh={refresh}
-                        />
-                      ))}
-                    </article>
-                  ))}
-              </details>
-            )}
+              {session.status === "open" && (
+                <aside className="tutor-sidebar" aria-label="Session tools">
+                  <details open={!problem || undefined}>
+                    <summary>Session &amp; material</summary>
+                    {sessionControls}
+                  </details>
+                </aside>
+              )}
+            </div>
           </div>
         )}
         {features?.tutoring_available && (
@@ -956,162 +957,6 @@ export function Tutor({
           </ContextHelp>
         )}
       </div>
-    </section>
-  );
-}
-
-function TutorOperation({
-  operation,
-  offline,
-  disabled,
-  act,
-  refresh,
-}: {
-  operation: Schema<"OperationPublic">;
-  offline: boolean;
-  disabled: boolean;
-  act: Props["act"];
-  refresh: () => Promise<void>;
-}) {
-  const reading = operation.reading;
-  const feedback = operation.feedback;
-  const canContinue =
-    reading?.can_continue === true &&
-    reading.quality === "clear" &&
-    reading.confidence >= 0.85 &&
-    !operation.ambiguities?.length;
-  const rejected = reading && !canContinue;
-  if (operation.kind === "generation" && operation.status === "completed")
-    return null;
-
-  return (
-    <section className="operation tutor-operation">
-      {operation.text && operation.kind !== "generation" && (
-        <>
-          <p className="eyebrow">
-            You ·{" "}
-            {operation.kind === "answer"
-              ? "shared work"
-              : operation.kind === "hint"
-                ? "requested guidance"
-                : "discussion"}
-          </p>
-          <p className="user-text">{operation.text}</p>
-        </>
-      )}
-      {operation.work_text && (
-        <p className="user-text">{operation.work_text}</p>
-      )}
-      {reading && (
-        <section className="photo-reading" aria-label="Reading from your photo">
-          <h5>Reading from your photo</h5>
-          <p className="user-text">
-            {operation.interpretation ||
-              "The writing could not be read reliably."}
-          </p>
-          {reading.organization_feedback.length > 0 && (
-            <>
-              <h6>Handwriting and organization</h6>
-              <ul>
-                {reading.organization_feedback.map((item, index) => (
-                  <li key={index}>{item}</li>
-                ))}
-              </ul>
-            </>
-          )}
-          {(operation.ambiguities ?? []).map((item, index) => (
-            <p className="notice" key={index}>
-              {item}
-            </p>
-          ))}
-          {rejected && (
-            <div role="status" className="error">
-              <strong>Please organize or retake this work.</strong>
-              <p>
-                {reading.rejection_reason ??
-                  "The tutor is not confident it can read this reliably. Write clearly, separate your steps or paragraphs, and take a well-lit, straight-on photo."}
-              </p>
-              <p>
-                No tutoring will proceed from this uncertain reading. Submit a
-                clearer photo, or write your work in the response box.
-              </p>
-            </div>
-          )}
-          {canContinue && (
-            <p className="fine">
-              This reading was clear enough to continue automatically. If you
-              notice a mistake, tell the tutor in your next response.
-            </p>
-          )}
-        </section>
-      )}
-      {feedback && !rejected ? (
-        <section className="tutor-feedback" aria-label="Tutor guidance">
-          <h5>Tutor guidance</h5>
-          {feedback.strengths.length > 0 && (
-            <>
-              <h6>What is working</h6>
-              <ul>
-                {feedback.strengths.map((item, index) => (
-                  <li key={index}>
-                    <SafeText text={item} />
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-          {feedback.guidance.map((item, index) => (
-            <SafeText key={index} text={item} />
-          ))}
-          {feedback.concepts.length > 0 && (
-            <p className="fine">Concepts: {feedback.concepts.join(" · ")}</p>
-          )}
-          <h6>Try this next</h6>
-          <SafeText text={feedback.next_step} />
-          {feedback.uncertainty_note && (
-            <p className="notice">{feedback.uncertainty_note}</p>
-          )}
-          <p className="fine">
-            {operation.source} · AI guidance, not a certified grade
-          </p>
-        </section>
-      ) : (
-        !rejected && operation.message && <SafeText text={operation.message} />
-      )}
-      {operation.safe_error && !rejected && (
-        <div role="status" className="error">
-          <p>{operation.safe_error}</p>
-          {operation.error_code && (
-            <p className="fine">Diagnostic code: {operation.error_code}</p>
-          )}
-        </div>
-      )}
-      {operation.status === "failed" && operation.retryable && !rejected && (
-        <button
-          disabled={disabled || offline}
-          onClick={() =>
-            void act(async () => {
-              await api(`/operations/${operation.id}/retry`, "POST");
-              await refresh();
-            })
-          }
-        >
-          Retry tutor response
-        </button>
-      )}
-      {!["completed", "canceled"].includes(operation.status) && (
-        <button
-          disabled={disabled || offline}
-          onClick={() =>
-            void act(async () => {
-              await api(`/operations/${operation.id}/cancel`, "POST");
-              await refresh();
-            })
-          }
-        >
-          {rejected ? "Dismiss rejected reading" : "Cancel this operation"}
-        </button>
-      )}
     </section>
   );
 }

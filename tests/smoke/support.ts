@@ -86,3 +86,22 @@ export async function createActivity(page: Page) {
   ).toBeEditable();
   await expect(page.locator(".tutor-activity")).toBeVisible();
 }
+
+export async function openAttachments(page: Page) {
+  const trigger = page.getByRole("button", {
+    name: "Attach photo",
+    exact: true,
+  });
+  if (
+    (await trigger.count()) &&
+    (await trigger.getAttribute("aria-expanded")) === "false"
+  )
+    await trigger.click();
+  await expect(page.getByText("Upload a photo", { exact: true })).toBeVisible();
+}
+
+export async function openSessionTools(page: Page) {
+  const trigger = page.getByText("Session & material", { exact: true });
+  if ((await trigger.locator("..").getAttribute("open")) === null)
+    await trigger.click();
+}

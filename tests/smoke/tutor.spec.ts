@@ -1,3 +1,4 @@
+import { openAttachments, openSessionTools } from "./support";
 import { expect, test } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import type { Schema } from "../../apps/web/src/client";
@@ -30,6 +31,7 @@ test("the tutor continues from a phone photo through guidance, revision, discuss
     if (/\/(?:accept-reading|confirm)(?:\?|$)/.test(request.url()))
       approvals.push(request.url());
   });
+  await openAttachments(page);
   await page
     .getByRole("button", { name: "Take photo with phone", exact: true })
     .click();
@@ -77,7 +79,9 @@ test("the tutor continues from a phone photo through guidance, revision, discuss
       exact: true,
     });
     await expect(reading).toContainText("2/5");
-    await expect(reading).toContainText("Handwriting and organization");
+    await expect(
+      reading.getByText("Reading details", { exact: true }),
+    ).toBeVisible();
     expect(
       await reading.evaluate((element) => {
         const feedback = document.querySelector(".tutor-feedback");
@@ -111,24 +115,21 @@ test("the tutor continues from a phone photo through guidance, revision, discuss
     .fill(
       "Revision: I counted two plants out of five and used the total number as the denominator.",
     );
-  await page
-    .getByRole("button", { name: "Share my work", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.locator(".tutor-feedback")).toHaveCount(2);
   await page
     .getByRole("textbox", { name: "Your work or question", exact: true })
     .fill(
       "Why should the denominator describe all plants rather than only the surviving ones?",
     );
-  await page
-    .getByRole("button", { name: "Ask about this", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.locator(".tutor-feedback")).toHaveCount(3);
   const next = page.waitForResponse(
     (response) =>
       response.url().endsWith("/activities") &&
       response.request().method() === "POST",
   );
+  await page.getByText("Next activity options", { exact: true }).click();
   await page
     .getByRole("button", { name: "Harder next activity", exact: true })
     .click();
@@ -142,7 +143,9 @@ test("the tutor continues from a phone photo through guidance, revision, discuss
     page.getByText("Saved automatically · Harder difficulty"),
   ).toBeVisible();
   await expect(page.locator(".tutor-activity")).toHaveCount(1);
-  await expect(page.locator(".tutor-history")).toHaveCount(1);
+  await expect(
+    page.getByRole("log").getByText("Earlier activity 1", { exact: true }),
+  ).toBeVisible();
   await expect(page.locator(".tutor-feedback")).toHaveCount(3);
   expect(errors).toEqual([]);
   await page.screenshot({
@@ -182,11 +185,10 @@ test("reading and history reference material produces analogous practice instead
     .fill(
       "The narrator makes a claim, but I would look for a quoted action supporting that claim before accepting it.",
     );
-  await page
-    .getByRole("button", { name: "Share my work", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.locator(".tutor-feedback")).toHaveCount(1);
   await expect(page.locator(".verdict")).toHaveCount(0);
+  await openSessionTools(page);
   await page.getByText("Session settings", { exact: true }).click();
   await page
     .getByRole("combobox", {
@@ -201,6 +203,7 @@ test("reading and history reference material produces analogous practice instead
   await page
     .getByRole("combobox", { name: "Learner", exact: true })
     .selectOption({ label: alias });
+  await openSessionTools(page);
   await page.getByText("Session settings", { exact: true }).click();
   await expect(
     page.getByRole("combobox", {
@@ -220,7 +223,7 @@ test("an uncertain photographed response requests clearer organized work and nev
     if (request.url().includes("/accept-reading"))
       acceptedReadings.push(request.url());
   });
-  await page.getByText("Upload a photo", { exact: true }).click();
+  await openAttachments(page);
   // Original generated blur fixture; not a downloaded worksheet or learner photo.
   await page
     .getByLabel("Take or choose a photo")
@@ -229,7 +232,7 @@ test("an uncertain photographed response requests clearer organized work and nev
     .getByRole("button", { name: "Submit this photograph", exact: true })
     .click();
   await expect(
-    page.getByText("Please organize or retake this work.", { exact: true }),
+    page.getByText("This photo needs clarification.", { exact: true }),
   ).toBeVisible();
   await expect(page.locator(".tutor-feedback")).toHaveCount(0);
   await expect(page.locator(".verdict")).toHaveCount(0);
@@ -256,7 +259,7 @@ test("a source photograph is read only to create distinct practice, not reviewed
   await expect(page.locator(".tutor-activity")).toContainText(
     "Reference material",
   );
-  await page.getByText("Upload a photo", { exact: true }).click();
+  await openAttachments(page);
   const bytes = Array.from(await readFile("evals/fixtures/work.png"));
   const transfer = await page.evaluateHandle((content) => {
     const data = new DataTransfer();
@@ -292,9 +295,7 @@ test("a source photograph is read only to create distinct practice, not reviewed
     .fill(
       "My own response to the new activity: compare an observation from each group before making a claim.",
     );
-  await page
-    .getByRole("button", { name: "Share my work", exact: true })
-    .click();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
   await expect(page.locator(".tutor-feedback")).toHaveCount(1);
   await expect(page.locator(".verdict")).toHaveCount(0);
 });

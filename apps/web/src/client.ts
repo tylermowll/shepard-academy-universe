@@ -99,11 +99,11 @@ export async function imageRequest(
 ): Promise<Response> {
   const current = generation;
   const headers: Record<string, string> = {
-    "X-CSRF-Token": csrf,
     "Content-Type": "application/octet-stream",
   };
   if (key) headers["Idempotency-Key"] = key;
   if (photoToken) headers["X-Photo-Token"] = photoToken;
+  else headers["X-CSRF-Token"] = csrf;
   const response = await fetch(`/api/v1${path}`, {
     method: "POST",
     headers,
@@ -111,10 +111,11 @@ export async function imageRequest(
     credentials: photoToken ? "omit" : "same-origin",
     cache: "no-store",
   });
-  checkSession(current, response, path);
+  // A scoped photo link is independent of any login in this browser tab.
+  if (!photoToken) checkSession(current, response, path);
   if (!response.ok) {
     const data: unknown = await response.json().catch(() => null);
-    checkSession(current, response, path);
+    if (!photoToken) checkSession(current, response, path);
     throw new ApiError(
       data &&
         typeof data === "object" &&
