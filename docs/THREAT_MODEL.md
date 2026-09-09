@@ -8,7 +8,7 @@ multi-tenant service or a claim of regulatory certification.
 | Boundary             | Enforcement and evidence                                                                                                                                                                               |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Browser identity     | Argon2id adult login, hashed opaque cookies, expiry/revocation, CSRF and exact configured Origin/Host; no tokens in localStorage                                                                       |
-| First-account owner  | Native launcher or private Docker owner socket issues an expiring fragment token; hash-only gate, CSRF/origin/rate checks and atomic first claim; no public issuance or web reset |
+| First-account owner  | Native launcher or private Docker owner socket issues a one-use link; exchange grants a scoped HttpOnly cookie; CSRF/origin/rate checks and atomic first claim; no public owner-link issuance or web reset |
 | Local password policy | Six-character minimum on HTTP loopback only; short passwords flagged and rejected for network startup, login and adult sessions; HTTPS creation retains twelve-character minimum                       |
 | Learner sign-in      | Unique usernames, Argon2id passwords, rate limits and revocable sessions; the administrator creates accounts and resets passwords |
 | Learner ownership    | Backend principal and joins on every practice/photo/operation route; two-learner isolation tests                                                                                                       |
@@ -26,13 +26,15 @@ multi-tenant service or a claim of regulatory certification.
 
 Host files use private permissions and should reside on an encrypted local volume.
 The shorter local password is an explicit convenience tradeoff, not strong
-password guidance. Keep setup links private: the token grants first-account
-creation until it expires, is replaced, or an account is created. API restart
-also discards it. Docker issuance requires access to the owner-only Unix socket
-through `docker exec`; no HTTP route can request a link. Native startup and
-Docker renewal both retain only the hash and expiry in API memory. The browser
-keeps the token in tab memory, and app updates wait until signup finishes before
-offering a refresh. Setup never authorizes recovery of an existing account.
+password guidance. Keep setup links private. An unexpired link can be exchanged
+once for an HttpOnly setup cookie with an absolute eight-hour lifetime. The
+signature binds the cookie to setup and the configured origin. It survives API
+restart with the same secret and cannot authenticate normal app requests.
+Renewing a link replaces the unopened token, not permission already exchanged by
+a browser. Account creation closes all setup access. Docker link issuance
+requires the owner-only Unix socket through `docker exec`; no HTTP route issues
+links. App updates wait until signup finishes before offering a refresh. Setup
+never authorizes recovery of an existing account.
 SQLite does not encrypt itself. Backups use authenticated encryption with a
 separate passphrase; losing the passphrase loses recovery. Preserve the current
 deletion ledger separately from old archives. Operator settings/secrets require

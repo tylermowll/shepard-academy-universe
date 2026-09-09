@@ -66,6 +66,9 @@ export async function createLearner(page: Page, signIn = true) {
   ).toContainText(alias);
   if (signIn) {
     await page.getByRole("button", { name: "Sign out", exact: true }).click();
+    await expect(
+      page.getByRole("button", { name: "Sign in", exact: true }),
+    ).toBeVisible();
     await login(page, alias);
   }
   return alias;

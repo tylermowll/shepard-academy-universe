@@ -2038,7 +2038,19 @@
             "title": "Password Confirmation",
             "type": "string",
             "writeOnly": true
-          },
+          }
+        },
+        "required": [
+          "login_name",
+          "password",
+          "password_confirmation"
+        ],
+        "title": "SetupRequest",
+        "type": "object"
+      },
+      "SetupSessionRequest": {
+        "additionalProperties": false,
+        "properties": {
           "setup_token": {
             "format": "password",
             "maxLength": 256,
@@ -2049,12 +2061,9 @@
           }
         },
         "required": [
-          "setup_token",
-          "login_name",
-          "password",
-          "password_confirmation"
+          "setup_token"
         ],
-        "title": "SetupRequest",
+        "title": "SetupSessionRequest",
         "type": "object"
       },
       "SetupStatus": {
@@ -3348,6 +3357,66 @@
           }
         },
         "summary": "Create First Administrator",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/v1/auth/setup/session": {
+      "delete": {
+        "operationId": "cancel_setup_api_v1_auth_setup_session_delete",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Cancel Setup",
+        "tags": [
+          "auth"
+        ]
+      },
+      "post": {
+        "operationId": "exchange_setup_link_api_v1_auth_setup_session_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupSessionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupStatus"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Exchange Setup Link",
         "tags": [
           "auth"
         ]

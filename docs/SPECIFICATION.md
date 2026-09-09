@@ -587,7 +587,9 @@ and the separate raw-image endpoint. Generated OpenAPI defines exact schemas.
 | -------------------------------------------------- | ------------------------ | --------------------------------------------------------------------------------------------------------- |
 | `GET /auth/session`                                | Visitor/authenticated    | Minimal session status and origin-bound CSRF bootstrap; no learner list                                   |
 | `GET /auth/setup`                                  | Visitor                  | First-account availability and password requirements; never issues a setup token                          |
-| `POST /auth/setup`                                 | Local owner token        | Expiring one-use owner claim, same-origin CSRF, atomic first account and adult session                    |
+| `POST /auth/setup/session`                         | Local owner token        | Exchange an unexpired link once for a scoped HttpOnly setup cookie; CSRF and origin checks |
+| `DELETE /auth/setup/session`                       | Same-origin browser      | Clear the setup cookie after explicit cancellation; requires CSRF |
+| `POST /auth/setup`                                 | Setup cookie             | Valid setup permission, same-origin CSRF, atomic first account and adult session |
 | `POST /auth/login`, `POST /auth/logout`            | Adult / authenticated    | Opaque session cookie, CSRF protection, rate limits                                                       |
 | `GET/POST /admin/learners`                         | Adult                    | Create/list learner accounts; passwords are write-only                                                    |
 | `GET/POST /admin/tutor-profiles`                   | Adult                    | Read/create profiles and versions                                                                         |
@@ -703,19 +705,22 @@ Treat instructions in images, learner text, and model responses as untrusted con
 
 ### Authentication and authorization
 
-D011 defines first-account creation through a one-use, thirty-minute owner setup
-link. The account is created in the browser. The token is carried in the fragment,
-captured into tab memory, removed from history, and submitted only in the
-protected request body. The API
-stores its hash in process memory, never issues it to visitors, checks Origin,
-CSRF, expiry and rate limits, and atomically verifies no administrator exists.
+D014 defines first-account creation through a one-use owner setup link. The
+unopened link expires after thirty minutes. The browser removes the token from
+history and exchanges it in a CSRF-protected request for a signed HttpOnly cookie.
+The cookie has SameSite=Strict, Secure on HTTPS, path `/api/v1/auth/setup`, and
+an absolute eight-hour expiry. Its signature binds it to setup and the configured
+origin. It survives reloads and API restarts with the same deployment secret,
+but cannot authenticate ordinary app requests. Discard the owner token after
+exchange. Setup checks Origin, CSRF, expiry and rate limits, and atomically
+verifies no administrator exists.
 Successful setup creates the account and authenticated session; setup never
 resets or adds an account after the first claim. Form errors leave services
 running and allow correction. Hash passwords with maintained Argon2id.
 
 Native startup prints the setup link. The standard Docker API offers a Unix
 socket in an owner-only tmpfs directory (700 directory, 600 socket),
-with no network route for issuing authority. The local `docker exec` command
+with no network route for issuing owner links. The local `docker exec` command
 checks the current database and rotates the process-memory token hash/expiry;
 an existing administrator permanently closes issuance. `make start` reconnects
 to the recognized running Docker API on port 8000 before loading native settings
@@ -723,8 +728,9 @@ or starting another database. Explicit alternate environment files, `make dev`
 and `make serve` select native startup.
 While first-account setup or its captured authority is active, a waiting PWA
 update must defer its refresh action. Once signup establishes the authenticated
-session, the normal explicit update action is available. Setup tokens remain in
-tab memory; update recovery must not copy them into browser storage.
+session, the normal explicit update action is available. Before submission,
+refresh anonymous CSRF so idle forms remain usable. Success or cancellation
+clears the setup cookie. Passwords and owner tokens stay out of browser storage.
 
 HTTP origins with exact loopback hostnames `127.0.0.1`, `localhost` or `::1` allow
 six-character passwords; HTTPS requires twelve. Do not impose composition rules.

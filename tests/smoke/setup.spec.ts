@@ -120,6 +120,49 @@ async function installation() {
   };
 }
 
+test("browser setup permission survives reload and API restart with expired anonymous CSRF", async ({
+  page,
+  context,
+}) => {
+  test.setTimeout(120_000);
+  const app = await installation();
+  let running = await app.start();
+  try {
+    await page.goto(running.setupUrl());
+    await expect(page.getByLabel("Username", { exact: true })).toBeEditable();
+    const setupCookie = (await context.cookies()).find(
+      (cookie) => cookie.name === "mt_setup",
+    );
+    expect(setupCookie?.httpOnly).toBe(true);
+    expect(setupCookie?.sameSite).toBe("Strict");
+    expect(setupCookie?.path).toBe("/api/v1/auth/setup");
+    expect(await page.evaluate(() => document.cookie)).not.toContain(
+      "mt_setup",
+    );
+    await page.reload();
+    await expect(page.getByLabel("Username", { exact: true })).toBeEditable();
+    await running.stop();
+    running = await app.start();
+    await page.goto(app.origin);
+    await expect(page.getByLabel("Username", { exact: true })).toBeEditable();
+    await page.getByLabel("Username", { exact: true }).fill("synthetic-owner");
+    await page.getByLabel("Password", { exact: true }).fill("local6");
+    await page.getByLabel("Confirm password", { exact: true }).fill("local6");
+    await context.clearCookies({ name: "mt_csrf_anon" });
+    await page
+      .getByRole("button", { name: "Create account", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Sign out", exact: true }),
+    ).toBeVisible();
+    expect(
+      (await context.cookies()).some((cookie) => cookie.name === "mt_setup"),
+    ).toBe(false);
+  } finally {
+    await running.stop();
+  }
+});
+
 test("a waiting update preserves first-account setup and refreshes only after signup", async ({
   page,
 }) => {

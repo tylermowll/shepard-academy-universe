@@ -46,6 +46,75 @@ specification gates pass.
 | T36  | Implemented; local containers updated; live quality unverified | Continuous conversation, qualified photo feedback, contextual follow-ups, compact workspace; 181 unit, 145 component, 238 integration tests, affected browser checks and container smoke passed.                                 |
 | T37 | Implemented; local installation reset and rebuilt; live quality unverified | Unique learner logins, administrator-only management, one-step practice, exclusive menus, stable connection approvals, two-hour QR and Shepherd branding; validation below. |
 | T38 | Implemented, tested and deployed locally | Docker setup links, protected signup updates and one current Compose deployment; evidence below. |
+| T39 | Implemented, tested and deployed locally | Browser setup permission survives link expiry, reloads and API restarts; the local administrator account now exists. |
+
+### T39 — Finish setup without repeating startup (2026-09-08)
+
+The API was healthy, but its thirty-minute owner link expired before account
+creation. The form discarded its permission and returned to terminal instructions.
+T38's update guard did not address this expiry.
+
+Exchange the owner link on opening for a signed HttpOnly setup cookie, valid for
+eight hours and restricted to the setup API. The cookie survives API restarts
+with the same deployment secret. Discard the owner token after exchange. Account
+creation still requires CSRF, the configured origin, valid setup permission and
+an atomic check that no administrator exists. Refresh anonymous CSRF before
+submission so an idle form remains usable. D014 records this change to D011.
+
+Affected contracts: setup requests/status, cookie scope and expiry, one-use link
+exchange, frontend recovery and generated API clients. Tests must cover link
+expiry after exchange, reload/restart, invalid cookies, missing authority,
+concurrent claims, validation, lost responses and cancellation. Required gates:
+targeted tests, `make check`, integration, affected browser tests and a disposable
+container check before the authorized local update. No migration or compatibility
+path.
+
+Changes: `api/setup.py` exchanges links and authorizes account creation through
+the scoped cookie; `setup_gate.py` signs and verifies its purpose, origin and
+expiry. `Setup.tsx` exchanges once, recovers browser permission and refreshes
+anonymous CSRF before submitting. Generated OpenAPI and TypeScript clients were
+regenerated with `make contracts`. Setup/help copy and the operating documents
+describe the new flow. The direct token-in-account-request path was removed.
+
+Validation:
+
+- Targeted setup/owner integration tests: **43 passed**. Setup component tests:
+  **25 passed**.
+- `make check`: passed, including **194 unit tests**, **147 component tests**,
+  lint, format, types, builds, contract drift, credential scan and infrastructure
+  lint. Initial typing/format errors and a test fixture that incorrectly returned
+  visitor state after signup were corrected before the final passing run.
+- `make test-integration`: **267 passed** against temporary SQLite databases.
+- `pnpm exec playwright test tests/smoke/setup.spec.ts tests/smoke/bootstrap.spec.ts
+  --grep 'waiting update|native browser setup|installed update|browser setup permission'`:
+  **10 desktop/mobile cases passed** using the installed Chrome browser. The
+  restart test exchanges the link, reloads, restarts the API, removes anonymous
+  CSRF, and successfully creates the account without reopening the owner link.
+- The earlier `dc70a7e` GitHub run failed 21 browser cases with navigation aborts.
+  `createLearner` began the next login before logout's redirect completed.
+  `tests/smoke/support.ts` now waits for the sign-in form before navigating again.
+  The assertions and application rate limits are unchanged.
+- Final `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome make smoke`:
+  **66 desktop/mobile cases passed** in 9.5 minutes, including the cases that
+  failed in the earlier CI run.
+- `docker build -f infra/docker/Dockerfile -t math-practice-tutor:local .` and
+  `sh scripts/container-smoke.sh math-practice-tutor:local`: passed. Container
+  tests use a disposable database and cover exchange, renewal, stale links and
+  account creation.
+- The local API and worker were updated through the authorized Compose settings
+  load and passed HTTPS readiness. The public setup check then reported that an
+  administrator already exists. The owner command returned only the app address,
+  which was opened on the desktop. Live first-account verification was therefore
+  skipped; the existing account was preserved. The agent entered no credentials
+  and created no account.
+
+No migration, data deletion, model download or live provider call. The existing
+Vite chunk-size and Starlette deprecation warnings remain. The unrelated image
+is excluded from the change.
+
+Final `make hooks-check secret-check` passed with the corrected browser helper.
+`git diff --cached --check` passed, and local link targets exist in all nine
+changed Markdown files.
 
 ### T38 — Docker setup recovery and signup update handling (2026-09-08)
 

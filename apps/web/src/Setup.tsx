@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { api, ApiError, type Schema } from "./client";
+import { useEffect, useRef, useState } from "react";
+import { api, ApiError, setIdentity, type Schema } from "./client";
 import { ContextHelp } from "./Help";
 import type { Navigate } from "./navigation";
 
@@ -8,6 +8,8 @@ const setupErrors: Record<string, string> = {
     "This setup link is invalid or has expired. Open a new link from the app’s terminal.",
   setup_unavailable:
     "Account setup is not available with this link. Open a new link from the app’s terminal.",
+  setup_session_expired:
+    "Setup permission has ended. Open a new setup link from the app’s terminal.",
   setup_claimed:
     "An administrator account already exists. Sign in with that account.",
   password_mismatch:
@@ -39,6 +41,10 @@ export function Setup({
   const [confirmation, setConfirmation] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const setupCheck = useRef<{
+    key: string;
+    result: Promise<Schema<"SetupStatus">>;
+  } | null>(null);
   const [fields, setFields] = useState({
     login: "",
     password: "",
@@ -47,17 +53,41 @@ export function Setup({
 
   useEffect(() => {
     let canceled = false;
-    void api<Schema<"SetupStatus">>("/auth/setup")
+    const key = `${loadAttempt}:${token}`;
+    if (setupCheck.current?.key !== key) {
+      setupCheck.current = {
+        key,
+        result: api<Schema<"SetupStatus">>("/auth/setup").then((current) =>
+          token && current.required && !current.available
+            ? api<Schema<"SetupStatus">>("/auth/setup/session", "POST", {
+                setup_token: token,
+              } satisfies Schema<"SetupSessionRequest">)
+            : current,
+        ),
+      };
+    }
+    void setupCheck.current.result
       .then((result) => {
         if (canceled) return;
         setStatus(result);
         setLoadFailed(false);
         if (token) setError("");
         if (!result.required) onExistingAccount();
-        else if (!result.available) onClearToken();
+        else if (result.available) onClearToken();
       })
-      .catch(() => {
-        if (!canceled) setLoadFailed(true);
+      .catch((cause) => {
+        if (canceled) return;
+        if (
+          cause instanceof ApiError &&
+          cause.code &&
+          ["setup_link_invalid", "setup_unavailable", "setup_claimed"].includes(
+            cause.code,
+          )
+        ) {
+          setError(setupErrors[cause.code] ?? "Could not open setup.");
+          onClearToken();
+          if (cause.code === "setup_claimed") onExistingAccount();
+        } else setLoadFailed(true);
       });
     return () => {
       canceled = true;
@@ -68,8 +98,23 @@ export function Setup({
     setPassword("");
     setConfirmation("");
   };
+  const refreshSetupIdentity = async () => {
+    const session = await api<Schema<"SessionStatus">>("/auth/session");
+    setIdentity(session.csrf_token, session.authenticated);
+    if (session.authenticated && session.role === "adult") {
+      clearCredentials();
+      onComplete(session);
+      return false;
+    }
+    if (!session.setup_required) {
+      clearCredentials();
+      onExistingAccount();
+      return false;
+    }
+    return true;
+  };
   const createAccount = async () => {
-    if (!status || !token || busy) return;
+    if (!status?.available || busy) return;
     const length = Array.from(password).length;
     const next = {
       login: !login.trim()
@@ -100,8 +145,8 @@ export function Setup({
     if (Object.values(next).some(Boolean)) return;
     setBusy(true);
     try {
+      if (!(await refreshSetupIdentity())) return;
       const body: Schema<"SetupRequest"> = {
-        setup_token: token,
         login_name: login.trim(),
         password,
         password_confirmation: confirmation,
@@ -145,18 +190,37 @@ export function Setup({
         code && Object.hasOwn(setupErrors, code)
           ? (setupErrors[code] ?? "Could not create the account. Try again.")
           : cause instanceof ApiError && cause.status === 403
-            ? "Setup could not be authorized. Refresh this page, then reopen the setup link from the terminal."
+            ? "Could not confirm setup permission. Try creating the account again."
             : "Could not create the account. Check that the app is running, then try again.",
       );
       if (
-        code === "setup_link_invalid" ||
+        code === "setup_session_expired" ||
         code === "setup_unavailable" ||
         code === "setup_claimed"
       ) {
         clearCredentials();
         onClearToken();
+        setStatus((current) => current && { ...current, available: false });
       }
       if (code === "setup_claimed") onExistingAccount();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const cancelSetup = async () => {
+    setBusy(true);
+    try {
+      if (!(await refreshSetupIdentity())) return;
+      const next = await api<Schema<"SetupStatus">>(
+        "/auth/setup/session",
+        "DELETE",
+      );
+      clearCredentials();
+      setError("");
+      onClearToken();
+      setStatus(next);
+    } catch {
+      setError("Could not cancel setup. Try again.");
     } finally {
       setBusy(false);
     }
@@ -194,13 +258,13 @@ export function Setup({
         ) : (
           <p role="status">Checking account setup…</p>
         )
-      ) : !token || !status.available ? (
+      ) : !status.available ? (
         <div className="card">
           <h2>Open the setup link from your terminal</h2>
           <p>
             On the computer running Shepherd Academy Universe, open the setup
-            link printed by <code>make start</code>. It works for 30 minutes and
-            creates only the first account.
+            link printed by <code>make start</code>. Open it within 30 minutes.
+            This browser then has eight hours to create the first account.
           </p>
           <p>
             If the link expired or no link is shown, run <code>make start</code>{" "}
@@ -209,8 +273,8 @@ export function Setup({
             stop that run first. Choose your password here in the browser.
           </p>
           <p className="fine">
-            Keep the link private. Reloading this page clears its setup
-            permission; reopen the terminal link to continue.
+            Keep the link private. Once opened, setup permission survives
+            refreshes and app restarts in this browser.
           </p>
         </div>
       ) : (
@@ -307,11 +371,7 @@ export function Setup({
             <button
               type="button"
               disabled={busy}
-              onClick={() => {
-                clearCredentials();
-                setError("");
-                onClearToken();
-              }}
+              onClick={() => void cancelSetup()}
             >
               Cancel setup
             </button>

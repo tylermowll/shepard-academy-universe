@@ -25,10 +25,11 @@ make start
 port 8000; otherwise it starts a native app with persistent settings and data.
 On first run, open the private setup link printed in the terminal and choose
 your administrator username and password in the browser. The link expires after
-30 minutes. Run `make start` to renew it; stop a native terminal run with Ctrl+C
-first. Docker can keep running. Reopen the unexpired link if you reload the form.
-App updates wait until signup finishes before offering a refresh. Keep the link
-private. Existing accounts sign in at the app address printed in the terminal.
+30 minutes if unopened. Once opened, this browser has eight hours to finish
+setup, including after refreshes and app restarts. Run `make start` to renew an
+unopened expired link; stop a native terminal run with Ctrl+C first. Docker can
+keep running. App updates wait until signup finishes before offering a refresh.
+Keep the link private. Existing accounts sign in at the printed app address.
 
 For an existing installation, stop all app/worker writes and back up retained
 data before upgrading. If startup reports an old database schema, run

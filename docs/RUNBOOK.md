@@ -20,12 +20,13 @@ application for end-to-end practice. `/health/live` reports process liveness;
 missing. It never makes paid health-check calls.
 
 Keep the setup link private and keep startup output out of shared logs. The
-browser removes the token from its address and holds it only in tab memory.
-Reloading before submission requires reopening the unexpired terminal link.
-Ctrl+C followed by `make start` issues a new link and invalidates the previous
-one. App updates defer their refresh button until account creation finishes.
-The API stores only the token hash and expiry in memory. No public API issues
-setup links, and setup cannot reset an existing account.
+browser removes the token from its address and exchanges it once for a setup
+cookie. The cookie is HttpOnly, restricted to the setup API, and valid for eight
+hours. It survives refreshes and API restarts with the same deployment secret.
+Unsent passwords clear on reload. App updates defer their refresh button until
+account creation finishes. The unopened link expires after thirty minutes;
+Ctrl+C followed by `make start` issues a replacement for a native app.
+No public API issues owner links, and setup cannot reset an existing account.
 
 Passwords of 6–11 characters are accepted only with an HTTP loopback origin;
 the administrator is then flagged local-only. HTTPS needs at least twelve
@@ -108,8 +109,10 @@ The command uses the API's `SHEPHERD_OWNER_SOCKET` Unix socket inside its privat
 tmpfs directory. Directory permissions are 700; socket permissions are 600.
 `make start` discovers the running API using public Docker metadata before
 loading native settings or checking Node. It does not start another app.
-Every new link replaces the previous one; once an administrator exists, the
-command returns the sign-in address. Explicit `make dev`, `make serve` and
+Every new link replaces the previous unopened link. Browser permission already
+granted lasts until its eight-hour expiry or account creation. Once an
+administrator exists, the command returns the sign-in address. Explicit
+`make dev`, `make serve` and
 alternate `ENV_FILE` values select native startup.
 
 For a container upgrade, stop both services, back up the mounted data directory,

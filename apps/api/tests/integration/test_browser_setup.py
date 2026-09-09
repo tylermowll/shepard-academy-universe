@@ -22,10 +22,11 @@ from test_auth_sessions import anyio_backend as anyio_backend
 from test_auth_sessions import db_url as db_url
 from test_auth_sessions import engine as engine
 
-from math_tutor import auth, settings
+from math_tutor import auth, settings, setup_gate
 from math_tutor.adapters.db.models import Administrator, DeviceSession
 from math_tutor.api.app import create_app
 from math_tutor.api.auth import ANON_CSRF_COOKIE, CSRF_HEADER, SESSION_COOKIE
+from math_tutor.api.setup import SETUP_COOKIE, SETUP_COOKIE_PATH
 from math_tutor.setup_gate import SETUP_TOKEN_ENV_VAR, SetupGate
 
 OWNER_TOKEN = "synthetic-local-owner-token-0123456789abcdef"
@@ -33,6 +34,7 @@ NEW_OWNER_TOKEN = "different-synthetic-owner-token-fedcba9876543210"
 PASSWORD = "plain6"
 NETWORK_PASSWORD = "simplepassword12"
 SETUP = "/api/v1/auth/setup"
+EXCHANGE = SETUP + "/session"
 
 
 @pytest.fixture(autouse=True)
@@ -54,7 +56,6 @@ def client(app: FastAPI, origin: str = TEST_ORIGIN) -> AsyncClient:
 
 def body(**changes: Any) -> dict[str, Any]:
     return {
-        "setup_token": OWNER_TOKEN,
         "login_name": " Owner ",
         "password": PASSWORD,
         "password_confirmation": PASSWORD,
@@ -69,6 +70,122 @@ async def csrf(browser: AsyncClient) -> str:
     return str(response.json()["csrf_token"])
 
 
+async def authorize(browser: AsyncClient, token: str = OWNER_TOKEN) -> None:
+    await csrf(browser)
+    response = await browser.post(EXCHANGE, json={"setup_token": token})
+    assert response.status_code == 200, response.text
+    assert response.json()["available"]
+    assert browser.cookies.get(SETUP_COOKIE)
+
+
+@pytest.mark.anyio
+async def test_browser_permission_survives_link_expiry_and_api_restart(
+    app: FastAPI, engine: Engine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    async with client(app) as browser:
+        await authorize(browser)
+        assert not app.state.setup_gate.available()
+        assert (await browser.get("/api/v1/auth/session")).json()["authenticated"] is False
+        assert (await browser.get("/api/v1/admin/learners")).status_code == 401
+        cookies = browser.cookies
+    now = time.time()
+    monkeypatch.setattr(time, "time", lambda: now + 2 * 60 * 60)
+    restarted = create_app(engine)
+    assert not restarted.state.setup_gate.available()
+    async with client(restarted) as resumed:
+        resumed.cookies.update(cookies)
+        assert (await resumed.get(SETUP)).json()["available"] is True
+        await csrf(resumed)
+        response = await resumed.post(SETUP, json=body())
+        assert response.status_code == 200
+        assert response.json()["authenticated"] is True
+        assert not resumed.cookies.get(SETUP_COOKIE)
+
+
+@pytest.mark.anyio
+async def test_exchange_cookie_scope_one_use_and_lost_receipt_recovery(app: FastAPI) -> None:
+    async with client(app) as owner, client(app) as visitor:
+        await csrf(owner)
+        response = await owner.post(EXCHANGE, json={"setup_token": OWNER_TOKEN})
+        assert response.status_code == 200
+        cookie = response.headers["set-cookie"]
+        assert "HttpOnly" in cookie and "SameSite=strict" in cookie
+        assert f"Path={SETUP_COOKIE_PATH}" in cookie and "Max-Age=28800" in cookie
+        assert "Secure" not in cookie and "Domain=" not in cookie
+        assert OWNER_TOKEN not in cookie and OWNER_TOKEN not in response.text
+        assert owner.cookies[SETUP_COOKIE] not in response.text
+        # Retrying after receiving the cookie cannot extend permission.
+        recovered = await owner.post(EXCHANGE, json={"setup_token": OWNER_TOKEN})
+        assert recovered.status_code == 200 and "set-cookie" not in recovered.headers
+        await csrf(visitor)
+        replay = await visitor.post(EXCHANGE, json={"setup_token": OWNER_TOKEN})
+        assert replay.status_code == 403
+        assert (await visitor.get(SETUP)).json()["available"] is False
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "failure", ["missing", "tampered", "expired", "future", "secret", "origin", "csrf_token"]
+)
+async def test_setup_cookie_rejects_invalid_permission(
+    app: FastAPI, engine: Engine, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    now = time.time()
+    token = setup_gate.sign_setup_session(TEST_SECRET, TEST_ORIGIN)
+    if failure == "missing":
+        token = ""
+    elif failure == "tampered":
+        token = token[:-1] + ("a" if token[-1] != "a" else "b")
+    elif failure == "expired":
+        monkeypatch.setattr(time, "time", lambda: now + setup_gate.SETUP_SESSION_LIFETIME_SECONDS)
+    elif failure == "future":
+        monkeypatch.setattr(time, "time", lambda: now - 60)
+    elif failure == "secret":
+        token = setup_gate.sign_setup_session("another-synthetic-secret", TEST_ORIGIN)
+    elif failure == "origin":
+        token = setup_gate.sign_setup_session(TEST_SECRET, "https://another.example")
+    elif failure == "csrf_token":
+        token = auth.sign_anon_csrf("a" * 43, TEST_SECRET)
+    async with client(app) as browser:
+        browser.cookies.set(SETUP_COOKIE, token, path=SETUP_COOKIE_PATH)
+        await csrf(browser)
+        assert (await browser.get(SETUP)).json()["available"] is False
+        response = await browser.post(SETUP, json=body())
+        assert response.status_code == 403
+        assert response.json()["code"] == "setup_session_expired"
+    with Session(engine) as db:
+        assert db.scalar(select(Administrator.id)) is None
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("failure", ["csrf", "origin", "host"])
+async def test_browser_permission_does_not_bypass_request_boundaries(
+    app: FastAPI, failure: str
+) -> None:
+    async with client(app) as browser:
+        await authorize(browser)
+        if failure == "csrf":
+            browser.headers[CSRF_HEADER] = "wrong"
+        elif failure == "origin":
+            browser.headers["Origin"] = "https://attacker.invalid"
+        else:
+            browser.headers["Host"] = "attacker.invalid"
+        assert (await browser.post(SETUP, json=body())).status_code == 403
+
+
+@pytest.mark.anyio
+async def test_cancel_clears_cookie_and_direct_owner_token_submission_is_rejected(
+    app: FastAPI,
+) -> None:
+    async with client(app) as browser:
+        await authorize(browser)
+        assert (await browser.post(SETUP, json=body(setup_token=OWNER_TOKEN))).status_code == 422
+        canceled = await browser.delete(EXCHANGE)
+        assert canceled.status_code == 200 and not canceled.json()["available"]
+        assert not browser.cookies.get(SETUP_COOKIE)
+        assert (await browser.post(SETUP, json=body())).status_code == 403
+
+
 @pytest.mark.anyio
 async def test_first_owner_setup_signs_in_and_never_exposes_secrets(
     app: FastAPI, engine: Engine
@@ -80,7 +197,7 @@ async def test_first_owner_setup_signs_in_and_never_exposes_secrets(
         status = await browser.get(SETUP)
         assert status.json() == {
             "required": True,
-            "available": True,
+            "available": False,
             "minimum_password_length": 6,
             "maximum_password_length": 256,
             "local_passwords_allowed": True,
@@ -89,6 +206,7 @@ async def test_first_owner_setup_signs_in_and_never_exposes_secrets(
         initial = await browser.get("/api/v1/auth/session")
         assert initial.json()["setup_required"] is True
         browser.headers[CSRF_HEADER] = initial.json()["csrf_token"]
+        await authorize(browser)
         response = await browser.post(SETUP, json=body())
         assert response.status_code == 200, response.text
         assert response.json() == {
@@ -102,6 +220,7 @@ async def test_first_owner_setup_signs_in_and_never_exposes_secrets(
         assert "SameSite=lax" in response.headers["set-cookie"]
         assert "Secure" not in response.headers["set-cookie"]
         assert not browser.cookies.get(ANON_CSRF_COOKIE)
+        assert not browser.cookies.get(SETUP_COOKIE)
         assert OWNER_TOKEN not in response.text and PASSWORD not in response.text
         assert (await browser.get("/api/v1/auth/session")).json()["authenticated"]
         assert (await browser.get("/api/v1/admin/learners")).status_code == 200
@@ -124,8 +243,8 @@ async def test_setup_status_does_not_issue_authority_without_launcher_token(engi
         assert status["required"] and not status["available"]
         assert "token" not in str(status)
         await csrf(browser)
-        result = await browser.post(SETUP, json=body())
-        assert result.status_code == 403 and result.json()["code"] == "setup_unavailable"
+        result = await browser.post(EXCHANGE, json={"setup_token": OWNER_TOKEN})
+        assert result.status_code == 403 and result.json()["code"] == "setup_link_invalid"
     with Session(engine) as db:
         assert db.scalar(select(Administrator.id)) is None
 
@@ -137,7 +256,7 @@ async def test_setup_rejects_invalid_authority_origin_csrf_without_creating_acco
 ) -> None:
     async with client(app) as browser:
         await csrf(browser)
-        payload = body()
+        payload = {"setup_token": OWNER_TOKEN}
         if failure == "wrong_token":
             payload["setup_token"] = NEW_OWNER_TOKEN
         elif failure == "expired":
@@ -149,7 +268,7 @@ async def test_setup_rejects_invalid_authority_origin_csrf_without_creating_acco
         else:
             browser.headers["Host"] = "attacker.invalid"
             browser.headers["X-Forwarded-Host"] = "127.0.0.1:8000"
-        response = await browser.post(SETUP, json=payload)
+        response = await browser.post(EXCHANGE, json=payload)
         assert response.status_code == 403
         assert OWNER_TOKEN not in response.text and NEW_OWNER_TOKEN not in response.text
         if failure in {"wrong_token", "expired"}:
@@ -166,7 +285,7 @@ async def test_invalid_passwords_remain_recoverable_inline(
     app: FastAPI, engine: Engine, bad_password: str
 ) -> None:
     async with client(app) as browser:
-        await csrf(browser)
+        await authorize(browser)
         response = await browser.post(
             SETUP,
             content=json.dumps(body(password=bad_password, password_confirmation=bad_password)),
@@ -174,20 +293,20 @@ async def test_invalid_passwords_remain_recoverable_inline(
         )
         assert response.status_code == 422
         assert OWNER_TOKEN not in response.text and bad_password not in response.text
-        assert app.state.setup_gate.available()
+        assert (await browser.get(SETUP)).json()["available"]
         assert (await browser.post(SETUP, json=body())).status_code == 200
 
 
 @pytest.mark.anyio
 async def test_password_mismatch_and_invalid_name_are_safe_and_recoverable(app: FastAPI) -> None:
     async with client(app) as browser:
-        await csrf(browser)
+        await authorize(browser)
         mismatch = await browser.post(SETUP, json=body(password_confirmation="different"))
         assert mismatch.status_code == 422 and mismatch.json()["code"] == "password_mismatch"
         for name in (" ", "bad\nname", "bad\x00name"):
             response = await browser.post(SETUP, json=body(login_name=name))
             assert response.status_code == 422 and response.json()["code"] == "invalid_credentials"
-        assert app.state.setup_gate.available()
+        assert (await browser.get(SETUP)).json()["available"]
         assert (await browser.post(SETUP, json=body())).status_code == 200
 
 
@@ -205,8 +324,8 @@ async def test_first_claim_is_atomic_and_replay_cannot_add_or_reset(
 
     monkeypatch.setattr(auth, "hash_password", together)
     async with client(app) as first, client(app) as second:
-        await csrf(first)
-        await csrf(second)
+        await authorize(first)
+        await authorize(second, app.state.setup_gate.renew())
         responses = await asyncio.gather(
             first.post(SETUP, json=body(login_name="first")),
             second.post(SETUP, json=body(login_name="second")),
@@ -245,7 +364,7 @@ async def test_transaction_failure_keeps_setup_authority_for_retry(
         )
 
     async with client(app) as browser:
-        await csrf(browser)
+        await authorize(browser)
         monkeypatch.setattr(auth, "create_device_session", fail)
         failed = await browser.post(SETUP, json=body())
         assert failed.status_code == 503
@@ -253,7 +372,7 @@ async def test_transaction_failure_keeps_setup_authority_for_retry(
         with Session(engine) as db:
             assert db.scalar(select(Administrator.id)) is None
             assert db.scalar(select(DeviceSession.id)) is None
-        assert app.state.setup_gate.available()
+        assert (await browser.get(SETUP)).json()["available"]
         monkeypatch.setattr(auth, "create_device_session", original_create)
         assert (await browser.post(SETUP, json=body())).status_code == 200
 
@@ -292,9 +411,9 @@ async def test_setup_rate_limit_is_bounded_and_returns_retry_after(app: FastAPI)
         await csrf(browser)
         for _ in range(auth.LOGIN_RATE_LIMIT):
             assert (
-                await browser.post(SETUP, json=body(setup_token=NEW_OWNER_TOKEN))
+                await browser.post(EXCHANGE, json={"setup_token": NEW_OWNER_TOKEN})
             ).status_code == 403
-        response = await browser.post(SETUP, json=body())
+        response = await browser.post(EXCHANGE, json={"setup_token": OWNER_TOKEN})
         assert response.status_code == 429 and response.json()["code"] == "setup_rate_limited"
         assert 1 <= int(response.headers["Retry-After"]) <= 60
         assert app.state.setup_gate.available()
@@ -311,7 +430,8 @@ async def test_network_setup_requires_twelve_and_ignores_forwarded_local_headers
     async with client(app, origin) as browser:
         status = (await browser.get(SETUP)).json()
         assert status["minimum_password_length"] == 12 and not status["local_passwords_allowed"]
-        await csrf(browser)
+        await authorize(browser)
+        assert next(cookie for cookie in browser.cookies.jar if cookie.name == SETUP_COOKIE).secure
         response = await browser.post(
             SETUP,
             json=body(),
@@ -332,7 +452,7 @@ async def test_local_only_password_and_existing_session_are_blocked_on_https_unt
     app: FastAPI, engine: Engine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     async with client(app) as browser:
-        await csrf(browser)
+        await authorize(browser)
         response = await browser.post(SETUP, json=body())
         assert response.status_code == 200
         old_session = browser.cookies[SESSION_COOKIE]
@@ -413,8 +533,14 @@ def test_gate_restarts_replace_authority_and_retains_only_hash(
 async def test_malformed_unicode_setup_and_login_inputs_fail_safely(app: FastAPI) -> None:
     async with client(app) as browser:
         await csrf(browser)
+        malformed = await browser.post(
+            EXCHANGE,
+            content=json.dumps({"setup_token": "\ud800"}),
+            headers={"Content-Type": "application/json"},
+        )
+        assert malformed.status_code == 403
+        await authorize(browser)
         for change, expected in (
-            ({"setup_token": "\ud800"}, 403),
             ({"password_confirmation": "\ud800"}, 422),
             ({"login_name": "name\ud800"}, 422),
         ):

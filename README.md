@@ -48,14 +48,15 @@ with Docker.
 
 On first run, open the private setup link printed in the terminal and choose
 your administrator username and password in the browser. The link proves that
-you control the installation. It expires after 30 minutes and can create only
-the first administrator. After that, open the app address and sign in.
+you control the installation. Open it within 30 minutes; this browser then has
+eight hours to create the first administrator. After that, open the app address
+and sign in.
 
 To renew an expired link, run `make start`. Docker keeps running; for a native
-app running in your terminal, stop it with Ctrl+C first. A new link invalidates
-the previous one. Reloading the form clears its setup permission, so reopen the
-unexpired terminal link to continue. App updates wait until signup finishes
-before offering a refresh. Keep setup links private.
+app running in your terminal, stop it with Ctrl+C first. A new link replaces
+the previous unopened link. Once opened, setup permission survives refreshes and
+app restarts in that browser. Unsent passwords still clear on reload. App updates
+wait until signup finishes before offering a refresh. Keep setup links private.
 
 Localhost passwords need **6 characters**; phone/HTTPS passwords need **12**.
 There are no uppercase/symbol rules. Short local passwords trade strength for

@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, SecretStr
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from math_tutor import auth
+from math_tutor import auth, settings
 from math_tutor.adapters.db.models import Administrator
 from math_tutor.api.auth import (
     ANON_CSRF_COOKIE,
@@ -19,11 +19,20 @@ from math_tutor.api.auth import (
     login_csrf_valid,
     origin_allowed,
     require_secret,
+    secure_cookies,
     set_session_cookie,
 )
-from math_tutor.setup_gate import SetupError, SetupGate
+from math_tutor.setup_gate import (
+    SETUP_SESSION_LIFETIME_SECONDS,
+    SetupError,
+    SetupGate,
+    sign_setup_session,
+    valid_setup_session,
+)
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
+SETUP_COOKIE = "mt_setup"
+SETUP_COOKIE_PATH = "/api/v1/auth/setup"
 
 
 class SetupStatus(BaseModel):
@@ -36,10 +45,15 @@ class SetupStatus(BaseModel):
     local_passwords_allowed: bool
 
 
-class SetupRequest(BaseModel):
+class SetupSessionRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     setup_token: SecretStr = Field(min_length=1, max_length=256, repr=False)
+
+
+class SetupRequest(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
     login_name: str = Field(min_length=1, max_length=auth.MAX_LOGIN_NAME_LENGTH)
     password: SecretStr = Field(min_length=1, max_length=auth.MAX_ADMIN_PASSWORD_LENGTH, repr=False)
     password_confirmation: SecretStr = Field(
@@ -53,16 +67,88 @@ def setup_gate(request: Request) -> SetupGate:
 
 @router.get("/setup", response_model=SetupStatus)
 def setup_status(request: Request) -> SetupStatus:
-    require_secret()
+    secret = require_secret()
     with Session(engine_for(request)) as db:
         required = auth.setup_required(db)
+    return describe_setup(required, has_setup_session(request, secret))
+
+
+def describe_setup(required: bool, available: bool) -> SetupStatus:
     return SetupStatus(
         required=required,
-        available=required and setup_gate(request).available(),
+        available=required and available,
         minimum_password_length=auth.minimum_admin_password_length(),
         maximum_password_length=auth.MAX_ADMIN_PASSWORD_LENGTH,
         local_passwords_allowed=auth.local_passwords_allowed(),
     )
+
+
+def has_setup_session(request: Request, secret: str) -> bool:
+    return valid_setup_session(
+        request.cookies.get(SETUP_COOKIE, ""), secret, settings.app_public_origin()
+    )
+
+
+def require_setup_session(request: Request, secret: str) -> None:
+    if not has_setup_session(request, secret):
+        raise SetupError(
+            "setup_session_expired",
+            "Setup permission has ended. Open a new setup link from the app's computer.",
+            403,
+        )
+
+
+def protect_setup_request(request: Request) -> str:
+    secret = require_secret()
+    if not origin_allowed(request):
+        raise HTTPException(403, "Origin not allowed.")
+    if not login_csrf_valid(request, secret):
+        raise HTTPException(403, "CSRF validation failed.")
+    retry_after = auth.register_login_attempt("setup:" + client_key(request))
+    if retry_after is not None:
+        raise SetupError(
+            "setup_rate_limited",
+            "Too many setup attempts. Wait before trying again.",
+            429,
+            max(1, math.ceil(retry_after)),
+        )
+    if os.getenv("APP_MODE", "private") == "demo":
+        raise SetupError("setup_unavailable", "Account setup is unavailable in demo mode.", 403)
+    return secret
+
+
+@router.post("/setup/session", response_model=SetupStatus)
+def exchange_setup_link(
+    body: SetupSessionRequest, request: Request, response: Response
+) -> SetupStatus:
+    secret = protect_setup_request(request)
+    with Session(engine_for(request)) as db:
+        db.connection(execution_options={"sqlite_begin_immediate": True})
+        require_unclaimed(db)
+        # A browser that received the cookie can recover a lost exchange response
+        # without replaying the consumed link or extending the session lifetime.
+        if not has_setup_session(request, secret):
+            gate = setup_gate(request)
+            require_setup_token(gate, body.setup_token)
+            response.set_cookie(
+                SETUP_COOKIE,
+                sign_setup_session(secret, settings.app_public_origin()),
+                max_age=SETUP_SESSION_LIFETIME_SECONDS,
+                path=SETUP_COOKIE_PATH,
+                httponly=True,
+                samesite="strict",
+                secure=secure_cookies(),
+            )
+            gate.consume()
+    return describe_setup(True, True)
+
+
+@router.delete("/setup/session", response_model=SetupStatus)
+def cancel_setup(request: Request, response: Response) -> SetupStatus:
+    protect_setup_request(request)
+    response.delete_cookie(SETUP_COOKIE, path=SETUP_COOKIE_PATH)
+    with Session(engine_for(request)) as db:
+        return describe_setup(auth.setup_required(db), False)
 
 
 def require_unclaimed(db: Session) -> None:
@@ -78,7 +164,7 @@ def require_setup_token(gate: SetupGate, token: SecretStr) -> None:
     if not gate.accepts(token.get_secret_value()):
         raise SetupError(
             "setup_link_invalid",
-            "This setup link is invalid or expired. Restart the app on its computer and use the new owner setup link.",
+            "This setup link is invalid or expired. Open a new link from the app's computer.",
             403,
         )
 
@@ -92,35 +178,11 @@ def require_setup_token(gate: SetupGate, token: SecretStr) -> None:
 def create_first_administrator(
     body: SetupRequest, request: Request, response: Response
 ) -> SessionStatus:
-    secret = require_secret()
-    if not origin_allowed(request):
-        raise HTTPException(403, "Origin not allowed.")
-    if not login_csrf_valid(request, secret):
-        raise HTTPException(403, "CSRF validation failed.")
-    retry_after = auth.register_login_attempt("setup:" + client_key(request))
-    if retry_after is not None:
-        raise SetupError(
-            "setup_rate_limited",
-            "Too many setup attempts. Wait before trying again.",
-            429,
-            max(1, math.ceil(retry_after)),
-        )
-    if os.getenv("APP_MODE", "private") == "demo":
-        raise SetupError(
-            "setup_unavailable",
-            "Account setup is unavailable in the public demo. Start a private app.",
-            403,
-        )
+    secret = protect_setup_request(request)
     gate = setup_gate(request)
     with Session(engine_for(request)) as db:
         require_unclaimed(db)
-    if not gate.configured():
-        raise SetupError(
-            "setup_unavailable",
-            "No active owner setup link is available. Restart the app on its computer to get a new link.",
-            403,
-        )
-    require_setup_token(gate, body.setup_token)
+    require_setup_session(request, secret)
     password = body.password.get_secret_value()
     # Both values were supplied in this request; neither is a hidden server
     # secret. Compare Unicode directly before validation, without unsafe encoding.
@@ -139,7 +201,7 @@ def create_first_administrator(
     with Session(engine_for(request)) as db:
         db.connection(execution_options={"sqlite_begin_immediate": True})
         require_unclaimed(db)
-        require_setup_token(gate, body.setup_token)
+        require_setup_session(request, secret)
         try:
             auth.validate_admin_credentials(name, password)
         except ValueError as error:
@@ -158,4 +220,5 @@ def create_first_administrator(
     gate.consume()
     set_session_cookie(response, token, max_age)
     response.delete_cookie(ANON_CSRF_COOKIE, path="/")
+    response.delete_cookie(SETUP_COOKIE, path=SETUP_COOKIE_PATH)
     return SessionStatus(authenticated=True, role="adult", login_name=name, csrf_token=csrf)

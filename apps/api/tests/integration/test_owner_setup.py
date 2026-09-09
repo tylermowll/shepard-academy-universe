@@ -8,7 +8,7 @@ from fastapi import FastAPI
 from sqlalchemy import func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
-from test_browser_setup import SETUP, body, client, csrf
+from test_browser_setup import EXCHANGE, SETUP, body, client, csrf
 from test_browser_setup import anyio_backend as anyio_backend
 from test_browser_setup import app as app
 from test_browser_setup import db_url as db_url
@@ -47,12 +47,14 @@ async def test_container_owner_renews_expired_link_and_cannot_reset_claimed_acco
         assert second != first and gate.accepts(second) and not gate.accepts(first)
         async with client(app) as browser:
             public = await browser.get(SETUP)
-            assert public.json()["available"] is True
+            assert public.json()["available"] is False
             assert first not in public.text and second not in public.text
             await csrf(browser)
-            denied = await browser.post(SETUP, json=body(setup_token=first))
+            denied = await browser.post(EXCHANGE, json={"setup_token": first})
             assert denied.status_code == 403
-            created = await browser.post(SETUP, json=body(setup_token=second))
+            exchanged = await browser.post(EXCHANGE, json={"setup_token": second})
+            assert exchanged.status_code == 200
+            created = await browser.post(SETUP, json=body())
             assert created.status_code == 200, created.text
             assert created.json()["authenticated"] is True
             assert not gate.available()
@@ -60,7 +62,7 @@ async def test_container_owner_renews_expired_link_and_cannot_reset_claimed_acco
             assert "Sign in at " in refused and "#setup=" not in refused
         async with client(app) as visitor:
             await csrf(visitor)
-            replay = await visitor.post(SETUP, json=body(setup_token=second))
+            replay = await visitor.post(EXCHANGE, json={"setup_token": second})
             assert replay.status_code == 409
         with Session(engine) as db:
             assert db.scalar(select(func.count()).select_from(Administrator)) == 1

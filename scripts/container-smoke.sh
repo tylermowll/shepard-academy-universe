@@ -62,15 +62,20 @@ browser=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cook
 with browser.open(origin+'/api/v1/auth/session',timeout=5) as response:
  csrf=json.load(response)['csrf_token']
 headers={'Content-Type':'application/json','Origin':origin,'X-CSRF-Token':csrf}
-def claim(token):
- body=json.dumps({'setup_token':token,'login_name':'synthetic-owner','password':'plain6','password_confirmation':'plain6'}).encode()
- return browser.open(urllib.request.Request(origin+'/api/v1/auth/setup',data=body,headers=headers),timeout=10)
+def exchange(token):
+ body=json.dumps({'setup_token':token}).encode()
+ return browser.open(urllib.request.Request(origin+'/api/v1/auth/setup/session',data=body,headers=headers),timeout=10)
 try:
- with claim(old_token):
+ with exchange(old_token):
   raise AssertionError('Replaced owner link was accepted.')
 except urllib.error.HTTPError as error:
  assert error.code==403, 'Expected stale-link rejection.'
-with claim(new_token) as response:
+with exchange(new_token) as response:
+ assert json.load(response)['available'] is True
+with browser.open(origin+'/api/v1/auth/setup',timeout=5) as response:
+ assert json.load(response)['available'] is True
+body=json.dumps({'login_name':'synthetic-owner','password':'plain6','password_confirmation':'plain6'}).encode()
+with browser.open(urllib.request.Request(origin+'/api/v1/auth/setup',data=body,headers=headers),timeout=10) as response:
  assert json.load(response)['authenticated'] is True
 assert '#setup=' not in owner_link(), 'Claimed accounts must not receive setup authority.'
 print('Container owner-link renewal, stale-link rejection, browser account creation and claimed-account protection passed.')

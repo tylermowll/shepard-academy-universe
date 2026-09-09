@@ -1,5 +1,21 @@
 # Implementation decisions
 
+## D014 — Browser permission for completing setup (2026-09-08)
+
+T39 replaces D011's requirement to retain the owner token until form submission.
+Opening an unexpired link exchanges it once for a signed HttpOnly cookie scoped
+to the setup API. The cookie uses SameSite=Strict, Secure on HTTPS, and an absolute
+eight-hour lifetime. It survives refreshes and API restarts with the same secret.
+The signature is bound to setup and the configured origin; the cookie cannot
+authenticate normal app requests. The original token is discarded after exchange.
+
+Creation still checks CSRF, rate limits and the configured origin, and serializes
+the first-account check in SQLite. Existing accounts close setup regardless of
+the cookie. Success or explicit cancellation clears the browser cookie. No
+password, owner token or setup cookie is copied into localStorage/sessionStorage.
+The form refreshes anonymous CSRF before submission. No new table or alternate
+account-creation protocol is needed.
+
 ## D013 — Administrator-managed learner accounts (2026-09-08)
 
 The maintainer replaces profile-only learners and the primary device-pairing

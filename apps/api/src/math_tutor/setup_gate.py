@@ -12,6 +12,25 @@ from math_tutor.auth import hash_opaque_token
 
 SETUP_TOKEN_ENV_VAR = "SHEPARD_SETUP_TOKEN"
 SETUP_LIFETIME_SECONDS = 30 * 60
+SETUP_SESSION_LIFETIME_SECONDS = 8 * 60 * 60
+
+
+def sign_setup_session(secret: str, origin: str) -> str:
+    """Issue permission for setup only, independently of the launcher's lifetime."""
+    payload = f"{int(time.time())}.{secrets.token_urlsafe(32)}"
+    signature = hmac.new(secret.encode(), f"first-admin:{origin}:{payload}".encode(), "sha256")
+    return f"{payload}.{signature.hexdigest()}"
+
+
+def valid_setup_session(token: str, secret: str, origin: str) -> bool:
+    if re.fullmatch(r"[0-9]{1,12}\.[A-Za-z0-9_-]{43}\.[a-f0-9]{64}", token) is None:
+        return False
+    payload, signature = token.rsplit(".", 1)
+    age = time.time() - int(payload.split(".", 1)[0])
+    expected = hmac.new(secret.encode(), f"first-admin:{origin}:{payload}".encode(), "sha256")
+    return 0 <= age < SETUP_SESSION_LIFETIME_SECONDS and hmac.compare_digest(
+        signature, expected.hexdigest()
+    )
 
 
 @dataclass
@@ -24,11 +43,11 @@ class SetupError(Exception):
 
 @dataclass
 class SetupGate:
-    """Only a token digest and monotonic expiry survive application creation.
+    """Retain only the owner-link digest and monotonic expiry in API memory.
 
-    Database first-admin checks, not this process-local flag, serialize claims.
-    Consume only after a committed account/session transaction so rollback can
-    retry. A process crash after commit still leaves setup closed in the database.
+    The exchange consumes the link under the database write lock. Its signed
+    browser cookie remains usable if account creation rolls back or the API
+    restarts. The database first-admin check closes setup after a committed claim.
     """
 
     _token_hash: str | None = field(default=None, repr=False)
@@ -49,10 +68,6 @@ class SetupGate:
     def available(self) -> bool:
         with self._lock:
             return self._token_hash is not None and time.monotonic() < self._expires_at
-
-    def configured(self) -> bool:
-        with self._lock:
-            return self._token_hash is not None
 
     def accepts(self, token: str) -> bool:
         with self._lock:

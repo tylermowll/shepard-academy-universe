@@ -38,10 +38,12 @@ First-account setup is covered by `test_local_start.py`,
 `test_container_start.py`, `test_browser_setup.py` and `test_owner_setup.py`:
 native startup, Docker discovery, private socket permissions, link expiry and
 renewal, stale-link rejection, atomic account creation and refusal to reset an
-existing account. `tests/smoke/setup.spec.ts` verifies that an update stays
-deferred during signup and that the user remains signed in after the update.
+existing account. Cookie tests cover scope, signature, expiry, origin binding,
+one-use exchange and permission after an API restart. `tests/smoke/setup.spec.ts`
+verifies reload/restart recovery, submission after anonymous CSRF expires, and
+deferred updates during signup. The user remains signed in after the update.
 `scripts/container-smoke.sh` checks the owner command and setup API in a
-disposable container. T38 in [TASKS](TASKS.md) records the commands and results.
+disposable container. T38 and T39 in [TASKS](TASKS.md) record the commands and results.
 
 Paths below are relative to the repository. `workflows` means
 `apps/api/tests/integration/test_workflows.py`; `providers` means
