@@ -301,6 +301,13 @@ for (const lostReceipt of [false, true]) {
           .getByRole("navigation", { name: "Main navigation" })
           .getByRole("link", { name: "Settings", exact: true }),
       ).toHaveAttribute("aria-current", "page");
+      await expect(
+        page.getByRole("tab", { name: /Connections/ }),
+      ).toBeVisible();
+      await expect(
+        page.getByRole("button", { name: "Retry AI settings" }),
+      ).toHaveCount(0);
+      await expect(page.getByText(/Session changed/)).toHaveCount(0);
       expect(requestUrls.some((url) => url.includes(token))).toBe(false);
       expect(
         await page.evaluate(() =>

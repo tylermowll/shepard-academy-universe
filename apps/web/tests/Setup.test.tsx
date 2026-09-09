@@ -142,6 +142,48 @@ afterEach(() => {
 });
 
 describe("browser first-account setup", () => {
+  it("loads Settings when the post-signup session refresh finishes before the provider response", async () => {
+    const fetcher = install();
+    const serve = fetcher.getMockImplementation();
+    let accountCreated = false;
+    let finishSession!: (response: Response) => void;
+    let finishProviders!: (response: Response) => void;
+    const sessionResponse = new Promise<Response>((resolve) => {
+      finishSession = resolve;
+    });
+    const providerResponse = new Promise<Response>((resolve) => {
+      finishProviders = resolve;
+    });
+    fetcher.mockImplementation((url, options) => {
+      if (url.endsWith("/auth/setup") && options.method === "POST")
+        accountCreated = true;
+      if (accountCreated && url.endsWith("/auth/session"))
+        return sessionResponse.then((response) => response.clone());
+      if (url.endsWith("/admin/providers"))
+        return providerResponse.then((response) => response.clone());
+      if (!serve) throw new Error("Missing synthetic handler");
+      return serve(url, options);
+    });
+    mount();
+    await fill();
+    submit();
+    await screen.findByText("Loading AI settings…");
+    await act(async () => {
+      finishSession(new Response(JSON.stringify(adult)));
+      await sessionResponse;
+    });
+    await act(async () => {
+      if (!serve) throw new Error("Missing synthetic handler");
+      finishProviders(await serve("/admin/providers", { method: "GET" }));
+      await providerResponse;
+    });
+    expect(screen.getByRole("tab", { name: /Connections/ })).toBeVisible();
+    expect(screen.queryByText(/Session changed/)).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Retry AI settings" }),
+    ).toBeNull();
+  });
+
   it("refreshes expired anonymous CSRF before submitting the filled form", async () => {
     const fetcher = install();
     mount();

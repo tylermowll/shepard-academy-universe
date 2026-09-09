@@ -1,29 +1,24 @@
 # Current handoff
 
-T39 fixes setup permission expiring while the form is open. Opening the private
-link now exchanges it once for a signed HttpOnly cookie valid for eight hours.
-This browser can finish setup after a refresh or an API restart with the same
-deployment secret. The form refreshes anonymous CSRF before submitting. Existing
-accounts close setup, and the cookie cannot authenticate normal app requests.
-The owner token is discarded after exchange. D014 records the contract.
+The local administrator account exists. Open the app address and sign in;
+first-account setup is finished. The `shepherd-academy-universe` Compose project
+runs one API and one worker against the retained database in this checkout.
 
-T38 fixed Docker setup recovery and app updates during signup. `make start`
-connects to the running Docker API on port 8000 and prints a fresh private setup
-link, or the sign-in address if an administrator exists. First-account creation
-uses the browser. The owner command can renew an expired link without restarting
-Docker; it cannot reset an account. App updates wait until signup finishes before
-offering a refresh.
-
-The local deployment now uses the `shepherd-academy-universe` Compose project and
-the retained database in the current checkout. The obsolete containers and their
-unused network were removed. The current API and worker passed readiness, and
-the public setup check now confirms an administrator exists. The owner command
-returns only the app address. No live account was created or reset by the agent.
-
-T39 checks passed: **194 backend unit tests**, **147 frontend component tests**,
-**267 integration tests**, **66 desktop/mobile browser cases**, and the
-disposable container setup check. Exact commands and changes are in
+T40 fixes Settings failing immediately after signup. Rechecking the same session
+no longer cancels pending requests. Responses from a previous identity are still
+discarded. The component regression reproduces the request order, and browser
+signup tests now require loaded Settings controls. Project checks passed with
+**194 backend unit tests**, **152 frontend component tests**, **14 affected
+desktop/mobile browser cases**, and container smoke. The fix is deployed locally;
+HTTPS readiness and frontend build checks passed. Exact evidence is in
 [TASKS](TASKS.md).
+
+For a fresh installation, the private owner link exchanges once for an eight-hour
+HttpOnly setup cookie. Setup survives refreshes and API restarts with the same
+secret; the cookie grants no normal account access. App updates defer their
+refresh action until signup finishes. `make start` connects to the standard
+running Docker API and prints a setup link only when no administrator exists.
+It cannot reset an account. D014 records the setup contract.
 
 The app is a multi-subject AI tutor. Learners sign in with individual usernames
 and passwords, choose a topic and work through a conversation. Photo reading

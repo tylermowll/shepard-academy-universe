@@ -7,6 +7,7 @@ let authenticated = false;
 const authenticationLost = new Set<() => void>();
 
 export function setIdentity(token: string, signedIn = false) {
+  if (csrf === token && authenticated === signedIn) return;
   csrf = token;
   authenticated = signedIn;
   generation += 1;

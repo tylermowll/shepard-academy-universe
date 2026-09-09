@@ -9,6 +9,53 @@ import {
 beforeEach(() => setIdentity(""));
 afterEach(() => vi.unstubAllGlobals());
 
+it.each(["json", "photo"])(
+  "keeps an in-flight %s request when the same session is refreshed",
+  async (kind) => {
+    let respond!: (response: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockReturnValue(
+        new Promise<Response>((resolve) => {
+          respond = resolve;
+        }),
+      ),
+    );
+    setIdentity("synthetic-authenticated-csrf", true);
+    const request =
+      kind === "json"
+        ? api("/admin/providers")
+        : imageRequest("/images/preview", new Blob(["synthetic"]));
+    setIdentity("synthetic-authenticated-csrf", true);
+    const response = new Response("{}");
+    respond(response);
+    await expect(request).resolves.toEqual(kind === "json" ? {} : response);
+  },
+);
+
+it.each(["json", "photo"])(
+  "discards an in-flight %s request when authentication changes",
+  async (kind) => {
+    let respond!: (response: Response) => void;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockReturnValue(
+        new Promise<Response>((resolve) => {
+          respond = resolve;
+        }),
+      ),
+    );
+    setIdentity("synthetic-csrf");
+    const request =
+      kind === "json"
+        ? api("/auth/session")
+        : imageRequest("/images/preview", new Blob(["synthetic"]));
+    setIdentity("synthetic-csrf", true);
+    respond(new Response("{}"));
+    await expect(request).rejects.toThrow("Session changed");
+  },
+);
+
 it("keeps photo-link authorization failures independent of the signed-in session", async () => {
   const lost = vi.fn();
   const unsubscribe = onAuthenticationLost(lost);

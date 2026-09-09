@@ -731,6 +731,10 @@ update must defer its refresh action. Once signup establishes the authenticated
 session, the normal explicit update action is available. Before submission,
 refresh anonymous CSRF so idle forms remain usable. Success or cancellation
 clears the setup cookie. Passwords and owner tokens stay out of browser storage.
+The Settings page must finish loading when the post-signup session refresh returns
+the same identity. Rechecking an unchanged CSRF token and authenticated state must
+not invalidate pending requests. Discard responses from a previous identity,
+including responses whose body finishes decoding after the identity changes.
 
 HTTP origins with exact loopback hostnames `127.0.0.1`, `localhost` or `::1` allow
 six-character passwords; HTTPS requires twelve. Do not impose composition rules.

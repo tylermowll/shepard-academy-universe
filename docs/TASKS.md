@@ -47,6 +47,48 @@ specification gates pass.
 | T37 | Implemented; local installation reset and rebuilt; live quality unverified | Unique learner logins, administrator-only management, one-step practice, exclusive menus, stable connection approvals, two-hour QR and Shepherd branding; validation below. |
 | T38 | Implemented, tested and deployed locally | Docker setup links, protected signup updates and one current Compose deployment; evidence below. |
 | T39 | Implemented, tested and deployed locally | Browser setup permission survives link expiry, reloads and API restarts; the local administrator account now exists. |
+| T40 | Implemented, tested and deployed locally | Settings loads after signup; rechecking the same session preserves pending requests and account changes still discard stale responses. |
+
+### T40 — Load Settings after account creation (2026-09-08)
+
+After account creation, the session refresh invalidated pending Settings requests
+even when it returned the same session. `client.ts` now leaves requests alone when
+the CSRF token and authenticated state are unchanged. Responses that cross an
+identity change are still rejected, including during body decoding.
+
+Affected contracts: browser session isolation and the signup transition to
+Settings. No API schema, cookie, database or provider behavior changed. Client and
+component tests cover the response ordering; native browser tests now require
+loaded Settings controls after signup. SPECIFICATION records the requirement and
+HANDOFF describes the current installation.
+
+Validation:
+
+- The two client refresh cases and the component signup case failed before the
+  fix. The component showed the reported Session changed error and Retry AI
+  settings button. After the fix, `pnpm --filter @math-tutor/web test
+  tests/client.test.tsx tests/Setup.test.tsx`: **42 passed**.
+- `make check`: **194 backend unit tests**, **152 frontend component tests**,
+  lint, formatting, types, builds, contract drift, secrets and IaC checks passed.
+  The first sandboxed attempt could not create loopback sockets; rerunning with
+  socket access passed. The existing Vite chunk-size warning remains.
+- `docker build -f infra/docker/Dockerfile -t math-practice-tutor:local .` and
+  `sh scripts/container-smoke.sh math-practice-tutor:local`: passed. The smoke
+  uses disposable containers and synthetic data.
+- `pnpm exec playwright test tests/smoke/setup.spec.ts tests/smoke/bootstrap.spec.ts
+  --grep 'waiting update|native browser setup|installed update|browser setup permission|another learner|isolated and revocable'`:
+  **14 passed** across desktop/mobile Chromium. Signup, lost responses, reloads,
+  updates, account switching and revocation passed.
+- Authorized `docker compose -f infra/docker/compose.yaml up -d --no-build api
+  worker`: passed. Compose loaded private settings normally. Both services run
+  the tested image; HTTPS readiness and the served frontend asset names match
+  the tested build. The public setup check confirms the administrator remains.
+- `make hooks-check secret-check` and `git diff --check`: passed.
+
+Backend integration and the full browser suite were not repeated for this
+frontend-only change; T39 recorded 267 integration and 66 browser passes. No live
+provider calls, account resets or data migrations were performed. The agent did
+not open private settings or inspect the user's authenticated Settings response.
 
 ### T39 — Finish setup without repeating startup (2026-09-08)
 
