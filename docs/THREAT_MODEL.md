@@ -8,9 +8,9 @@ multi-tenant service or a claim of regulatory certification.
 | Boundary             | Enforcement and evidence                                                                                                                                                                               |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Browser identity     | Argon2id adult login, hashed opaque cookies, expiry/revocation, CSRF and exact configured Origin/Host; no tokens in localStorage                                                                       |
-| First-account owner  | Launcher-only expiring fragment token, hash-only gate, CSRF/origin/rate checks and atomic first claim; no public issuance or web reset                                                                  |
+| First-account owner  | Native launcher or private Docker owner socket issues an expiring fragment token; hash-only gate, CSRF/origin/rate checks and atomic first claim; no public issuance or web reset |
 | Local password policy | Six-character minimum on HTTP loopback only; short passwords flagged and rejected for network startup, login and adult sessions; HTTPS creation retains twelve-character minimum                       |
-| Pairing              | Five-minute browser-bound token, explicit adult approval, single claim, rate limits; guessed request ID reveals no learner                                                                             |
+| Learner sign-in      | Unique usernames, Argon2id passwords, rate limits and revocable sessions; the administrator creates accounts and resets passwords |
 | Learner ownership    | Backend principal and joins on every practice/photo/operation route; two-learner isolation tests                                                                                                       |
 | Private answers      | Separate public DTOs omit hidden answers, seeds and private parameters; AI generation returns an activity, not a solution key                                                                          |
 | Untrusted math       | Bounded ASCII parser and Fraction arithmetic; no eval, SymPy parser, code execution or tools                                                                                                           |
@@ -26,10 +26,13 @@ multi-tenant service or a claim of regulatory certification.
 
 Host files use private permissions and should reside on an encrypted local volume.
 The shorter local password is an explicit convenience tradeoff, not strong
-password guidance. Keep native setup links private: terminal output is owner
-authority until the link expires or an account is created. First-run links
-never authorize recovery of an existing account. The current launcher's token
-is revoked when that unclaimed launcher stops; a new run creates new authority.
+password guidance. Keep setup links private: the token grants first-account
+creation until it expires, is replaced, or an account is created. API restart
+also discards it. Docker issuance requires access to the owner-only Unix socket
+through `docker exec`; no HTTP route can request a link. Native startup and
+Docker renewal both retain only the hash and expiry in API memory. The browser
+keeps the token in tab memory, and app updates wait until signup finishes before
+offering a refresh. Setup never authorizes recovery of an existing account.
 SQLite does not encrypt itself. Backups use authenticated encryption with a
 separate passphrase; losing the passphrase loses recovery. Preserve the current
 deletion ledger separately from old archives. Operator settings/secrets require

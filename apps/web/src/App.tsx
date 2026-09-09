@@ -273,7 +273,9 @@ export function App({ setupAuthority }: { setupAuthority?: SetupAuthority }) {
           </a>
         ))}
       </nav>
-      <UpdateNotice />
+      <UpdateNotice
+        deferRefresh={setupRequired || checkingSetup || !!setupToken}
+      />
       {offline && (
         <p role="status" className="notice">
           You are offline. Server tutoring and uploads are unavailable. Saved

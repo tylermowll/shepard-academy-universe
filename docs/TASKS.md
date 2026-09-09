@@ -45,6 +45,69 @@ specification gates pass.
 | T35  | Implemented; automated gates passed; live photo retest pending | Bounded JPEG/HEIC and drag/drop, simpler Practice, difficulty controls, pending indicators, adult profile clarity and Meta thinking effort; 179 unit, 137 component, 234 integration and 52 desktop/mobile browser tests passed. |
 | T36  | Implemented; local containers updated; live quality unverified | Continuous conversation, qualified photo feedback, contextual follow-ups, compact workspace; 181 unit, 145 component, 238 integration tests, affected browser checks and container smoke passed.                                 |
 | T37 | Implemented; local installation reset and rebuilt; live quality unverified | Unique learner logins, administrator-only management, one-step practice, exclusive menus, stable connection approvals, two-hour QR and Shepherd branding; validation below. |
+| T38 | Implemented, tested and deployed locally | Docker setup links, protected signup updates and one current Compose deployment; evidence below. |
+
+### T38 — Docker setup recovery and signup update handling (2026-09-08)
+
+`make start` tried to launch a native app while Docker already held port 8000.
+The browser then asked for a setup link that the running container could not
+renew. Clicking the app update during signup also discarded the tab's setup
+permission.
+
+The current implementation:
+
+- `container_start.py` and `local_start.py` connect to the recognized Docker API
+  before loading native settings, checking Node or touching another database.
+  Explicit native modes and alternate environment files retain their behavior.
+- `owner_setup.py`, `setup_gate.py` and the API lifespan provide a private Unix
+  socket for issuing links. Renewal checks the database under a write lock and
+  stores only the new token hash and expiry in memory. Previous links are
+  rejected. Existing accounts receive the sign-in address.
+- `App.tsx` and `UpdateNotice.tsx` defer update refresh during signup. The normal
+  update action returns after account creation establishes a session. Setup
+  tokens stay in tab memory.
+- `Setup.tsx` and `Help.tsx` explain link renewal and separate administrator and
+  learner accounts. README, RUNBOOK, PHONE_SETUP, SPECIFICATION, DECISIONS,
+  THREAT_MODEL, ACCEPTANCE and HANDOFF describe the current behavior.
+- Compose uses the fixed project name `shepherd-academy-universe`. The deployed
+  API and worker use the retained database in the current checkout. The obsolete
+  containers and their unused network were removed. No migration, account reset
+  or data deletion was needed.
+
+Validation completed before the documentation review:
+
+- `make check`: passed, including **194 backend unit** and **145 frontend
+  component tests**, lint, formatting, types, builds, contract drift, credential
+  scan and infrastructure lint.
+- `make test-integration`: **254 passed**. An earlier run collided with a browser
+  asset rebuild; running the gates sequentially resolved that failure.
+- `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/google-chrome make smoke`:
+  **62 desktop/mobile cases passed** before the signup update fix. After that
+  fix, `pnpm exec playwright test tests/smoke/setup.spec.ts
+  tests/smoke/bootstrap.spec.ts --grep 'waiting update|native browser setup|installed update'`
+  passed all **eight affected cases**, and `make check` passed again.
+- `docker build -f infra/docker/Dockerfile -t math-practice-tutor:local .` and
+  `sh scripts/container-smoke.sh math-practice-tutor:local`: passed. The container
+  test covers readiness, link renewal, stale-link rejection, account creation
+  and refusal to issue another link after account creation.
+- The updated local containers passed HTTPS readiness. An isolated browser
+  verified the editable administrator form and a deferred waiting update. A
+  fresh setup link was opened in the maintainer's desktop browser. The agent
+  entered no live credentials and created no live account.
+
+The maintainer authorized Docker to load private settings for the cutover.
+Settings contents, tokens and private diagnostics were kept out of tool output
+and Git. No live provider tests, model downloads or public deployment were run.
+Physical phone and model-quality checks remain deferred. The existing Vite
+chunk-size and Starlette deprecation warnings remain.
+
+Publication review: startup and recovery instructions now distinguish native
+and Docker commands. The handoff describes T38; completed cutover instructions
+and superseded handoff summaries were removed. `make hooks-check secret-check`
+passed on the staged changes, and `git diff --cached --check` found no whitespace
+errors. Local link targets exist in all nine changed Markdown files. The
+maintainer authorized pushing the reviewed changes to `main`. The unrelated
+untracked image is excluded.
 
 ### T37 — Account and practice usability review (2026-09-08)
 

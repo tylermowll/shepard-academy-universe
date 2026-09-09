@@ -21,17 +21,19 @@ make bootstrap
 make start
 ```
 
-The launcher creates missing private settings and a fresh database and starts the
-persistent app. On first run, open the **Create administrator account** link
-printed in the terminal and choose your login/password in the browser. The link
-expires after 30 minutes; restart `make start` for a fresh one if needed. Keep it
-private. Existing accounts simply sign in at http://127.0.0.1:8000. Settings,
-accounts and data are preserved; no shell-export sequence is needed.
+`make start` connects to the standard Docker app if it is already running on
+port 8000; otherwise it starts a native app with persistent settings and data.
+On first run, open the private setup link printed in the terminal and choose
+your administrator username and password in the browser. The link expires after
+30 minutes. Run `make start` to renew it; stop a native terminal run with Ctrl+C
+first. Docker can keep running. Reopen the unexpired link if you reload the form.
+App updates wait until signup finishes before offering a refresh. Keep the link
+private. Existing accounts sign in at the app address printed in the terminal.
 
 For an existing installation, stop all app/worker writes and back up retained
 data before upgrading. If startup reports an old database schema, run
-`make migrate start`. T27 adds persisted AI connection settings; T28 adds the
-local-password policy flag. Neither recreates retained data or resets accounts.
+`make migrate start` for a native app. For Docker, follow the
+[container upgrade instructions](RUNBOOK.md#container-package).
 
 Configuration/key entry below is for you to perform in your trusted local app,
 not for a coding agent to read. Never paste private files or keys into chat.

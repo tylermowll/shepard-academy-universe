@@ -62,6 +62,13 @@ No public endpoint issues setup authority. Each fresh launcher run replaces it;
 successful account creation permanently closes setup for that database. Concurrent
 claims are serialized and cannot reset or create an additional administrator.
 
+T38 extends this flow to Docker. `make start` connects to the running API on
+port 8000 and requests a fresh link over an owner-only Unix socket in container
+tmpfs. Issuance checks the database under the same write lock as account creation.
+Renewal replaces the token hash and expiry in API memory; an existing account
+receives only the sign-in address. During signup, app updates defer their refresh
+action so they cannot discard setup permission. The token stays in tab memory.
+
 Password creation accepts six characters on HTTP loopback and twelve on HTTPS;
 neither requires mixed character classes. This is a deliberate local convenience
 tradeoff, not a claim that a six-character password is strong. Saved API usage

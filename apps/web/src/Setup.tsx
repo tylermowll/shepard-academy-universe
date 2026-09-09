@@ -166,8 +166,8 @@ export function Setup({
     <section className="welcome setup-page">
       <h1 tabIndex={-1}>Create administrator account</h1>
       <p>
-        This account manages AI connections and learners. You can also use it to
-        study.
+        This account manages AI connections and learner accounts. To study,
+        create a separate learner account after setup.
       </p>
       {error && (
         <p role="alert" className="error">
@@ -203,9 +203,10 @@ export function Setup({
             creates only the first account.
           </p>
           <p>
-            If the link expired or no link is shown, press Ctrl+C in that
-            terminal, run <code>make start</code> again, and open the new setup
-            link. Enter your password here in the browser, not in the terminal.
+            If the link expired or no link is shown, run <code>make start</code>{" "}
+            in the project folder for a new link. It connects to an existing
+            Docker app. If the app is running in a terminal, press Ctrl+C to
+            stop that run first. Choose your password here in the browser.
           </p>
           <p className="fine">
             Keep the link private. Reloading this page clears its setup

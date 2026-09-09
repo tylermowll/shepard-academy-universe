@@ -29,7 +29,7 @@ from sqlalchemy import inspect, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from math_tutor import cli, settings
+from math_tutor import cli, container_start, settings
 from math_tutor.adapters.db.engine import create_engine_for_url
 from math_tutor.adapters.db.models import Administrator
 
@@ -264,6 +264,17 @@ def main(argv: list[str] | None = None) -> int:
     root = settings.repository_root()
     destination = (args.env_file or root / ".env").absolute()
     try:
+        # Docker already owns the configured installation. Ask that API for a
+        # fresh owner link before reading native settings, checking Node, or
+        # touching a second database. Explicit alternate env files stay native.
+        if (
+            args.command == "start"
+            and not args.loopback
+            and not args.gateway
+            and destination == root / ".env"
+            and (container := container_start.running_api()) is not None
+        ):
+            return container_start.connect(container)
         os.environ.pop(SETUP_TOKEN_ENV, None)
         if args.command == "start" and not destination.exists() and cli.run_setup(destination):
             return 1

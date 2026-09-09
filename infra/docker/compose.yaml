@@ -1,3 +1,5 @@
+name: shepherd-academy-universe
+
 services:
   api:
     image: math-practice-tutor:local
@@ -8,6 +10,7 @@ services:
     environment:
       DATABASE_URL: sqlite+pysqlite:////app/data/math_tutor.sqlite3
       MATH_TUTOR_DATA_DIR: /app/data
+      SHEPHERD_OWNER_SOCKET: /tmp/shepherd-owner/setup.sock
     volumes:
       - ../../data:/app/data
     ports:

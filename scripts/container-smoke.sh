@@ -34,11 +34,10 @@ export SESSION_SECRET="$secret"
 export APP_PUBLIC_ORIGIN=http://127.0.0.1:18080
 docker run --rm --mount "type=volume,src=$volume,dst=/app/data" --env SESSION_SECRET --env APP_PUBLIC_ORIGIN "$image" alembic -c alembic.ini upgrade head
 docker run --rm --mount "type=volume,src=$volume,dst=/app/data" "$image" python -m math_tutor.cli db
-docker run --rm --mount "type=volume,src=$volume,dst=/app/data" "$image" python -c 'from math_tutor.demo import seed; from math_tutor.adapters.db.engine import create_default_engine; e=create_default_engine(); seed(e); e.dispose()'
-docker run -d --name "$api_name" --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges --mount "type=volume,src=$volume,dst=/app/data" --env SESSION_SECRET --env APP_PUBLIC_ORIGIN -p 127.0.0.1:18080:8000 "$image" >/dev/null
+docker run -d --name "$api_name" --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges --mount "type=volume,src=$volume,dst=/app/data" --env SESSION_SECRET --env APP_PUBLIC_ORIGIN --env SHEPHERD_OWNER_SOCKET=/tmp/shepherd-owner/setup.sock -p 127.0.0.1:18080:8000 "$image" >/dev/null
 docker run -d --name "$worker_name" --read-only --tmpfs /tmp --cap-drop ALL --security-opt no-new-privileges --mount "type=volume,src=$volume,dst=/app/data" --env SESSION_SECRET --env APP_PUBLIC_ORIGIN "$image" python -m math_tutor.worker >/dev/null
-python3 - <<'PY'
-import json,time,urllib.request
+python3 - "$api_name" <<'PY'
+import http.cookiejar,json,subprocess,sys,time,urllib.error,urllib.request
 for attempt in range(30):
  try:
   with urllib.request.urlopen('http://127.0.0.1:18080/health/ready',timeout=2) as response:
@@ -49,4 +48,30 @@ for attempt in range(30):
   time.sleep(1)
 else:raise SystemExit('Container startup failed.')
 print('Non-root container, SQLite migration, worker readiness, and built UI passed.')
+
+def owner_link():
+ result=subprocess.run(['docker','exec',sys.argv[1],'python','-m','math_tutor.owner_setup'],capture_output=True,text=True,timeout=15)
+ assert result.returncode==0, 'Owner command failed.'
+ return result.stdout
+
+old_token=owner_link().split('#setup=')[1].strip()
+new_token=owner_link().split('#setup=')[1].strip()
+assert old_token!=new_token, 'Setup renewal must replace the previous link.'
+origin='http://127.0.0.1:18080'
+browser=urllib.request.build_opener(urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar()))
+with browser.open(origin+'/api/v1/auth/session',timeout=5) as response:
+ csrf=json.load(response)['csrf_token']
+headers={'Content-Type':'application/json','Origin':origin,'X-CSRF-Token':csrf}
+def claim(token):
+ body=json.dumps({'setup_token':token,'login_name':'synthetic-owner','password':'plain6','password_confirmation':'plain6'}).encode()
+ return browser.open(urllib.request.Request(origin+'/api/v1/auth/setup',data=body,headers=headers),timeout=10)
+try:
+ with claim(old_token):
+  raise AssertionError('Replaced owner link was accepted.')
+except urllib.error.HTTPError as error:
+ assert error.code==403, 'Expected stale-link rejection.'
+with claim(new_token) as response:
+ assert json.load(response)['authenticated'] is True
+assert '#setup=' not in owner_link(), 'Claimed accounts must not receive setup authority.'
+print('Container owner-link renewal, stale-link rejection, browser account creation and claimed-account protection passed.')
 PY

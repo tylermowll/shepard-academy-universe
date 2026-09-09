@@ -11,7 +11,52 @@ from urllib.parse import urlsplit
 
 import pytest
 
-from math_tutor import cli, local_start, settings
+from math_tutor import cli, container_start, local_start, settings
+
+
+@pytest.fixture(autouse=True)
+def no_live_containers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(container_start, "running_api", Mock(return_value=None))
+
+
+def test_running_docker_renews_setup_without_native_settings_database_or_build(
+    synthetic_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(container_start, "running_api", Mock(return_value="abc123"))
+    connect = Mock(return_value=0)
+    monkeypatch.setattr(container_start, "connect", connect)
+    forbidden = Mock(side_effect=AssertionError("Docker must not start a native installation"))
+    monkeypatch.setattr(local_start, "load_environment", forbidden)
+    monkeypatch.setattr(local_start, "start_services", forbidden)
+    monkeypatch.setattr(cli, "run_setup", forbidden)
+    assert local_start.main(["--env-file", str(synthetic_root / ".env")]) == 0
+    connect.assert_called_once_with("abc123")
+    forbidden.assert_not_called()
+    assert not (synthetic_root / ".env").exists()
+    assert not (synthetic_root / "data").exists()
+
+
+def test_explicit_alternate_settings_do_not_connect_to_docker(
+    synthetic_root: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    discover = Mock(side_effect=AssertionError("Alternate installation must remain explicit"))
+    monkeypatch.setattr(container_start, "running_api", discover)
+    monkeypatch.setattr(local_start, "start_services", Mock(return_value=0))
+    assert local_start.main(["--env-file", str(synthetic_root / "alternate.env")]) == 0
+    discover.assert_not_called()
+
+
+@pytest.mark.parametrize("mode", ["--gateway", "--loopback"])
+def test_explicit_native_mode_does_not_connect_to_docker(
+    synthetic_root: Path, monkeypatch: pytest.MonkeyPatch, mode: str
+) -> None:
+    discover = Mock(side_effect=AssertionError("Explicit native modes must validate their origin"))
+    monkeypatch.setattr(container_start, "running_api", discover)
+    monkeypatch.setattr(local_start, "start_services", Mock(return_value=0))
+    if mode == "--gateway":
+        monkeypatch.setenv("APP_PUBLIC_ORIGIN", "https://tutor.example")
+    assert local_start.main([mode]) == 0
+    discover.assert_not_called()
 
 
 @pytest.fixture

@@ -40,12 +40,22 @@ make bootstrap
 make start
 ```
 
-`make start` creates missing private settings, initializes a fresh database, and
-starts the UI, API, and worker at <http://127.0.0.1:8000> by default. On first run,
-click the **Create administrator account** link printed in the terminal. Choose
-your login and password in the browser; validation errors stay on that page.
-The link expires after 30 minutes and cannot reset an existing account. If it
-expires, stop with Ctrl+C and use `make start` for a fresh link. Keep it private.
+`make start` connects to the standard Docker app if it is already running on
+port 8000. Otherwise, it creates missing private settings, initializes a fresh
+database, and starts the UI, API, and worker at <http://127.0.0.1:8000> by default.
+See [the container instructions](docs/RUNBOOK.md#container-package) to install
+with Docker.
+
+On first run, open the private setup link printed in the terminal and choose
+your administrator username and password in the browser. The link proves that
+you control the installation. It expires after 30 minutes and can create only
+the first administrator. After that, open the app address and sign in.
+
+To renew an expired link, run `make start`. Docker keeps running; for a native
+app running in your terminal, stop it with Ctrl+C first. A new link invalidates
+the previous one. Reloading the form clears its setup permission, so reopen the
+unexpired terminal link to continue. App updates wait until signup finishes
+before offering a refresh. Keep setup links private.
 
 Localhost passwords need **6 characters**; phone/HTTPS passwords need **12**.
 There are no uppercase/symbol rules. Short local passwords trade strength for
@@ -53,7 +63,7 @@ convenience and cannot be used unchanged after enabling network access. If you
 later enable HTTPS, startup explains how to replace a local-only password with
 `make admin`. That recovery command is not needed for browser-first setup.
 
-The launcher loads `.env` without executing it as a shell script and validates
+The native launcher loads `.env` without executing it as a shell script and validates
 setup before building. Existing settings, accounts and data are preserved.
 Never share `.env` with coding agents.
 
@@ -133,9 +143,7 @@ saved practice, or delete it. Password resets sign out that learner's browsers.
 
 If the administrator also studies, create one distinct learner account for that
 work, then sign in with that learner account. Administrator pages contain only
-account management, AI settings and help. Existing profiles retain their histories and need an explicitly set
-password for direct learner sign-in. Conflicting old names receive a numeric
-suffix; accounts and histories are never merged.
+account management, AI settings and help.
 
 A physical phone needs the shared private HTTPS address in the phone guide.
 For full practice, sign in with the learner's credentials. **Take photo with
@@ -157,17 +165,10 @@ those connections are shown read-only. Explicit environment cloud/audience
 restrictions remain enforced and are identified in Settings.
 An unavailable model produces a visible error, not an authored-hint substitute.
 
-The historical D005 hard cutover applies only to databases from before that
-initial-schema correction; recreate those disposable development databases.
-Current-schema databases use normal migrations, including `0012` for saved AI
-connections, `0013` for local-password policy, `0014` for connection-test
-diagnostics, `0015` for bounded provider images, and `0016` for thinking-effort
-diagnostics. Stop the API and worker before
-applying `make migrate start` to an existing installation. The image cutover clears
-old connection readiness; retest both roles and save active connections again.
-Test diagnostics and session history are retained. [RUNBOOK](docs/RUNBOOK.md)
-covers private HTTPS, containers, EC2/EBS,
-retention, encrypted backups, and restore rehearsals.
+Before a database upgrade, stop the API and worker and back up retained data.
+Use `make migrate start` for a native installation; follow the container commands
+in [RUNBOOK](docs/RUNBOOK.md#container-package) for Docker. The runbook also
+covers private HTTPS, EC2/EBS, retention, encrypted backups, and restore rehearsals.
 
 ## Behavior and boundaries
 

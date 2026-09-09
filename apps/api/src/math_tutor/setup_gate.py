@@ -3,6 +3,7 @@
 import hmac
 import os
 import re
+import secrets
 import time
 from dataclasses import dataclass, field
 from threading import Lock
@@ -65,3 +66,11 @@ class SetupGate:
     def consume(self) -> None:
         with self._lock:
             self._token_hash = None
+
+    def renew(self) -> str:
+        """Issue only through the local owner channel after checking the database."""
+        token = secrets.token_urlsafe(32)
+        with self._lock:
+            self._token_hash = hash_opaque_token(token)
+            self._expires_at = time.monotonic() + SETUP_LIFETIME_SECONDS
+        return token

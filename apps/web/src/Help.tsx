@@ -273,11 +273,12 @@ export function HelpPage({
               </p>
               <p>
                 The private setup link expires after thirty minutes. If it
-                expires, stop with Ctrl+C and run <code>make start</code> for a
-                new one. If you reload the form, reopen the unexpired link from
-                the terminal. Existing accounts simply sign in at{" "}
-                <code>http://127.0.0.1:8000</code>. Restarts keep your settings,
-                account, and practice history.
+                expires, run <code>make start</code> for a new one. This
+                connects to an existing Docker app; for a terminal-run app, stop
+                that run with Ctrl+C first. If you reload the form, reopen the
+                unexpired link from the terminal. Existing accounts sign in at
+                the app address printed in the terminal. Restarts keep your
+                settings, account, and practice history.
               </p>
               <p>
                 If you already have a private setup, keep your existing

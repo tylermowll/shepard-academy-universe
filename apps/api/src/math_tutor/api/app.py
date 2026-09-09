@@ -34,6 +34,7 @@ from math_tutor.api.providers import router as provider_router
 from math_tutor.api.review import router as review_router
 from math_tutor.api.setup import router as setup_router
 from math_tutor.api.tutoring import router as tutoring_router
+from math_tutor.owner_setup import owner_channel
 from math_tutor.setup_gate import SetupError, SetupGate
 
 
@@ -63,7 +64,8 @@ def create_app(engine: Engine | None = None) -> FastAPI:
         load_configuration()
         limits()
         try:
-            yield
+            with owner_channel(application.state.engine, application.state.setup_gate):
+                yield
         finally:
             if engine is None:
                 application.state.engine.dispose()

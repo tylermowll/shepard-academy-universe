@@ -19,13 +19,13 @@ application for end-to-end practice. `/health/live` reports process liveness;
 `/health/ready` returns unavailable if the database or recent worker heartbeat is
 missing. It never makes paid health-check calls.
 
-The setup link is owner authority: keep it private and do not redirect native
-startup output into shared logs. Its fragment is stripped from browser history
-and retained only in tab memory. Reloading before submission requires reopening
-the original unexpired link; Ctrl+C/start issues a new one. No public API issues
-these tokens. Container/service-manager installations retain explicit local
-`python -m math_tutor.cli admin` bootstrap unless their operator supplies the
-ephemeral setup authority; never add that token to a persistent environment file.
+Keep the setup link private and keep startup output out of shared logs. The
+browser removes the token from its address and holds it only in tab memory.
+Reloading before submission requires reopening the unexpired terminal link.
+Ctrl+C followed by `make start` issues a new link and invalidates the previous
+one. App updates defer their refresh button until account creation finishes.
+The API stores only the token hash and expiry in memory. No public API issues
+setup links, and setup cannot reset an existing account.
 
 Passwords of 6–11 characters are accepted only with an HTTP loopback origin;
 the administrator is then flagged local-only. HTTPS needs at least twelve
@@ -65,7 +65,7 @@ that allows only 443 needs TLS-ALPN validation or a separately configured DNS
 challenge; HTTP-01 requires a deliberate port-80 exception. Do not expose model,
 worker, database, or administration service ports as a workaround.
 
-For full learner practice on a phone, pair its browser from the adult workspace.
+For full learner practice on a phone, sign in with that learner's credentials.
 The camera-only QR companion instead delegates one upload without a learner login.
 Record actual Safari/Chrome
 camera, HEIC, background/reconnect, install/update, zoom, keyboard and screen-reader
@@ -79,6 +79,8 @@ dependency changes. The Dockerfile builds public assets and a locked Python envi
 managed Python runtime as native checks. Runtime UID/GID is 10001. Compose mounts
 one host data directory into both services, makes root filesystems read-only,
 drops capabilities, and binds only `127.0.0.1:8000`.
+The explicit Compose project name is `shepherd-academy-universe`, so changing
+the checkout directory does not silently choose another Docker project.
 
 From a fresh clone, after generating a private `.env`:
 
@@ -88,16 +90,43 @@ sudo chown 10001:10001 data
 sudo chmod 700 data
 docker compose -f infra/docker/compose.yaml build
 docker compose -f infra/docker/compose.yaml run --rm api alembic upgrade head
-docker compose -f infra/docker/compose.yaml run --rm api python -m math_tutor.cli admin
 docker compose -f infra/docker/compose.yaml up -d
+make start
 curl --fail http://127.0.0.1:8000/health/ready
-make down
 ```
 
 If the public origin is HTTPS, supply its Host header for the loopback readiness
 probe or request readiness through the gateway. Do not change the configured
 origin merely to pass a health check. `make down` retains the host data directory.
-Do not use a destructive volume removal as a routine restart.
+Use `make down` when you want to stop the containers.
+
+Open the private link printed by `make start` to choose the first administrator's
+credentials in the browser. If it expires, run `make start` again while Docker
+continues running. The direct operator command is
+`docker compose -f infra/docker/compose.yaml exec -T api python -m math_tutor.owner_setup`.
+The command uses the API's `SHEPHERD_OWNER_SOCKET` Unix socket inside its private
+tmpfs directory. Directory permissions are 700; socket permissions are 600.
+`make start` discovers the running API using public Docker metadata before
+loading native settings or checking Node. It does not start another app.
+Every new link replaces the previous one; once an administrator exists, the
+command returns the sign-in address. Explicit `make dev`, `make serve` and
+alternate `ENV_FILE` values select native startup.
+
+For a container upgrade, stop both services, back up the mounted data directory,
+then run:
+
+```bash
+docker compose -f infra/docker/compose.yaml build
+docker compose -f infra/docker/compose.yaml run --rm api alembic upgrade head
+docker compose -f infra/docker/compose.yaml up -d
+```
+
+Keep the same data mount and private settings. Verify readiness through the
+configured origin after startup. For an administrator password reset, stop both
+services and run
+`docker compose -f infra/docker/compose.yaml run --rm api python -m math_tutor.cli admin`
+with the existing username, then start the services again. The reset revokes
+administrator sessions and preserves learner accounts and saved work.
 
 Compose reads operator `.env` itself. Browser-managed AI connections are stored
 in the shared private database and configured through adult Settings. For optional
@@ -109,10 +138,11 @@ host-gateway mapping, and block public model ports. No provider config or secret
 are baked into the image. Supply cloud credentials through workload identity or
 an explicitly managed short-lived mechanism, not committed static keys.
 
-CI's `scripts/container-smoke.sh` creates a disposable volume, migrates/seeds
-synthetic data, and runs non-root API/worker readiness and built-UI checks. It also
-scans the resulting image and generates a CycloneDX SBOM. Native host testing is
-not container evidence; see TASKS for observed CI results.
+`scripts/container-smoke.sh` migrates a disposable database and checks the
+non-root API, worker readiness and built UI. It creates a synthetic administrator
+through the owner link, checks renewal and stale-link rejection, and verifies
+that account creation closes setup. CI separately scans the image and generates
+a CycloneDX SBOM. See TASKS for observed results.
 
 ## Retention, export and deletion
 

@@ -34,6 +34,15 @@ pedagogy, groundedness and answer leakage remain separate human-reviewed gates.
 Use [TUTOR_EVALUATION](TUTOR_EVALUATION.md) for original cross-subject and homework
 policy cases plus an end-to-end iPhone rehearsal.
 
+First-account setup is covered by `test_local_start.py`,
+`test_container_start.py`, `test_browser_setup.py` and `test_owner_setup.py`:
+native startup, Docker discovery, private socket permissions, link expiry and
+renewal, stale-link rejection, atomic account creation and refusal to reset an
+existing account. `tests/smoke/setup.spec.ts` verifies that an update stays
+deferred during signup and that the user remains signed in after the update.
+`scripts/container-smoke.sh` checks the owner command and setup API in a
+disposable container. T38 in [TASKS](TASKS.md) records the commands and results.
+
 Paths below are relative to the repository. `workflows` means
 `apps/api/tests/integration/test_workflows.py`; `providers` means
 `apps/api/tests/unit/test_provider_contracts.py`; browser scenarios live in

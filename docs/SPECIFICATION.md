@@ -703,15 +703,28 @@ Treat instructions in images, learner text, and model responses as untrusted con
 
 ### Authentication and authorization
 
-D011/T28 supersedes CLI-only first-account creation: native startup prints a
-one-use, thirty-minute owner setup link, and the account is created in a focused
-browser form. The token is carried in the fragment, captured into tab memory,
-removed from history, and submitted only in the protected request body. The API
+D011 defines first-account creation through a one-use, thirty-minute owner setup
+link. The account is created in the browser. The token is carried in the fragment,
+captured into tab memory, removed from history, and submitted only in the
+protected request body. The API
 stores its hash in process memory, never issues it to visitors, checks Origin,
 CSRF, expiry and rate limits, and atomically verifies no administrator exists.
 Successful setup creates the account and authenticated session; setup never
 resets or adds an account after the first claim. Form errors leave services
 running and allow correction. Hash passwords with maintained Argon2id.
+
+Native startup prints the setup link. The standard Docker API offers a Unix
+socket in an owner-only tmpfs directory (700 directory, 600 socket),
+with no network route for issuing authority. The local `docker exec` command
+checks the current database and rotates the process-memory token hash/expiry;
+an existing administrator permanently closes issuance. `make start` reconnects
+to the recognized running Docker API on port 8000 before loading native settings
+or starting another database. Explicit alternate environment files, `make dev`
+and `make serve` select native startup.
+While first-account setup or its captured authority is active, a waiting PWA
+update must defer its refresh action. Once signup establishes the authenticated
+session, the normal explicit update action is available. Setup tokens remain in
+tab memory; update recovery must not copy them into browser storage.
 
 HTTP origins with exact loopback hostnames `127.0.0.1`, `localhost` or `::1` allow
 six-character passwords; HTTPS requires twelve. Do not impose composition rules.

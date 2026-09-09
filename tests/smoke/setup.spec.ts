@@ -120,6 +120,62 @@ async function installation() {
   };
 }
 
+test("a waiting update preserves first-account setup and refreshes only after signup", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  const app = await installation();
+  const running = await app.start();
+  try {
+    await page.goto(app.origin);
+    await page.evaluate(async () => {
+      await navigator.serviceWorker.ready;
+    });
+    await page.goto(running.setupUrl());
+    await expect(page.getByLabel("Username", { exact: true })).toBeEditable();
+    await page.getByLabel("Username", { exact: true }).fill("synthetic-owner");
+    await page.getByLabel("Password", { exact: true }).fill("local6");
+    await page.getByLabel("Confirm password", { exact: true }).fill("local6");
+    await page.evaluate(async () => {
+      await navigator.serviceWorker.register("/sw.js?synthetic-setup-update=2");
+    });
+    await expect(
+      page.getByText(
+        /Finish creating your administrator account before refreshing/,
+      ),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Refresh when ready" }),
+    ).toHaveCount(0);
+    await expect(page.getByLabel("Username", { exact: true })).toHaveValue(
+      "synthetic-owner",
+    );
+    await expect(page.getByLabel("Password", { exact: true })).toHaveValue(
+      "local6",
+    );
+    await page
+      .getByRole("button", { name: "Create account", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "Sign out", exact: true }),
+    ).toBeVisible();
+    const refresh = page.getByRole("button", { name: "Refresh when ready" });
+    await expect(refresh).toBeVisible();
+    page.once("dialog", (dialog) => void dialog.accept());
+    await Promise.all([page.waitForEvent("load"), refresh.click()]);
+    await expect(
+      page.getByRole("button", { name: "Sign out", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Create account", exact: true }),
+    ).toHaveCount(0);
+    const status = await page.request.get(`${app.origin}/api/v1/auth/setup`);
+    expect(await status.json()).toMatchObject({ required: false });
+  } finally {
+    await running.stop();
+  }
+});
+
 for (const lostReceipt of [false, true]) {
   test(`native browser setup recovers validation${lostReceipt ? " and a lost success receipt" : ""}, then keeps the login after restart`, async ({
     page,

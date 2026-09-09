@@ -1,5 +1,9 @@
 import { useEffect, useState } from "react";
-export function UpdateNotice() {
+export function UpdateNotice({
+  deferRefresh = false,
+}: {
+  deferRefresh?: boolean;
+}) {
   const [waiting, setWaiting] = useState<ServiceWorker | null>(null);
   useEffect(() => {
     if (!("serviceWorker" in navigator) || !import.meta.env.PROD) return;
@@ -29,6 +33,13 @@ export function UpdateNotice() {
     };
   }, []);
   if (!waiting) return null;
+  if (deferRefresh)
+    return (
+      <aside className="notice" role="status">
+        An update is ready. Finish creating your administrator account before
+        refreshing.
+      </aside>
+    );
   return (
     <aside className="notice" role="status">
       An update is ready. Save your current work before refreshing.{" "}
